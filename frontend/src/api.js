@@ -13,8 +13,10 @@ api.interceptors.request.use(async (config) => {
   console.log('API Request:', {
     method: config.method,
     url: config.url,
+    baseURL: baseURL,
     fullUrl: `${baseURL}${config.url}`,
-    hasAuth: !!config.headers.Authorization
+    hasAuth: !!config.headers.Authorization,
+    completeUrl: `${baseURL}${config.url}`
   });
 
   try {
