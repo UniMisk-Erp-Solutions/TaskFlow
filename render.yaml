@@ -21,3 +21,24 @@ services:
         sync: false
       - key: BREVO_SENDER_NAME
         sync: false
+
+  - type: web
+    name: task-mng-frontend
+    runtime: static
+    buildCommand: cd frontend && npm run build
+    publishPath: frontend/dist
+    plan: free
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+    routes:
+      - type: redirect
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://task-mng-sys-bqj2.onrender.com/api
