@@ -3,7 +3,7 @@ services:
     name: task-mng-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerContext: .
     plan: free
     healthCheckPath: /
     envVars:
