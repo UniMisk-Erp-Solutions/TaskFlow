@@ -32,21 +32,7 @@ exports.signup = async (req, res) => {
       throw authError;
     }
 
-    // Update profile with correct role since trigger defaults to employee
-    if (authData.user) {
-      const { error: profileError } = await supabase
-        .from("profiles")
-        .update({ 
-          full_name: fullName, 
-          role: role 
-        })
-        .eq("id", authData.user.id);
-
-      if (profileError) {
-        console.error("Profile update error:", profileError);
-        // Don't fail signup, but log the error
-      }
-    }
+    // Profile creation is handled by trigger with role from metadata
 
     console.log("User created successfully with role:", role);
     
