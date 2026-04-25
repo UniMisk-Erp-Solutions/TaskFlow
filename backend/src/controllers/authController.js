@@ -125,14 +125,23 @@ exports.testConnection = async (req, res) => {
 
 exports.getProfiles = async (req, res) => {
   try {
+    console.log('getProfiles - Fetching all profiles...');
+    
     const { data, error } = await supabase
       .from("profiles")
       .select("id, email, full_name, role")
       .order("full_name");
 
+    console.log('getProfiles - Supabase response:', { 
+      data: data?.length || 0, 
+      error: error?.message,
+      profiles: data 
+    });
+
     if (error) throw error;
     res.json(data || []);
   } catch (err) {
+    console.error('getProfiles - Error:', err);
     res.status(500).json({ error: err.message });
   }
 };

@@ -3,17 +3,26 @@ import api from '../api';
 
 export default function EmployeeSelect({ value, onChange, style }) {
   const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('EmployeeSelect - Fetching employees...');
     api.get('/auth/profiles')
       .then(({ data }) => {
+        console.log('EmployeeSelect - Raw profiles data:', data);
+        
         // Filter only employees and show only names
         const employeeList = data?.filter(p => p.role === 'employee') || [];
+        console.log('EmployeeSelect - Filtered employees:', employeeList);
+        
         setEmployees(employeeList);
+        setLoading(false);
       })
       .catch(err => {
-        console.error('Failed to fetch employees:', err);
+        console.error('EmployeeSelect - Failed to fetch employees:', err);
+        console.error('EmployeeSelect - Error details:', err.response?.data);
         setEmployees([]);
+        setLoading(false);
       });
   }, []);
 
