@@ -4,7 +4,7 @@ exports.signup = async (req, res) => {
   try {
     console.log("Signup request received:", req.body);
     
-    const { email, password, fullName } = req.body;
+    const { email, password, fullName, role = 'employee' } = req.body;
 
     // Validate required fields
     if (!email || !password || !fullName) {
@@ -13,13 +13,14 @@ exports.signup = async (req, res) => {
 
     console.log("Creating user in Supabase Auth...");
     
-    // Create user in Supabase Auth - trigger will handle profile creation
+    // Create user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: fullName,
+          role: role
         }
       }
     });
@@ -31,11 +32,28 @@ exports.signup = async (req, res) => {
       throw authError;
     }
 
-    console.log("User created successfully");
+    // Update profile with correct role since trigger defaults to employee
+    if (authData.user) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ 
+          full_name: fullName, 
+          role: role 
+        })
+        .eq("id", authData.user.id);
+
+      if (profileError) {
+        console.error("Profile update error:", profileError);
+        // Don't fail signup, but log the error
+      }
+    }
+
+    console.log("User created successfully with role:", role);
     
     res.status(201).json({ 
       message: "User created successfully",
-      user: authData.user
+      user: authData.user,
+      session: authData.session
     });
   } catch (err) {
     console.error("Signup error details:", {

@@ -57,7 +57,8 @@ export function AuthProvider({ children }) {
     const { data, error } = await api.post('/auth/signup', { 
       email, 
       password, 
-      fullName 
+      fullName,
+      role 
     });
     if (error) throw new Error(error.response?.data?.error || 'Signup failed');
 
