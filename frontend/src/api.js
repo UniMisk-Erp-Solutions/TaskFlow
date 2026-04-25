@@ -4,6 +4,15 @@ import supabase from './supabaseClient';
 const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 console.log('API client initialized with baseURL:', baseURL);
 
+// Cache session to avoid async calls in interceptor
+let cachedSession = null;
+
+// Update cached session when auth state changes
+supabase.auth.onAuthStateChange((event, session) => {
+  cachedSession = session;
+  console.log('API - Session updated:', { event, hasSession: !!session });
+});
+
 const api = axios.create({
   baseURL,
 });
@@ -19,16 +28,14 @@ api.interceptors.request.use((config) => {
     completeUrl: `${baseURL}${config.url}`
   });
 
-  // Get session synchronously to avoid hanging
-  const session = supabase.auth.session();
   console.log('API Request - Session check:', { 
-    hasSession: !!session, 
-    hasToken: !!session?.access_token,
-    userEmail: session?.user?.email 
+    hasSession: !!cachedSession, 
+    hasToken: !!cachedSession?.access_token,
+    userEmail: cachedSession?.user?.email 
   });
   
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`;
+  if (cachedSession?.access_token) {
+    config.headers.Authorization = `Bearer ${cachedSession.access_token}`;
     console.log('API Request - Auth header added');
   } else {
     console.log('API Request - No session found');
