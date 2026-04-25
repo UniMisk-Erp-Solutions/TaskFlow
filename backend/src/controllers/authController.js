@@ -47,6 +47,49 @@ exports.signup = async (req, res) => {
   }
 };
 
+exports.login = async (req, res) => {
+  try {
+    console.log("Login request received:", { email: req.body.email });
+    
+    const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ error: "Missing required fields: email, password" });
+    }
+
+    console.log("Authenticating user...");
+    
+    // Sign in user
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    console.log("Login response:", { authData, authError });
+
+    if (authError) {
+      console.error("Login auth error:", authError);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    console.log("Login successful");
+    
+    res.json({ 
+      message: "Login successful",
+      user: authData.user,
+      session: authData.session
+    });
+  } catch (err) {
+    console.error("Login error details:", {
+      message: err.message,
+      stack: err.stack,
+      body: req.body
+    });
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.testConnection = async (req, res) => {
   try {
     console.log("Testing Supabase connection...");
