@@ -123,6 +123,20 @@ exports.testConnection = async (req, res) => {
   }
 };
 
+exports.getProfiles = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, role")
+      .order("full_name");
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 exports.getMe = async (req, res) => {
   try {
     const { data, error } = await supabase

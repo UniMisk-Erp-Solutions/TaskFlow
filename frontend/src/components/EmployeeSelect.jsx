@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import supabase from '../supabaseClient';
+import api from '../api';
 
 export default function EmployeeSelect({ value, onChange, style }) {
   const [employees, setEmployees] = useState([]);
 
   useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .eq('role', 'employee')
-      .then(({ data }) => setEmployees(data || []));
+    api.get('/auth/profiles')
+      .then(({ data }) => {
+        // Filter only employees and show only names
+        const employeeList = data?.filter(p => p.role === 'employee') || [];
+        setEmployees(employeeList);
+      })
+      .catch(err => {
+        console.error('Failed to fetch employees:', err);
+        setEmployees([]);
+      });
   }, []);
 
   return (
