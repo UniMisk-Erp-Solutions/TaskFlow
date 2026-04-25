@@ -46,8 +46,31 @@ export function AuthProvider({ children }) {
     
     // Set session in Supabase client for consistency
     if (data.session) {
-      await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
-      console.log('AuthContext - Session set in Supabase client');
+      console.log('AuthContext - Setting session with tokens:', {
+        hasAccessToken: !!data.session.access_token,
+        hasRefreshToken: !!data.session.refresh_token
+      });
+      
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token
+      });
+      
+      if (sessionError) {
+        console.error('AuthContext - Failed to set session:', sessionError);
+      } else {
+        console.log('AuthContext - Session set successfully');
+        
+        // Small delay to ensure session is stored
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verify session was set
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        console.log('AuthContext - Session verification:', { 
+          hasSession: !!currentSession,
+          hasToken: !!currentSession?.access_token 
+        });
+      }
       
       // Update user state immediately
       setUser(data.user);
