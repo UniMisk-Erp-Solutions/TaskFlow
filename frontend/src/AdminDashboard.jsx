@@ -68,7 +68,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#080808' }}>
-      <Sidebar active={page} onNav={(p) => { setPage(p); if (p === 'ai') setShowAI(true); }} />
+      <Sidebar active={page} onNav={setPage} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Header */}
@@ -80,8 +80,7 @@ export default function AdminDashboard() {
           <div>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#ddd' }}>
               {page === 'overview' ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}` :
-               page === 'tasks'   ? 'All Tasks' :
-               page === 'email'   ? 'Reminders' : 'AI Assistant'}
+               page === 'tasks'   ? 'All Tasks' : 'Reminders'}
             </span>
             {page === 'overview' && (
               <span style={{ fontSize: 12, color: '#3a3a3a', marginLeft: 10 }}>
@@ -209,18 +208,28 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* ── AI ── */}
-          {page === 'ai' && !showAI && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 300, gap: 14 }}>
-              <Sparkles size={24} color="#444" strokeWidth={1} />
-              <div style={{ fontSize: 13, color: '#444' }}>Ask the AI assistant anything about your team's tasks</div>
-              <button className="btn btn-primary" onClick={() => setShowAI(true)}>
-                <Sparkles size={13} /> Open AI Assistant
-              </button>
-            </div>
-          )}
         </div>
       </main>
+
+      {/* Floating AI button */}
+      {!showAI && (
+        <button
+          onClick={() => setShowAI(true)}
+          title="AI Assistant"
+          style={{
+            position: 'fixed', bottom: 28, right: 28, zIndex: 40,
+            width: 48, height: 48, borderRadius: '50%',
+            background: '#3b82f6', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(59,130,246,0.45)',
+            transition: 'transform 150ms ease, box-shadow 150ms ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.6)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(59,130,246,0.45)'; }}
+        >
+          <Sparkles size={20} color="#fff" strokeWidth={1.8} />
+        </button>
+      )}
 
       {showForm && <TaskForm onSubmit={createTask} onClose={() => setShowForm(false)} />}
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}

@@ -1,10 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useRealtime } from './useRealtime';
 import TaskCard from './components/TaskCard';
 import Navbar from './components/Navbar';
+import AiChat from './components/AiChat';
 
 function Stat({ label, value, color }) {
   return (
@@ -41,6 +42,7 @@ function Group({ label, tasks, onUpdateStatus, accent }) {
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const { tasks, loading, refetch, updateStatus } = useTasks();
+  const [showAI, setShowAI] = useState(false);
 
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
 
@@ -117,6 +119,28 @@ export default function EmployeeDashboard() {
             )
         }
       </div>
+
+      {/* Floating AI button */}
+      {!showAI && (
+        <button
+          onClick={() => setShowAI(true)}
+          title="AI Assistant"
+          style={{
+            position: 'fixed', bottom: 28, right: 28, zIndex: 40,
+            width: 48, height: 48, borderRadius: '50%',
+            background: '#3b82f6', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 16px rgba(59,130,246,0.45)',
+            transition: 'transform 150ms ease, box-shadow 150ms ease',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.6)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(59,130,246,0.45)'; }}
+        >
+          <Sparkles size={20} color="#fff" strokeWidth={1.8} />
+        </button>
+      )}
+
+      {showAI && <AiChat onClose={() => setShowAI(false)} />}
     </div>
   );
 }

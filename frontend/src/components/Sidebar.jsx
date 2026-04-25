@@ -1,12 +1,11 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Sparkles, Mail, LogOut, Zap } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const NAV = [
-  { id: 'overview', icon: LayoutDashboard, label: 'Overview'     },
-  { id: 'tasks',    icon: CheckSquare,     label: 'Tasks'        },
-  { id: 'ai',       icon: Sparkles,        label: 'AI Assistant' },
-  { id: 'email',    icon: Mail,            label: 'Reminders'    },
+  { id: 'overview', icon: LayoutDashboard, label: 'Overview'  },
+  { id: 'tasks',    icon: CheckSquare,     label: 'Tasks'     },
+  { id: 'email',    icon: Mail,            label: 'Reminders' },
 ];
 
 export default function Sidebar({ active, onNav }) {
