@@ -39,22 +39,27 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    const { data, error } = await api.post('/auth/login', { email, password });
+    if (error) throw new Error(error.response?.data?.error || 'Login failed');
+    
+    // Set session in Supabase client for consistency
+    if (data.session) {
+      await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
+    }
     return data;
   }
 
   async function signUp(email, password, fullName, role) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    const { data, error } = await api.post('/auth/signup', { 
+      email, 
+      password, 
+      fullName 
+    });
+    if (error) throw new Error(error.response?.data?.error || 'Signup failed');
 
-    // Update profile with name and selected role
-    // Requires Supabase RLS policy: allow users to update own profile row
-    if (data.user) {
-      await supabase
-        .from('profiles')
-        .update({ full_name: fullName, role })
-        .eq('id', data.user.id);
+    // Set session in Supabase client for consistency
+    if (data.session) {
+      await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
     }
     return data;
   }
