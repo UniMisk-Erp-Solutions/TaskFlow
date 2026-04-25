@@ -39,68 +39,111 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function signIn(email, password) {
-    const { data, error } = await api.post('/auth/login', { email, password });
-    if (error) throw new Error(error.response?.data?.error || 'Login failed');
-    
-    console.log('AuthContext - Login response:', { hasSession: !!data.session, user: !!data.user });
-    
-    // Set session in Supabase client for consistency
-    if (data.session) {
-      console.log('AuthContext - Setting session with tokens:', {
-        hasAccessToken: !!data.session.access_token,
-        hasRefreshToken: !!data.session.refresh_token
-      });
+    try {
+      console.log('AuthContext - Starting login...');
+      const { data, error } = await api.post('/auth/login', { email, password });
+      if (error) throw new Error(error.response?.data?.error || 'Login failed');
       
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token
-      });
+      console.log('AuthContext - Login response:', { hasSession: !!data.session, user: !!data.user });
       
-      if (sessionError) {
-        console.error('AuthContext - Failed to set session:', sessionError);
-      } else {
-        console.log('AuthContext - Session set successfully');
-        
-        // Small delay to ensure session is stored
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Verify session was set
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
-        console.log('AuthContext - Session verification:', { 
-          hasSession: !!currentSession,
-          hasToken: !!currentSession?.access_token 
+      // Set session in Supabase client for consistency
+      if (data.session) {
+        console.log('AuthContext - Setting session with tokens:', {
+          hasAccessToken: !!data.session.access_token,
+          hasRefreshToken: !!data.session.refresh_token
         });
+        
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token
+        });
+        
+        if (sessionError) {
+          console.error('AuthContext - Failed to set session:', sessionError);
+        } else {
+          console.log('AuthContext - Session set successfully');
+          
+          // Small delay to ensure session is stored
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Verify session was set
+          const { data: { session: currentSession } } = await supabase.auth.getSession();
+          console.log('AuthContext - Session verification:', { 
+            hasSession: !!currentSession,
+            hasToken: !!currentSession?.access_token 
+          });
+        }
+        
+        // Update user state immediately
+        setUser(data.user);
+        console.log('AuthContext - User state updated');
+        
+        // Fetch profile with the new session (with timeout)
+        try {
+          await Promise.race([
+            fetchProfile(data.session),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
+          ]);
+          console.log('AuthContext - Profile fetched');
+        } catch (profileError) {
+          console.warn('AuthContext - Profile fetch failed or timed out:', profileError);
+          // Don't fail login, just continue without profile
+        }
       }
-      
-      // Update user state immediately
-      setUser(data.user);
-      console.log('AuthContext - User state updated');
-      
-      // Fetch profile with the new session
-      await fetchProfile(data.session);
-      console.log('AuthContext - Profile fetched');
+      return data;
+    } catch (err) {
+      console.error('AuthContext - Login error:', err);
+      throw err;
     }
-    return data;
   }
 
   async function signUp(email, password, fullName, role) {
-    const { data, error } = await api.post('/auth/signup', { 
-      email, 
-      password, 
-      fullName,
-      role 
-    });
-    if (error) throw new Error(error.response?.data?.error || 'Signup failed');
+    try {
+      console.log('AuthContext - Starting signup...');
+      const { data, error } = await api.post('/auth/signup', { 
+        email, 
+        password, 
+        fullName,
+        role 
+      });
+      if (error) throw new Error(error.response?.data?.error || 'Signup failed');
 
-    // Set session in Supabase client for consistency
-    if (data.session) {
-      await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
-      // Update user state immediately
-      setUser(data.user);
-      // Fetch profile with the new session
-      await fetchProfile(data.session);
+      console.log('AuthContext - Signup response:', { hasSession: !!data.session, user: !!data.user });
+
+      // Set session in Supabase client for consistency
+      if (data.session) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token
+        });
+
+        if (sessionError) {
+          console.error('AuthContext - Failed to set session during signup:', sessionError);
+        } else {
+          console.log('AuthContext - Session set successfully during signup');
+        }
+
+        // Update user state immediately
+        setUser(data.user);
+        console.log('AuthContext - User state updated during signup');
+
+        // Fetch profile with the new session (with timeout)
+        try {
+          await Promise.race([
+            fetchProfile(data.session),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
+          ]);
+          console.log('AuthContext - Profile fetched during signup');
+        } catch (profileError) {
+          console.warn('AuthContext - Profile fetch failed or timed out during signup:', profileError);
+          // Don't fail signup, just continue without profile
+        }
+      }
+      return data;
+    } catch (err) {
+      console.error('AuthContext - Signup error:', err);
+      throw err;
     }
-    return data;
   }
 
   async function signOut() {
