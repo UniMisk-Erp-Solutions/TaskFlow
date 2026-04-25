@@ -9,7 +9,7 @@ const api = axios.create({
 });
 
 // Attach Supabase JWT automatically to every request
-api.interceptors.request.use(async (config) => {
+api.interceptors.request.use((config) => {
   console.log('API Request:', {
     method: config.method,
     url: config.url,
@@ -19,22 +19,19 @@ api.interceptors.request.use(async (config) => {
     completeUrl: `${baseURL}${config.url}`
   });
 
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    console.log('API Request - Session check:', { 
-      hasSession: !!session, 
-      hasToken: !!session?.access_token,
-      userEmail: session?.user?.email 
-    });
-    
-    if (session?.access_token) {
-      config.headers.Authorization = `Bearer ${session.access_token}`;
-      console.log('API Request - Auth header added');
-    } else {
-      console.log('API Request - No session found');
-    }
-  } catch (err) {
-    console.error('API Request - Session error:', err);
+  // Get session synchronously to avoid hanging
+  const session = supabase.auth.session();
+  console.log('API Request - Session check:', { 
+    hasSession: !!session, 
+    hasToken: !!session?.access_token,
+    userEmail: session?.user?.email 
+  });
+  
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+    console.log('API Request - Auth header added');
+  } else {
+    console.log('API Request - No session found');
   }
   
   console.log('Final API Request:', {
