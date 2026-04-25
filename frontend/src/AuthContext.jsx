@@ -42,13 +42,20 @@ export function AuthProvider({ children }) {
     const { data, error } = await api.post('/auth/login', { email, password });
     if (error) throw new Error(error.response?.data?.error || 'Login failed');
     
+    console.log('AuthContext - Login response:', { hasSession: !!data.session, user: !!data.user });
+    
     // Set session in Supabase client for consistency
     if (data.session) {
       await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
+      console.log('AuthContext - Session set in Supabase client');
+      
       // Update user state immediately
       setUser(data.user);
+      console.log('AuthContext - User state updated');
+      
       // Fetch profile with the new session
       await fetchProfile(data.session);
+      console.log('AuthContext - Profile fetched');
     }
     return data;
   }

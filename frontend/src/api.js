@@ -45,4 +45,26 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Debug responses
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', {
+      status: response.status,
+      url: response.config.url,
+      method: response.config.method,
+      success: true
+    });
+    return response;
+  },
+  (error) => {
+    console.log('API Error:', {
+      status: error.response?.status,
+      url: error.config?.url,
+      method: error.config?.method,
+      error: error.response?.data?.error || error.message
+    });
+    return Promise.reject(error);
+  }
+);
+
 export default api;
