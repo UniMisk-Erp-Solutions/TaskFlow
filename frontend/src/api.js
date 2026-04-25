@@ -17,12 +17,22 @@ api.interceptors.request.use(async (config) => {
     hasAuth: !!config.headers.Authorization
   });
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`;
-    console.log('API Request - Auth header added');
-  } else {
-    console.log('API Request - No session found');
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('API Request - Session check:', { 
+      hasSession: !!session, 
+      hasToken: !!session?.access_token,
+      userEmail: session?.user?.email 
+    });
+    
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+      console.log('API Request - Auth header added');
+    } else {
+      console.log('API Request - No session found');
+    }
+  } catch (err) {
+    console.error('API Request - Session error:', err);
   }
   
   console.log('Final API Request:', {

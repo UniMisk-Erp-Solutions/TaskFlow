@@ -40,7 +40,7 @@ module.exports = async (req, res, next) => {
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
     console.log("Auth middleware - Profile response:", { 
       profile: !!profile, 
