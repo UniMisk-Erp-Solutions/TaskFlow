@@ -10,8 +10,15 @@ let cachedSession = null;
 // Update cached session when auth state changes
 supabase.auth.onAuthStateChange((event, session) => {
   cachedSession = session;
+  window.cachedSession = session; // Sync with window object
   console.log('API - Session updated:', { event, hasSession: !!session });
 });
+
+// Initialize from window.cachedSession if available
+if (window.cachedSession) {
+  cachedSession = window.cachedSession;
+  console.log('API - Session initialized from window cache:', { hasSession: !!cachedSession });
+}
 
 const api = axios.create({
   baseURL,

@@ -22,16 +22,40 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    console.log('AuthContext - Initializing session...');
+    
+    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('AuthContext - Initial session:', { hasSession: !!session, hasUser: !!session?.user });
       setUser(session?.user ?? null);
-      fetchProfile(session).finally(() => setLoading(false));
+      
+      // Update cached session in API client
+      if (session) {
+        window.cachedSession = session;
+      }
+      
+      // Only fetch profile if we have a session
+      if (session) {
+        fetchProfile(session).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        console.log('AuthContext - Auth state changed:', { event: _event, hasSession: !!session });
         setLoading(true);
         setUser(session?.user ?? null);
-        await fetchProfile(session);
+        
+        // Update cached session in API client
+        window.cachedSession = session;
+        
+        if (session) {
+          await fetchProfile(session);
+        } else {
+          setProfile(null);
+        }
         setLoading(false);
       }
     );
