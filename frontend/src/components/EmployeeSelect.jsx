@@ -27,10 +27,22 @@ export default function EmployeeSelect({ value, onChange, style }) {
   }, []);
 
   return (
-    <select className="select" value={value} onChange={(e) => onChange(e.target.value)} style={style}>
+    <select 
+      className="select" 
+      value={value} 
+      onChange={(e) => onChange(e.target.value)} 
+      style={{
+        ...style,
+        maxHeight: '200px',
+        overflowY: 'auto',
+        fontSize: '14px',
+        padding: '8px 12px',
+        minHeight: '40px'
+      }}
+    >
       <option value="">— Select employee —</option>
       {employees.map((e) => (
-        <option key={e.id} value={e.id}>
+        <option key={e.id} value={e.id} style={{ padding: '8px 12px', fontSize: '14px' }}>
           {e.full_name || e.email}
         </option>
       ))}
