@@ -45,6 +45,10 @@ export function AuthProvider({ children }) {
     // Set session in Supabase client for consistency
     if (data.session) {
       await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
+      // Update user state immediately
+      setUser(data.user);
+      // Fetch profile with the new session
+      await fetchProfile(data.session);
     }
     return data;
   }
@@ -60,6 +64,10 @@ export function AuthProvider({ children }) {
     // Set session in Supabase client for consistency
     if (data.session) {
       await supabase.auth.setSession(data.session.access_token, data.session.refresh_token);
+      // Update user state immediately
+      setUser(data.user);
+      // Fetch profile with the new session
+      await fetchProfile(data.session);
     }
     return data;
   }
