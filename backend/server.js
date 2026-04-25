@@ -20,11 +20,11 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);
 
 // Serve frontend static files
-app.use(express.static(path.join(__dirname, "../frontend/dist")));
+app.use(express.static(path.join(__dirname, "frontend/dist")));
 
 // SPA fallback - serve index.html for any non-API routes
 app.get(/^(?!\/api).*$/, (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
+  res.sendFile(path.join(__dirname, "frontend/dist/index.html"));
 });
 
 app.get("/", (req, res) => res.send("API Running..."));
