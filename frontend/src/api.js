@@ -1,7 +1,10 @@
 import axios from 'axios';
 import supabase from './supabaseClient';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const baseURL = import.meta.env.VITE_API_URL;
+if (!baseURL) {
+  throw new Error('Missing VITE_API_URL. Configure frontend/.env for local or frontend/.env.production for hosted.');
+}
 console.log('API client initialized with baseURL:', baseURL);
 
 // Cache session to avoid async calls in interceptor
