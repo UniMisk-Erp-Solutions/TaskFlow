@@ -8,7 +8,6 @@ export default function Login() {
   const { signIn, signUp } = useAuth();
 
   const [mode,     setMode]     = useState('signin');
-  const [role,     setRole]     = useState('employee');
   const [name,     setName]     = useState('');
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +23,8 @@ export default function Login() {
         await signIn(email, password);
       } else {
         if (!name.trim()) { setError('Full name is required'); setLoading(false); return; }
-        await signUp(email, password, name.trim(), role);
+        // Admin-only signup (workspace owner)
+        await signUp(email, password, name.trim(), 'admin');
       }
       navigate('/app');
     } catch (err) {
@@ -81,33 +81,7 @@ export default function Login() {
             ))}
           </div>
 
-          {/* Role selector — signup only */}
-          {mode === 'signup' && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 500, color: '#444', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 10 }}>Role</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[
-                  { value: 'admin',    label: 'Administrator', desc: 'Manage tasks, team & reminders' },
-                  { value: 'employee', label: 'Employee',       desc: 'View and update your own tasks' },
-                ].map((r) => {
-                  const active = role === r.value;
-                  return (
-                    <button key={r.value} onClick={() => setRole(r.value)} type="button" style={{
-                      padding: '12px 14px', textAlign: 'left', cursor: 'pointer',
-                      background: active ? '#131313' : '#0e0e0e',
-                      border: `1px solid ${active ? '#383838' : '#1e1e1e'}`,
-                      borderRadius: 6, fontFamily: 'inherit', transition: 'all 100ms ease',
-                    }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: active ? '#e4e4e4' : '#555', marginBottom: 3 }}>
-                        {r.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#3a3a3a', lineHeight: 1.4 }}>{r.desc}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* Signup is admin-only (workspace owner). No employee self-signup. */}
 
           {/* Form */}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

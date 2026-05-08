@@ -5,17 +5,34 @@ const path = require("path");
 
 const authRoutes = require("./src/routes/auth");
 const taskRoutes = require("./src/routes/tasks");
+const meetingRoutes = require("./src/routes/meetings");
 const aiRoutes = require("./src/routes/ai");
 const adminRoutes = require("./src/routes/admin");
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow server-to-server tools without Origin header.
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS: Origin not allowed"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/meetings", meetingRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);
 

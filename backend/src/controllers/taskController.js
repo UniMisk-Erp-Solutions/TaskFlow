@@ -5,7 +5,10 @@ const VALID_STATUSES = ["pending", "in_progress", "completed", "blocked"];
 
 exports.getTasks = async (req, res) => {
   try {
-    let query = supabase.from("tasks").select("*");
+    let query = supabase
+      .from("tasks")
+      .select("*")
+      .eq("org_id", req.user.org_id);
 
     // Admins see all tasks; employees see only tasks assigned to them
     if (req.user.role !== "admin") {
@@ -40,7 +43,8 @@ exports.createTask = async (req, res) => {
         priority: priority || "medium",
         due_date,
         status: "pending",
-        created_by: req.user.id
+        created_by: req.user.id,
+        org_id: req.user.org_id,
       }])
       .select()
       .single();
@@ -65,7 +69,8 @@ exports.updateStatus = async (req, res) => {
     let query = supabase
       .from("tasks")
       .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("org_id", req.user.org_id);
 
     // Non-admins can only update tasks assigned to them
     if (req.user.role !== "admin") {
@@ -101,7 +106,8 @@ exports.getDashboardStats = async (req, res) => {
 
     const { data: tasks, error } = await supabase
       .from("tasks")
-      .select("id, status, due_date");
+      .select("id, status, due_date")
+      .eq("org_id", req.user.org_id);
 
     if (error) throw error;
 

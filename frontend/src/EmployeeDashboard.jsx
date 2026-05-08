@@ -2,10 +2,12 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
+import { useMeetings } from './useMeetings';
 import { useRealtime } from './useRealtime';
 import TaskCard from './components/TaskCard';
 import Navbar from './components/Navbar';
 import AiChat from './components/AiChat';
+import CalenderView from './components/CalenderView';
 
 function Stat({ label, value, color }) {
   return (
@@ -42,9 +44,13 @@ function Group({ label, tasks, onUpdateStatus, accent }) {
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const { tasks, loading, refetch, updateStatus } = useTasks();
+  const { meetings, refetch: refetchMeetings } = useMeetings();
   const [showAI, setShowAI] = useState(false);
+  const [page, setPage] = useState('tasks');
+  const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
 
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
+  useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -83,6 +89,15 @@ export default function EmployeeDashboard() {
           <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={13} /></button>
         </div>
 
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className={`btn btn-sm ${page === 'tasks' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('tasks')}>
+            Tasks
+          </button>
+          <button className={`btn btn-sm ${page === 'calender' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('calender')}>
+            Calender
+          </button>
+        </div>
+
         {/* Stats */}
         <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, display: 'flex', background: '#0c0c0c', marginBottom: 24, overflow: 'hidden' }}>
           <Stat label="Total"     value={stats.total}     />
@@ -101,7 +116,7 @@ export default function EmployeeDashboard() {
         )}
 
         {/* Tasks */}
-        {loading
+        {page === 'tasks' && (loading
           ? <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner" style={{ width: 20, height: 20 }} /></div>
           : tasks.length === 0
             ? (
@@ -117,7 +132,18 @@ export default function EmployeeDashboard() {
                 <Group label="Completed"   tasks={groups.completed}  onUpdateStatus={updateStatus} accent="#4ade80" />
               </div>
             )
-        }
+        )}
+
+        {page === 'calender' && (
+          <CalenderView
+            tasks={tasks}
+            meetings={meetings}
+            filters={filters}
+            onFiltersChange={setFilters}
+            assignees={[]}
+            includeEmployeeFilter={false}
+          />
+        )}
       </div>
 
       {/* Floating AI button */}

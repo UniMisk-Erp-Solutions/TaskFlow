@@ -10,9 +10,9 @@ function RoleRouter() {
   const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
-  
-  // Check user metadata first (from signup), then profile (from database)
-  const userRole = user?.user_metadata?.role || profile?.role;
+
+  // Use role from database profile only (authoritative)
+  const userRole = profile?.role;
   if (userRole === 'admin') return <Navigate to="/admin" replace />;
   return <Navigate to="/dashboard" replace />;
 }
@@ -21,9 +21,9 @@ function ProtectedAdmin({ children }) {
   const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
-  
-  // Check user metadata first (from signup), then profile (from database)
-  const userRole = user?.user_metadata?.role || profile?.role;
+
+  // Use role from database profile only (authoritative)
+  const userRole = profile?.role;
   if (userRole !== 'admin') return <Navigate to="/dashboard" replace />;
   return children;
 }

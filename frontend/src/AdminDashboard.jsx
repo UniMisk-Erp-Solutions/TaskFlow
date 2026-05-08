@@ -2,15 +2,20 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Plus, Sparkles, Send, RefreshCw } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
+import { useMeetings } from './useMeetings';
 import { useRealtime } from './useRealtime';
 import Sidebar from './components/Sidebar';
 import TaskTable from './components/TaskTable';
 import TaskForm from './components/TaskForm';
+import UserManagement from './components/UserManagement';
+import MeetingForm from './components/MeetingForm';
+import MeetingTable from './components/MeetingTable';
+import CalenderView from './components/CalenderView';
 import AiChat from './components/AiChat';
 import FilterBar from './components/FilterBar';
 import api from './api';
 
-const FILTERS_DEFAULT = { search: '', status: '', priority: '' };
+const FILTERS_DEFAULT = { search: '', status: '', priority: '', type: '', assignee_id: '' };
 
 function Stat({ label, value, sub }) {
   return (
@@ -25,22 +30,41 @@ function Stat({ label, value, sub }) {
 export default function AdminDashboard() {
   const { profile } = useAuth();
   const { tasks, loading, refetch, createTask, updateStatus, deleteTask } = useTasks();
+  const {
+    meetings,
+    loading: meetingsLoading,
+    refetch: refetchMeetings,
+    createMeeting,
+    updateStatus: updateMeetingStatus,
+    deleteMeeting,
+  } = useMeetings();
 
   const [page,     setPage]     = useState('overview');
   const [showForm, setShowForm] = useState(false);
+  const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [showAI,   setShowAI]   = useState(false);
   const [filters,  setFilters]  = useState(FILTERS_DEFAULT);
+  const [employees, setEmployees] = useState([]);
   const [stats,    setStats]    = useState(null);
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
 
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
+  useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {
     api.get('/admin/dashboard')
       .then(({ data }) => setStats(data))
       .catch(() => {});
   }, [tasks]);
+
+  useEffect(() => {
+    api.get('/auth/profiles')
+      .then(({ data }) => {
+        setEmployees((data || []).filter((p) => p.role === 'employee'));
+      })
+      .catch(() => setEmployees([]));
+  }, []);
 
   async function handleSendReminders() {
     setSending(true); setSendMsg('');
@@ -60,8 +84,20 @@ export default function AdminDashboard() {
     if (q && !t.title.toLowerCase().includes(q) && !(t.description || '').toLowerCase().includes(q)) return false;
     if (filters.status   && t.status   !== filters.status)   return false;
     if (filters.priority && t.priority !== filters.priority) return false;
+    if (filters.assignee_id && t.assignee_id !== filters.assignee_id) return false;
     return true;
   });
+  const filteredMeetings = meetings.filter((m) => {
+    const q = filters.search.toLowerCase();
+    if (q && !m.title.toLowerCase().includes(q) && !(m.description || '').toLowerCase().includes(q)) return false;
+    if (filters.status && m.status !== filters.status) return false;
+    if (filters.priority && m.priority !== filters.priority) return false;
+    if (filters.assignee_id && m.assignee_id !== filters.assignee_id) return false;
+    return true;
+  });
+
+  const showTaskLists = filters.type !== 'meeting';
+  const showMeetingLists = filters.type !== 'task';
 
   const today = new Date().toISOString().split('T')[0];
   const overdue = tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed');
@@ -80,7 +116,10 @@ export default function AdminDashboard() {
           <div>
             <span style={{ fontSize: 14, fontWeight: 600, color: '#ddd' }}>
               {page === 'overview' ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}` :
-               page === 'tasks'   ? 'All Tasks' : 'Reminders'}
+               page === 'tasks'   ? 'All Tasks'
+               : page === 'calender' ? 'Calender View'
+               : page === 'users' ? 'User Management'
+               : 'Reminders'}
             </span>
             {page === 'overview' && (
               <span style={{ fontSize: 12, color: '#3a3a3a', marginLeft: 10 }}>
@@ -103,6 +142,9 @@ export default function AdminDashboard() {
             <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
               <Plus size={13} /> New Task
             </button>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowMeetingForm(true)}>
+              <Plus size={13} /> New Meeting
+            </button>
           </div>
         </div>
 
@@ -111,6 +153,20 @@ export default function AdminDashboard() {
           {/* ── OVERVIEW ── */}
           {page === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
+                  <FilterBar
+                    filters={filters}
+                    onChange={setFilters}
+                    onClear={() => setFilters(FILTERS_DEFAULT)}
+                    includeType
+                    includeAssignee
+                    assignees={employees}
+                    searchPlaceholder="Search tasks and meetings"
+                  />
+                </div>
+              </div>
+
               {/* Stats row */}
               <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', background: '#0e0e0e', overflow: 'hidden' }}>
                 <Stat label="Total Tasks"  value={stats?.total}     />
@@ -143,30 +199,93 @@ export default function AdminDashboard() {
                     <button className="btn btn-ghost btn-sm" onClick={() => setPage('tasks')}>View all</button>
                   </div>
                 </div>
-                {loading
+                {!showTaskLists ? (
+                  <div className="empty"><div style={{ fontSize: 13, color: '#444' }}>Task list hidden by type filter</div></div>
+                ) : loading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <TaskTable tasks={tasks.slice(0, 10)} onDelete={deleteTask} onUpdateStatus={updateStatus} />
+                  : <TaskTable tasks={filtered.slice(0, 10)} onDelete={deleteTask} onUpdateStatus={updateStatus} />}
+              </div>
+
+              {/* Recent meetings */}
+              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>Recent Meetings</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-ghost btn-sm btn-icon" onClick={refetchMeetings}><RefreshCw size={12} /></button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setPage('tasks')}>View all</button>
+                  </div>
+                </div>
+                {!showMeetingLists ? (
+                  <div className="empty"><div style={{ fontSize: 13, color: '#444' }}>Meeting list hidden by type filter</div></div>
+                ) : meetingsLoading
+                  ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
+                  : <MeetingTable meetings={filteredMeetings.slice(0, 10)} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin />
                 }
               </div>
             </div>
           )}
 
-          {/* ── TASKS ── */}
+          {/* ── TASKS + MEETINGS ── */}
           {page === 'tasks' && (
-            <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-              <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                  {filtered.length} Task{filtered.length !== 1 ? 's' : ''}
-                </span>
-                <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={12} /></button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
+                  <FilterBar
+                    filters={filters}
+                    onChange={setFilters}
+                    onClear={() => setFilters(FILTERS_DEFAULT)}
+                    includeType
+                    includeAssignee
+                    assignees={employees}
+                    searchPlaceholder="Search tasks and meetings"
+                  />
+                </div>
               </div>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
-                <FilterBar filters={filters} onChange={setFilters} onClear={() => setFilters(FILTERS_DEFAULT)} />
-              </div>
-              {loading
-                ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} />
-              }
+
+              {showTaskLists && <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                    {filtered.length} Task{filtered.length !== 1 ? 's' : ''}
+                  </span>
+                  <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={12} /></button>
+                </div>
+                {loading
+                  ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
+                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} />
+                }
+              </div>}
+
+              {showMeetingLists && <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                    {filteredMeetings.length} Meeting{filteredMeetings.length !== 1 ? 's' : ''}
+                  </span>
+                  <button className="btn btn-ghost btn-sm btn-icon" onClick={refetchMeetings}><RefreshCw size={12} /></button>
+                </div>
+                {meetingsLoading
+                  ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
+                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin />
+                }
+              </div>}
+            </div>
+          )}
+
+          {/* ── CALENDER ── */}
+          {page === 'calender' && (
+            <CalenderView
+              tasks={tasks}
+              meetings={meetings}
+              filters={filters}
+              onFiltersChange={setFilters}
+              assignees={employees}
+              includeEmployeeFilter
+            />
+          )}
+
+          {/* ── USER MANAGEMENT ── */}
+          {page === 'users' && (
+            <div style={{ maxWidth: 900 }}>
+              <UserManagement />
             </div>
           )}
 
@@ -232,6 +351,7 @@ export default function AdminDashboard() {
       )}
 
       {showForm && <TaskForm onSubmit={createTask} onClose={() => setShowForm(false)} />}
+      {showMeetingForm && <MeetingForm onSubmit={createMeeting} onClose={() => setShowMeetingForm(false)} />}
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
     </div>
   );

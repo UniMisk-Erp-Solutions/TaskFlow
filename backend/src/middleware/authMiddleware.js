@@ -35,10 +35,10 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
 
-    // Get user profile with role
+    // Get user profile with role and org
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, org_id")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -49,12 +49,19 @@ module.exports = async (req, res, next) => {
     });
 
     if (profileError) {
-      console.log("Auth middleware - Profile not found, using default role");
+      console.log("Auth middleware - Profile lookup error:", profileError.message);
+      return res.status(403).json({ error: "Profile lookup failed" });
+    }
+
+    if (!profile) {
+      console.log("Auth middleware - Profile missing for user, access denied");
+      return res.status(403).json({ error: "Profile not found for user" });
     }
 
     req.user = { 
       ...user, 
-      role: profile?.role ?? "employee" 
+      role: profile.role,
+      org_id: profile.org_id,
     };
 
     console.log("Auth middleware - User authenticated:", {
