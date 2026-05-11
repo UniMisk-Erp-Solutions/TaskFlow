@@ -151,6 +151,11 @@ function shapeMeeting(row: any) {
   return { ...rest, assignee_ids, project_name };
 }
 
+/** Sort in-process so we do not rely on PostgREST `.order("created_at")` (400 if column is missing or not exposed). */
+function sortByCreatedAtDesc<T extends { created_at?: string | null }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+}
+
 /** Avoid PostgREST resource-embed failures (400) on some self-hosted / cache setups. */
 const ROW_IN_CHUNK = 120;
 
@@ -413,11 +418,11 @@ async function handleTasks(req: Request, path: string) {
 
   if (req.method === "GET" && path === "/tasks") {
     if (user.role === "admin") {
-      let aq = supabase.from("tasks").select("*").order("created_at", { ascending: false });
+      let aq = supabase.from("tasks").select("*");
       if (user.org_id) aq = aq.eq("org_id", user.org_id);
       const { data, error } = await aq;
       if (error) return json({ error: error.message }, 400);
-      return json(await shapeTasksWithJoins(data ?? []));
+      return json(await shapeTasksWithJoins(sortByCreatedAtDesc(data ?? [])));
     }
     const { data: ra } = await supabase.from("task_assignees").select("task_id").eq("profile_id", user.id);
     const fromJ = [...new Set((ra ?? []).map((r: { task_id: string }) => r.task_id))];
@@ -598,11 +603,11 @@ async function handleMeetings(req: Request, path: string) {
 
   if (req.method === "GET" && path === "/meetings") {
     if (user.role === "admin") {
-      let aq = supabase.from("meetings").select("*").order("created_at", { ascending: false });
+      let aq = supabase.from("meetings").select("*");
       if (user.org_id) aq = aq.eq("org_id", user.org_id);
       const { data, error } = await aq;
       if (error) return json({ error: error.message }, 400);
-      return json(await shapeMeetingsWithJoins(data ?? []));
+      return json(await shapeMeetingsWithJoins(sortByCreatedAtDesc(data ?? [])));
     }
     const { data: ra } = await supabase.from("meeting_assignees").select("meeting_id").eq("profile_id", user.id);
     const fromJ = [...new Set((ra ?? []).map((r: { meeting_id: string }) => r.meeting_id))];
