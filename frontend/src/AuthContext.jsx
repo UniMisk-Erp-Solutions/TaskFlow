@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import supabase from './supabaseClient';
 import api from './api';
 
@@ -8,6 +8,12 @@ export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
+  const currentUserIdRef = useRef(null);
+
+  useEffect(() => {
+    currentUserIdRef.current = user?.id ?? null;
+  }, [user]);
 
   async function fetchProfile(session) {
     if (!session) {
@@ -45,6 +51,7 @@ export function AuthProvider({ children }) {
       } else {
         setLoading(false);
       }
+      initializedRef.current = true;
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -60,6 +67,19 @@ export function AuthProvider({ children }) {
           } catch (_) {
             /* stale profile kept inside fetchProfile */
           }
+          return;
+        }
+
+        // Prevent UI "refresh" on tab return when Supabase emits SIGNED_IN for an already active user.
+        // Keep screen state and refresh profile in background.
+        if (
+          event === 'SIGNED_IN' &&
+          initializedRef.current &&
+          currentUserIdRef.current &&
+          session?.user?.id === currentUserIdRef.current
+        ) {
+          window.cachedSession = session;
+          await fetchProfile(session);
           return;
         }
 

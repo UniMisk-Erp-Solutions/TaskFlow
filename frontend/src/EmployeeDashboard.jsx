@@ -46,8 +46,12 @@ export default function EmployeeDashboard() {
   const { tasks, loading, refetch, updateStatus } = useTasks();
   const { meetings, refetch: refetchMeetings } = useMeetings();
   const [showAI, setShowAI] = useState(false);
-  const [page, setPage] = useState('tasks');
+  const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
+
+  React.useEffect(() => {
+    sessionStorage.setItem('taskflow_employee_page', page);
+  }, [page]);
 
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));

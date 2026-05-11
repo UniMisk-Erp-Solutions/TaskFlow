@@ -39,7 +39,7 @@ export default function AdminDashboard() {
     deleteMeeting,
   } = useMeetings();
 
-  const [page,     setPage]     = useState('overview');
+  const [page,     setPage]     = useState(() => sessionStorage.getItem('taskflow_admin_page') || 'overview');
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [showAI,   setShowAI]   = useState(false);
@@ -48,6 +48,10 @@ export default function AdminDashboard() {
   const [stats,    setStats]    = useState(null);
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
+
+  useEffect(() => {
+    sessionStorage.setItem('taskflow_admin_page', page);
+  }, [page]);
 
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));

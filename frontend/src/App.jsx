@@ -10,6 +10,7 @@ function RoleRouter() {
   const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <FullLoader />;
 
   // Use role from database profile only (authoritative)
   const userRole = profile?.role;
@@ -21,6 +22,7 @@ function ProtectedAdmin({ children }) {
   const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <FullLoader />;
 
   // Use role from database profile only (authoritative)
   const userRole = profile?.role;
