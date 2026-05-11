@@ -75,11 +75,48 @@ function requireAdmin(user: AppUser) {
   return null;
 }
 
+function taskAssigneeIds(t: any): string[] {
+  const fromJ = (t.task_assignees ?? []).map((x: any) => x.profile_id).filter(Boolean);
+  if (t.assignee_id && !fromJ.includes(t.assignee_id)) return [t.assignee_id, ...fromJ];
+  return fromJ.length ? fromJ : (t.assignee_id ? [t.assignee_id] : []);
+}
+
+function meetingAssigneeIds(m: any): string[] {
+  const fromJ = (m.meeting_assignees ?? []).map((x: any) => x.profile_id).filter(Boolean);
+  if (m.assignee_id && !fromJ.includes(m.assignee_id)) return [m.assignee_id, ...fromJ];
+  return fromJ.length ? fromJ : (m.assignee_id ? [m.assignee_id] : []);
+}
+
 function meetingCanBeAccessedBy(user: AppUser, meeting: any) {
   if (!meeting) return false;
   if (meeting.org_id !== user.org_id) return false;
   if (user.role === "admin") return true;
-  return meeting.assignee_id === user.id;
+  return meetingAssigneeIds(meeting).includes(user.id);
+}
+
+function normalizeAssigneeIds(body: any): string[] {
+  const raw = body.assignee_ids ?? body.assigneeIds;
+  if (Array.isArray(raw)) {
+    return [...new Set(raw.filter((id: unknown) => typeof id === "string" && (id as string).length > 0) as string[])];
+  }
+  if (body.assignee_id) return [String(body.assignee_id)];
+  return [];
+}
+
+function shapeTask(row: any) {
+  if (!row) return row;
+  const { task_assignees: _ta, projects: _pr, ...rest } = row;
+  const assignee_ids = taskAssigneeIds(row);
+  const project_name = row.projects?.name ?? null;
+  return { ...rest, assignee_ids, project_name };
+}
+
+function shapeMeeting(row: any) {
+  if (!row) return row;
+  const { meeting_assignees: _ma, projects: _pr, ...rest } = row;
+  const assignee_ids = meetingAssigneeIds(row);
+  const project_name = row.projects?.name ?? null;
+  return { ...rest, assignee_ids, project_name };
 }
 
 async function handleAuthSignup(req: Request) {
@@ -190,41 +227,77 @@ async function handleAuthProfiles(req: Request) {
   return json(data ?? []);
 }
 
+const TASK_SELECT = "*, task_assignees(profile_id), projects(name)";
+
 async function handleTasks(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
   const { user } = auth;
 
   if (req.method === "GET" && path === "/tasks") {
-    let q = supabase.from("tasks").select("*").eq("org_id", user.org_id);
-    if (user.role !== "admin") q = q.eq("assignee_id", user.id);
-    const { data, error } = await q;
+    const select = TASK_SELECT;
+    if (user.role === "admin") {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select(select)
+        .eq("org_id", user.org_id)
+        .order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 400);
+      return json((data ?? []).map(shapeTask));
+    }
+    const { data: ra } = await supabase.from("task_assignees").select("task_id").eq("profile_id", user.id);
+    const fromJ = [...new Set((ra ?? []).map((r: { task_id: string }) => r.task_id))];
+    const { data: leg } = await supabase.from("tasks").select("id").eq("org_id", user.org_id).eq("assignee_id", user.id);
+    const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
+    const allIds = [...new Set([...fromJ, ...fromLeg])];
+    if (!allIds.length) return json([]);
+    const { data, error } = await supabase
+      .from("tasks")
+      .select(select)
+      .eq("org_id", user.org_id)
+      .in("id", allIds)
+      .order("created_at", { ascending: false });
     if (error) return json({ error: error.message }, 400);
-    return json(data ?? []);
+    return json((data ?? []).map(shapeTask));
   }
 
   if (req.method === "POST" && path === "/tasks") {
     const adminErr = requireAdmin(user);
     if (adminErr) return adminErr;
     const body = await parseBody(req);
-    const { title, description, assignee_id, priority, due_date } = body as any;
+    const { title, description, priority, due_date, project_id } = body as any;
+    const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
-    const { data, error } = await supabase
+    if (project_id) {
+      const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
+      if (!proj) return json({ error: "Project not found" }, 400);
+    }
+    const primary = assignee_ids[0] ?? null;
+    const { data: task, error } = await supabase
       .from("tasks")
       .insert([{
         title: title.trim(),
         description,
-        assignee_id,
+        assignee_id: primary,
+        project_id: project_id || null,
         priority: priority || "medium",
         due_date,
         status: "pending",
         created_by: user.id,
         org_id: user.org_id,
       }])
-      .select()
+      .select("id")
       .single();
     if (error) return json({ error: error.message }, 400);
-    return json(data, 201);
+    if (assignee_ids.length && task?.id) {
+      const { error: aErr } = await supabase.from("task_assignees").insert(
+        assignee_ids.map((profile_id) => ({ task_id: task.id, profile_id })),
+      );
+      if (aErr) return json({ error: aErr.message }, 400);
+    }
+    const { data: full, error: fErr } = await supabase.from("tasks").select(TASK_SELECT).eq("id", task!.id).single();
+    if (fErr) return json({ error: fErr.message }, 400);
+    return json(shapeTask(full), 201);
   }
 
   const statusMatch = path.match(/^\/tasks\/([^/]+)\/status$/);
@@ -233,16 +306,22 @@ async function handleTasks(req: Request, path: string) {
     const body = await parseBody(req);
     const status = (body as any).status;
     if (!status) return json({ error: "Status is required" }, 400);
-    let q = supabase
+    if (user.role !== "admin") {
+      const { data: row } = await supabase.from("tasks").select("id, assignee_id").eq("id", id).eq("org_id", user.org_id).maybeSingle();
+      if (!row) return json({ error: "Task not found or access denied" }, 404);
+      const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", id).eq("profile_id", user.id).maybeSingle();
+      if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
+    }
+    const { data, error } = await supabase
       .from("tasks")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("org_id", user.org_id);
-    if (user.role !== "admin") q = q.eq("assignee_id", user.id);
-    const { data, error } = await q.select().maybeSingle();
+      .eq("org_id", user.org_id)
+      .select(TASK_SELECT)
+      .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Task not found or access denied" }, 404);
-    return json(data);
+    return json(shapeTask(data));
   }
 
   const delMatch = path.match(/^\/tasks\/([^/]+)$/);
@@ -258,33 +337,61 @@ async function handleTasks(req: Request, path: string) {
   return null;
 }
 
+const MEETING_SELECT = "*, meeting_assignees(profile_id), projects(name)";
+
 async function handleMeetings(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
   const { user } = auth;
 
   if (req.method === "GET" && path === "/meetings") {
-    let q = supabase.from("meetings").select("*").eq("org_id", user.org_id);
-    if (user.role !== "admin") q = q.eq("assignee_id", user.id);
-    const { data, error } = await q;
+    const select = MEETING_SELECT;
+    if (user.role === "admin") {
+      const { data, error } = await supabase
+        .from("meetings")
+        .select(select)
+        .eq("org_id", user.org_id)
+        .order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 400);
+      return json((data ?? []).map(shapeMeeting));
+    }
+    const { data: ra } = await supabase.from("meeting_assignees").select("meeting_id").eq("profile_id", user.id);
+    const fromJ = [...new Set((ra ?? []).map((r: { meeting_id: string }) => r.meeting_id))];
+    const { data: leg } = await supabase.from("meetings").select("id").eq("org_id", user.org_id).eq("assignee_id", user.id);
+    const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
+    const allIds = [...new Set([...fromJ, ...fromLeg])];
+    if (!allIds.length) return json([]);
+    const { data, error } = await supabase
+      .from("meetings")
+      .select(select)
+      .eq("org_id", user.org_id)
+      .in("id", allIds)
+      .order("created_at", { ascending: false });
     if (error) return json({ error: error.message }, 400);
-    return json(data ?? []);
+    return json((data ?? []).map(shapeMeeting));
   }
 
   if (req.method === "POST" && path === "/meetings") {
     const adminErr = requireAdmin(user);
     if (adminErr) return adminErr;
     const body = await parseBody(req);
-    const { title, description, assignee_id, priority, meeting_date, meeting_time } = body as any;
+    const { title, description, priority, meeting_date, meeting_time, project_id } = body as any;
+    const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
     if (!meeting_date) return json({ error: "Meeting date is required" }, 400);
     if (!meeting_time) return json({ error: "Meeting time is required" }, 400);
-    const { data, error } = await supabase
+    if (project_id) {
+      const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
+      if (!proj) return json({ error: "Project not found" }, 400);
+    }
+    const primary = assignee_ids[0] ?? null;
+    const { data: meeting, error } = await supabase
       .from("meetings")
       .insert([{
         title: title.trim(),
         description,
-        assignee_id,
+        assignee_id: primary,
+        project_id: project_id || null,
         priority: priority || "medium",
         meeting_date,
         meeting_time,
@@ -292,10 +399,18 @@ async function handleMeetings(req: Request, path: string) {
         created_by: user.id,
         org_id: user.org_id,
       }])
-      .select()
+      .select("id")
       .single();
     if (error) return json({ error: error.message }, 400);
-    return json(data, 201);
+    if (assignee_ids.length && meeting?.id) {
+      const { error: aErr } = await supabase.from("meeting_assignees").insert(
+        assignee_ids.map((profile_id) => ({ meeting_id: meeting.id, profile_id })),
+      );
+      if (aErr) return json({ error: aErr.message }, 400);
+    }
+    const { data: full, error: fErr } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", meeting!.id).single();
+    if (fErr) return json({ error: fErr.message }, 400);
+    return json(shapeMeeting(full), 201);
   }
 
   const statusMatch = path.match(/^\/meetings\/([^/]+)\/status$/);
@@ -304,16 +419,22 @@ async function handleMeetings(req: Request, path: string) {
     const body = await parseBody(req);
     const status = (body as any).status;
     if (!status) return json({ error: "Status is required" }, 400);
-    let q = supabase
+    if (user.role !== "admin") {
+      const { data: row } = await supabase.from("meetings").select("id, assignee_id").eq("id", id).eq("org_id", user.org_id).maybeSingle();
+      if (!row) return json({ error: "Meeting not found or access denied" }, 404);
+      const { data: inj } = await supabase.from("meeting_assignees").select("meeting_id").eq("meeting_id", id).eq("profile_id", user.id).maybeSingle();
+      if (row.assignee_id !== user.id && !inj) return json({ error: "Meeting not found or access denied" }, 403);
+    }
+    const { data, error } = await supabase
       .from("meetings")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("org_id", user.org_id);
-    if (user.role !== "admin") q = q.eq("assignee_id", user.id);
-    const { data, error } = await q.select().maybeSingle();
+      .eq("org_id", user.org_id)
+      .select(MEETING_SELECT)
+      .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Meeting not found or access denied" }, 404);
-    return json(data);
+    return json(shapeMeeting(data));
   }
 
   const delMatch = path.match(/^\/meetings\/([^/]+)$/);
@@ -332,7 +453,7 @@ async function handleMeetings(req: Request, path: string) {
     const id = listMatch[1];
     const { data: meeting } = await supabase
       .from("meetings")
-      .select("id, org_id, assignee_id")
+      .select(MEETING_SELECT)
       .eq("id", id)
       .eq("org_id", user.org_id)
       .maybeSingle();
@@ -355,7 +476,7 @@ async function handleMeetings(req: Request, path: string) {
     const id = listMatch[1];
     const { data: meeting } = await supabase
       .from("meetings")
-      .select("id, org_id, assignee_id")
+      .select(MEETING_SELECT)
       .eq("id", id)
       .eq("org_id", user.org_id)
       .maybeSingle();
@@ -375,12 +496,13 @@ async function handleMeetings(req: Request, path: string) {
       .upload(pathKey, fileBuf, { contentType: file.type || "application/octet-stream", upsert: false });
     if (upErr) return json({ error: upErr.message }, 400);
 
+    const primaryAssignee = meetingAssigneeIds(meeting)[0] ?? meeting.assignee_id ?? null;
     const { data: row, error: insErr } = await supabase
       .from("meeting_attachments")
       .insert([{
         org_id: user.org_id,
         meeting_id: id,
-        assignee_id: meeting.assignee_id,
+        assignee_id: primaryAssignee,
         type,
         bucket: "meeting-assets",
         path: pathKey,
@@ -406,11 +528,74 @@ async function handleMeetings(req: Request, path: string) {
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!att) return json({ error: "Attachment not found" }, 404);
-    if (user.role !== "admin" && att.assignee_id !== user.id) return json({ error: "Access denied" }, 403);
+    if (user.role !== "admin") {
+      const { data: meeting } = await supabase
+        .from("meetings")
+        .select(MEETING_SELECT)
+        .eq("id", att.meeting_id)
+        .eq("org_id", user.org_id)
+        .maybeSingle();
+      if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Access denied" }, 403);
+    }
 
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
     if (sErr) return json({ error: sErr.message }, 400);
     return Response.redirect(signed.signedUrl, 302);
+  }
+
+  return null;
+}
+
+async function handleProjects(req: Request, path: string) {
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+
+  if (req.method === "GET" && path === "/projects") {
+    const { data, error } = await supabase
+      .from("projects")
+      .select("id, name, description, created_at")
+      .eq("org_id", user.org_id)
+      .order("created_at", { ascending: false });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  const progressMatch = path.match(/^\/projects\/([^/]+)\/progress$/);
+  if (req.method === "GET" && progressMatch) {
+    const projectId = progressMatch[1];
+    const { data: proj } = await supabase.from("projects").select("id").eq("id", projectId).eq("org_id", user.org_id).maybeSingle();
+    if (!proj) return json({ error: "Project not found" }, 404);
+    const { data: pt, error } = await supabase.from("tasks").select("status").eq("org_id", user.org_id).eq("project_id", projectId);
+    if (error) return json({ error: error.message }, 400);
+    const tasks = pt ?? [];
+    const total = tasks.length;
+    const completed = tasks.filter((t: { status: string }) => t.status === "completed").length;
+    const pending = tasks.filter((t: { status: string }) => t.status === "pending").length;
+    const in_progress = tasks.filter((t: { status: string }) => t.status === "in_progress").length;
+    const blocked = tasks.filter((t: { status: string }) => t.status === "blocked").length;
+    const percent_complete = total ? Math.round((completed / total) * 100) : 0;
+    return json({ total, completed, pending, in_progress, blocked, percent_complete });
+  }
+
+  if (req.method === "POST" && path === "/projects") {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const body = await parseBody(req);
+    const { name, description } = body as any;
+    if (!name?.trim()) return json({ error: "Project name is required" }, 400);
+    const { data, error } = await supabase
+      .from("projects")
+      .insert([{
+        name: name.trim(),
+        description: description || null,
+        org_id: user.org_id,
+        created_by: user.id,
+      }])
+      .select()
+      .single();
+    if (error) return json({ error: error.message }, 400);
+    return json(data, 201);
   }
 
   return null;
@@ -422,6 +607,51 @@ async function handleAdmin(req: Request, path: string) {
   const { user } = auth;
   const adminErr = requireAdmin(user);
   if (adminErr) return adminErr;
+
+  if (req.method === "GET" && path === "/admin/overview-stats") {
+    const today = new Date().toISOString().split("T")[0];
+    const { data: tasks, error: tErr } = await supabase
+      .from("tasks")
+      .select("id, status, due_date")
+      .eq("org_id", user.org_id);
+    if (tErr) return json({ error: tErr.message }, 500);
+    const { data: meetings, error: mErr } = await supabase
+      .from("meetings")
+      .select("id, status, meeting_date")
+      .eq("org_id", user.org_id);
+    if (mErr) return json({ error: mErr.message }, 500);
+    const { count: userCount, error: uErr } = await supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", user.org_id);
+    if (uErr) return json({ error: uErr.message }, 500);
+
+    const tList = tasks ?? [];
+    const mList = meetings ?? [];
+    const pending_tasks = tList.filter((t: { status: string }) =>
+      t.status === "pending" || t.status === "in_progress" || t.status === "blocked"
+    ).length;
+    const completed_tasks = tList.filter((t: { status: string }) => t.status === "completed").length;
+    const overdue_tasks = tList.filter((t: { status: string; due_date?: string }) =>
+      t.due_date && t.due_date < today && t.status !== "completed"
+    ).length;
+    const pending_meetings = mList.filter((m: { status: string }) => m.status === "scheduled").length;
+    const completed_meetings = mList.filter((m: { status: string }) => m.status === "completed").length;
+    const overdue_meetings = mList.filter((m: { status: string; meeting_date?: string }) =>
+      m.meeting_date && m.meeting_date < today && m.status === "scheduled"
+    ).length;
+    const total_users = userCount ?? 0;
+
+    return json({
+      pending_tasks,
+      completed_tasks,
+      overdue_tasks,
+      pending_meetings,
+      completed_meetings,
+      overdue_meetings,
+      total_users,
+    });
+  }
 
   if (req.method === "GET" && path === "/admin/dashboard") {
     const today = new Date().toISOString().split("T")[0];
@@ -477,10 +707,13 @@ async function handleAdmin(req: Request, path: string) {
         { onConflict: "id" },
       );
       if (upErr) {
-        return json(
-          { error: "User created but profile linking failed", detail: upErr.message },
-          500,
-        );
+        const { data: row } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle();
+        if (!row) {
+          return json(
+            { error: "User created but profile linking failed", detail: upErr.message },
+            500,
+          );
+        }
       }
     }
 
@@ -513,6 +746,9 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && path === "/auth/login") return await handleAuthLogin(req);
     if (req.method === "GET" && path === "/auth/me") return await handleAuthMe(req);
     if (req.method === "GET" && path === "/auth/profiles") return await handleAuthProfiles(req);
+
+    const projectsResp = await handleProjects(req, path);
+    if (projectsResp) return projectsResp;
 
     const tasksResp = await handleTasks(req, path);
     if (tasksResp) return tasksResp;

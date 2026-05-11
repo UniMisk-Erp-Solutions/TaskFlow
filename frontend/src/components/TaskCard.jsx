@@ -31,6 +31,11 @@ export default function TaskCard({ task, onUpdateStatus }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 500, fontSize: 13, color: '#ddd', lineHeight: 1.4 }}>{task.title}</div>
+          {task.project_name && (
+            <div style={{ fontSize: 10, color: '#555', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Project · {task.project_name}
+            </div>
+          )}
           {task.description && (
             <div style={{ fontSize: 12, color: '#444', marginTop: 4, lineHeight: 1.5 }}>{task.description}</div>
           )}

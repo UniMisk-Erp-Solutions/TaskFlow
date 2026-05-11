@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Plus, Sparkles, Send, RefreshCw } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
@@ -13,16 +13,46 @@ import MeetingTable from './components/MeetingTable';
 import CalenderView from './components/CalenderView';
 import AiChat from './components/AiChat';
 import FilterBar from './components/FilterBar';
+import OverviewUnified from './components/OverviewUnified';
+import ProjectsPanel from './components/ProjectsPanel';
+import { useProjects } from './useProjects';
 import api from './api';
 
 const FILTERS_DEFAULT = { search: '', status: '', priority: '', type: '', assignee_id: '' };
 
-function Stat({ label, value, sub }) {
+function matchesAssigneeFilter(item, assigneeFilter) {
+  if (!assigneeFilter) return true;
+  const ids = item.assignee_ids?.length
+    ? item.assignee_ids
+    : item.assignee_id
+      ? [item.assignee_id]
+      : [];
+  return ids.includes(assigneeFilter);
+}
+
+function MiniStat({ label, value }) {
   return (
-    <div style={{ padding: '20px 22px', borderRight: '1px solid #1a1a1a' }}>
-      <div style={{ fontSize: 11, color: '#444', fontWeight: 500, letterSpacing: '0.4px', textTransform: 'uppercase', marginBottom: 8 }}>{label}</div>
-      <div style={{ fontSize: 30, fontWeight: 600, color: '#e4e4e4', letterSpacing: '-0.5px', lineHeight: 1 }}>{value ?? '—'}</div>
-      {sub && <div style={{ fontSize: 11, color: '#3a3a3a', marginTop: 4 }}>{sub}</div>}
+    <div
+      style={{
+        padding: '12px 14px',
+        border: '1px solid #1a1a1a',
+        borderRadius: 6,
+        background: '#0c0c0c',
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          color: '#555',
+          textTransform: 'uppercase',
+          letterSpacing: '0.35px',
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 600, color: '#ddd', marginTop: 8 }}>{value ?? 0}</div>
     </div>
   );
 }
@@ -39,15 +69,27 @@ export default function AdminDashboard() {
     deleteMeeting,
   } = useMeetings();
 
+  const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
+
   const [page,     setPage]     = useState(() => sessionStorage.getItem('taskflow_admin_page') || 'overview');
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [showAI,   setShowAI]   = useState(false);
   const [filters,  setFilters]  = useState(FILTERS_DEFAULT);
   const [employees, setEmployees] = useState([]);
-  const [stats,    setStats]    = useState(null);
+  const [allProfiles, setAllProfiles] = useState([]);
+  const [overviewStats, setOverviewStats] = useState(null);
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
+
+  const profileById = useMemo(() => {
+    const m = {};
+    if (profile?.id) m[profile.id] = profile.full_name || profile.email;
+    (allProfiles || []).forEach((p) => {
+      m[p.id] = p.full_name || p.email;
+    });
+    return m;
+  }, [profile, allProfiles]);
 
   useEffect(() => {
     sessionStorage.setItem('taskflow_admin_page', page);
@@ -57,18 +99,26 @@ export default function AdminDashboard() {
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {
-    api.get('/admin/dashboard')
-      .then(({ data }) => setStats(data))
-      .catch(() => {});
-  }, [tasks]);
+    api
+      .get('/auth/profiles')
+      .then(({ data }) => {
+        const list = data || [];
+        setAllProfiles(list);
+        setEmployees(list.filter((p) => p.role === 'employee'));
+      })
+      .catch(() => {
+        setAllProfiles([]);
+        setEmployees([]);
+      });
+  }, []);
 
   useEffect(() => {
-    api.get('/auth/profiles')
-      .then(({ data }) => {
-        setEmployees((data || []).filter((p) => p.role === 'employee'));
-      })
-      .catch(() => setEmployees([]));
-  }, []);
+    if (page !== 'overview') return;
+    api
+      .get('/admin/overview-stats')
+      .then(({ data }) => setOverviewStats(data))
+      .catch(() => setOverviewStats(null));
+  }, [page, tasks, meetings]);
 
   async function handleSendReminders() {
     setSending(true); setSendMsg('');
@@ -88,7 +138,7 @@ export default function AdminDashboard() {
     if (q && !t.title.toLowerCase().includes(q) && !(t.description || '').toLowerCase().includes(q)) return false;
     if (filters.status   && t.status   !== filters.status)   return false;
     if (filters.priority && t.priority !== filters.priority) return false;
-    if (filters.assignee_id && t.assignee_id !== filters.assignee_id) return false;
+    if (filters.assignee_id && !matchesAssigneeFilter(t, filters.assignee_id)) return false;
     return true;
   });
   const filteredMeetings = meetings.filter((m) => {
@@ -96,7 +146,7 @@ export default function AdminDashboard() {
     if (q && !m.title.toLowerCase().includes(q) && !(m.description || '').toLowerCase().includes(q)) return false;
     if (filters.status && m.status !== filters.status) return false;
     if (filters.priority && m.priority !== filters.priority) return false;
-    if (filters.assignee_id && m.assignee_id !== filters.assignee_id) return false;
+    if (filters.assignee_id && !matchesAssigneeFilter(m, filters.assignee_id)) return false;
     return true;
   });
 
@@ -122,6 +172,7 @@ export default function AdminDashboard() {
               {page === 'overview' ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}` :
                page === 'tasks'   ? 'All Tasks'
                : page === 'calender' ? 'Calender View'
+               : page === 'projects' ? 'Projects'
                : page === 'users' ? 'User Management'
                : 'Reminders'}
             </span>
@@ -157,6 +208,22 @@ export default function AdminDashboard() {
           {/* ── OVERVIEW ── */}
           {page === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                <MiniStat label="Pending tasks" value={overviewStats?.pending_tasks} />
+                <MiniStat label="Pending meetings" value={overviewStats?.pending_meetings} />
+                <MiniStat label="Completed tasks" value={overviewStats?.completed_tasks} />
+                <MiniStat label="Completed meetings" value={overviewStats?.completed_meetings} />
+                <MiniStat label="Overdue tasks" value={overviewStats?.overdue_tasks} />
+                <MiniStat label="Overdue meetings" value={overviewStats?.overdue_meetings} />
+                <MiniStat label="Team members" value={overviewStats?.total_users} />
+              </div>
+
               <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
                   <FilterBar
@@ -171,60 +238,75 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Stats row */}
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', background: '#0e0e0e', overflow: 'hidden' }}>
-                <Stat label="Total Tasks"  value={stats?.total}     />
-                <Stat label="Completed"    value={stats?.completed} />
-                <Stat label="Overdue"      value={stats?.overdue}   sub={stats?.overdue > 0 ? 'Needs attention' : undefined} />
-                <Stat label="Pending"      value={stats?.pending}   />
-              </div>
-
-              {/* Overdue alert */}
               {overdue.length > 0 && (
-                <div style={{
-                  background: 'rgba(248,113,113,0.04)',
-                  border: '1px solid rgba(248,113,113,0.15)',
-                  borderRadius: 6, padding: '11px 16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}>
+                <div
+                  style={{
+                    background: 'rgba(248,113,113,0.04)',
+                    border: '1px solid rgba(248,113,113,0.15)',
+                    borderRadius: 6,
+                    padding: '11px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
                   <span style={{ fontSize: 13, color: '#f87171' }}>
                     {overdue.length} task{overdue.length !== 1 ? 's' : ''} past due date
                   </span>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setPage('tasks')}>View tasks</button>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage('tasks')}>
+                    View tasks
+                  </button>
                 </div>
               )}
 
-              {/* Recent tasks */}
               <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>Recent Tasks</span>
+                <div
+                  style={{
+                    padding: '13px 16px',
+                    borderBottom: '1px solid #1a1a1a',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#666',
+                      letterSpacing: '0.3px',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Tasks &amp; meetings
+                  </span>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={12} /></button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setPage('tasks')}>View all</button>
+                    <button className="btn btn-ghost btn-sm btn-icon" type="button" onClick={() => { refetch(); refetchMeetings(); }}>
+                      <RefreshCw size={12} />
+                    </button>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage('tasks')}>
+                      Open full lists
+                    </button>
                   </div>
                 </div>
-                {!showTaskLists ? (
-                  <div className="empty"><div style={{ fontSize: 13, color: '#444' }}>Task list hidden by type filter</div></div>
-                ) : loading
-                  ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <TaskTable tasks={filtered.slice(0, 10)} onDelete={deleteTask} onUpdateStatus={updateStatus} />}
-              </div>
-
-              {/* Recent meetings */}
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>Recent Meetings</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-ghost btn-sm btn-icon" onClick={refetchMeetings}><RefreshCw size={12} /></button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setPage('tasks')}>View all</button>
+                {!showTaskLists && !showMeetingLists ? (
+                  <div className="empty">
+                    <div style={{ fontSize: 13, color: '#444' }}>Both lists hidden by type filter</div>
                   </div>
-                </div>
-                {!showMeetingLists ? (
-                  <div className="empty"><div style={{ fontSize: 13, color: '#444' }}>Meeting list hidden by type filter</div></div>
-                ) : meetingsLoading
-                  ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <MeetingTable meetings={filteredMeetings.slice(0, 10)} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin />
-                }
+                ) : (
+                  <OverviewUnified
+                    tasks={showTaskLists ? filtered : []}
+                    meetings={showMeetingLists ? filteredMeetings : []}
+                    loading={(showTaskLists && loading) || (showMeetingLists && meetingsLoading)}
+                    meetingsLoading={false}
+                    profileById={profileById}
+                    onDeleteTask={deleteTask}
+                    onUpdateTaskStatus={updateStatus}
+                    onDeleteMeeting={deleteMeeting}
+                    onUpdateMeetingStatus={updateMeetingStatus}
+                    limit={50}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -255,7 +337,7 @@ export default function AdminDashboard() {
                 </div>
                 {loading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} />
+                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} profileById={profileById} />
                 }
               </div>}
 
@@ -268,7 +350,7 @@ export default function AdminDashboard() {
                 </div>
                 {meetingsLoading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin />
+                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin profileById={profileById} />
                 }
               </div>}
             </div>
@@ -283,6 +365,18 @@ export default function AdminDashboard() {
               onFiltersChange={setFilters}
               assignees={employees}
               includeEmployeeFilter
+            />
+          )}
+
+          {/* ── PROJECTS ── */}
+          {page === 'projects' && (
+            <ProjectsPanel
+              projects={projects}
+              loading={projectsLoading}
+              createProject={createProject}
+              getProgress={getProgress}
+              onRefresh={refetchProjects}
+              canCreate
             />
           )}
 
@@ -354,8 +448,12 @@ export default function AdminDashboard() {
         </button>
       )}
 
-      {showForm && <TaskForm onSubmit={createTask} onClose={() => setShowForm(false)} />}
-      {showMeetingForm && <MeetingForm onSubmit={createMeeting} onClose={() => setShowMeetingForm(false)} />}
+      {showForm && (
+        <TaskForm projects={projects} onSubmit={createTask} onClose={() => setShowForm(false)} />
+      )}
+      {showMeetingForm && (
+        <MeetingForm projects={projects} onSubmit={createMeeting} onClose={() => setShowMeetingForm(false)} />
+      )}
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
     </div>
   );

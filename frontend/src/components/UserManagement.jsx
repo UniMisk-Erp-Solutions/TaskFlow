@@ -87,7 +87,8 @@ function AddUserModal({ open, onClose, onCreated }) {
         fullName,
         role: inviteRole,
       });
-      onCreated?.();
+      await new Promise((r) => setTimeout(r, 120));
+      if (onCreated) await onCreated();
       onClose();
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Failed to create user');
@@ -194,21 +195,30 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
 
-  async function load() {
-    try {
-      setLoading(true);
-      const { data } = await api.get('/admin/users');
-      setUsers(data);
-      setError('');
-    } catch (err) {
-      setError(err.response?.data?.error || err.message || 'Failed to load users');
-    } finally {
-      setLoading(false);
+  async function loadWithRetry(attempts = 6) {
+    setLoading(true);
+    setError('');
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const { data } = await api.get('/admin/users');
+        setUsers(data);
+        setError('');
+        setLoading(false);
+        return;
+      } catch (err) {
+        if (i === attempts - 1) {
+          setError(err.response?.data?.error || err.message || 'Failed to load users');
+          setLoading(false);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 160 * (i + 1)));
+      }
     }
+    setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    loadWithRetry();
   }, []);
 
   return (
@@ -241,7 +251,7 @@ export default function UserManagement() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost btn-sm btn-icon" onClick={load} disabled={loading}>
+          <button className="btn btn-ghost btn-sm btn-icon" onClick={() => loadWithRetry()} disabled={loading}>
             <RefreshCw size={12} />
           </button>
           <button
@@ -270,7 +280,7 @@ export default function UserManagement() {
         </div>
       )}
 
-      <AddUserModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={load} />
+      <AddUserModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={loadWithRetry} />
     </div>
   );
 }

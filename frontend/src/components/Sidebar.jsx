@@ -1,11 +1,12 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview'  },
   { id: 'tasks',    icon: CheckSquare,     label: 'Tasks'     },
   { id: 'calender', icon: CalendarDays,    label: 'Calender'  },
+  { id: 'projects', icon: FolderKanban,    label: 'Projects'  },
   { id: 'users',    icon: Users,           label: 'Users'     },
   { id: 'email',    icon: Mail,            label: 'Reminders' },
 ];

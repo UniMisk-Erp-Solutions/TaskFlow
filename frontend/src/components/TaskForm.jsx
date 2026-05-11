@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import EmployeeSelect from './EmployeeSelect';
+import MultiEmployeeSelect from './MultiEmployeeSelect';
+import ProjectSelect from './ProjectSelect';
 
-const DEFAULT = { title: '', description: '', assignee_id: '', priority: 'medium', due_date: '' };
+const DEFAULT = { title: '', description: '', assignee_ids: [], priority: 'medium', due_date: '', project_id: '' };
 
-export default function TaskForm({ onSubmit, onClose }) {
+export default function TaskForm({ onSubmit, onClose, projects = [] }) {
   const [form,    setForm]    = useState(DEFAULT);
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -16,7 +17,12 @@ export default function TaskForm({ onSubmit, onClose }) {
     if (!form.title.trim()) { setError('Title is required'); return; }
     setLoading(true); setError('');
     try {
-      await onSubmit({ ...form, title: form.title.trim() });
+      await onSubmit({
+        ...form,
+        title: form.title.trim(),
+        project_id: form.project_id || null,
+        assignee_ids: form.assignee_ids,
+      });
       onClose();
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -62,8 +68,13 @@ export default function TaskForm({ onSubmit, onClose }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Assign To</label>
-            <EmployeeSelect value={form.assignee_id} onChange={(v) => set('assignee_id', v)} />
+            <label className="form-label">Project (optional)</label>
+            <ProjectSelect projects={projects} value={form.project_id} onChange={(v) => set('project_id', v || '')} />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Assign to employees (multi-select)</label>
+            <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
           </div>
 
           {error && <div className="form-error">{error}</div>}

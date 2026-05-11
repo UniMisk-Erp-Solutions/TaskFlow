@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshCw, Sparkles } from 'lucide-react';
+import { useProjects } from './useProjects';
+import ProjectsPanel from './components/ProjectsPanel';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
@@ -45,6 +47,7 @@ export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const { tasks, loading, refetch, updateStatus } = useTasks();
   const { meetings, refetch: refetchMeetings } = useMeetings();
+  const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
   const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
@@ -93,12 +96,15 @@ export default function EmployeeDashboard() {
           <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={13} /></button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           <button className={`btn btn-sm ${page === 'tasks' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('tasks')}>
             Tasks
           </button>
           <button className={`btn btn-sm ${page === 'calender' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('calender')}>
             Calender
+          </button>
+          <button className={`btn btn-sm ${page === 'projects' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('projects')}>
+            Projects
           </button>
         </div>
 
@@ -146,6 +152,17 @@ export default function EmployeeDashboard() {
             onFiltersChange={setFilters}
             assignees={[]}
             includeEmployeeFilter={false}
+          />
+        )}
+
+        {page === 'projects' && (
+          <ProjectsPanel
+            projects={projects}
+            loading={projectsLoading}
+            createProject={createProject}
+            getProgress={getProgress}
+            onRefresh={refetchProjects}
+            canCreate={false}
           />
         )}
       </div>

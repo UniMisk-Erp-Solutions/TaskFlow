@@ -65,11 +65,14 @@ exports.createUser = async (req, res) => {
         );
 
       if (upsertError) {
-        console.error("admin.createUser - profiles upsert error:", upsertError);
-        return res.status(500).json({
-          error: "User created but profile linking failed",
-          detail: upsertError.message,
-        });
+        const { data: row } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle();
+        if (!row) {
+          console.error("admin.createUser - profiles upsert error:", upsertError);
+          return res.status(500).json({
+            error: "User created but profile linking failed",
+            detail: upsertError.message,
+          });
+        }
       }
     }
 

@@ -8,6 +8,17 @@ function fmt(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatAssignees(task, profileById) {
+  if (!profileById) return null;
+  const ids = task.assignee_ids?.length
+    ? task.assignee_ids
+    : task.assignee_id
+      ? [task.assignee_id]
+      : [];
+  if (!ids.length) return '—';
+  return ids.map((id) => profileById[id] || id.slice(0, 8)).join(', ');
+}
+
 function Th({ label, sortKey, sort, onSort }) {
   const active = sort.key === sortKey;
   return (
@@ -25,7 +36,7 @@ function Th({ label, sortKey, sort, onSort }) {
 
 const STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
 
-export default function TaskTable({ tasks, onDelete, onUpdateStatus }) {
+export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById }) {
   const [sort, setSort]         = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId]  = useState(null);
 
@@ -60,6 +71,8 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus }) {
         <thead style={{ background: '#0c0c0c' }}>
           <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
             <Th label="Title"    sortKey="title"    sort={sort} onSort={handleSort} />
+            {profileById && <Th label="Project" sortKey="project_name" sort={sort} onSort={handleSort} />}
+            {profileById && <Th label="Assignees" sortKey={null} sort={sort} onSort={handleSort} />}
             <Th label="Priority" sortKey="priority" sort={sort} onSort={handleSort} />
             <Th label="Status"   sortKey="status"   sort={sort} onSort={handleSort} />
             <Th label="Due"      sortKey="due_date" sort={sort} onSort={handleSort} />
@@ -85,6 +98,17 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus }) {
                     </div>
                   )}
                 </td>
+
+                {profileById && (
+                  <td style={{ padding: '11px 14px', fontSize: 11, color: '#666', maxWidth: 120 }}>
+                    {task.project_name || '—'}
+                  </td>
+                )}
+                {profileById && (
+                  <td style={{ padding: '11px 14px', fontSize: 11, color: '#888', maxWidth: 140 }}>
+                    {formatAssignees(task, profileById)}
+                  </td>
+                )}
 
                 <td style={{ padding: '11px 14px' }}>
                   <PriorityBadge priority={task.priority} />

@@ -59,7 +59,7 @@ export default function CalenderView({
     name: t.title,
     date: eventDate(t),
     type: 'task',
-    assignee_id: t.assignee_id || '',
+    assignee_id: (t.assignee_ids && t.assignee_ids[0]) || t.assignee_id || '',
   }));
 
   const meetingEvents = meetings.map((m) => ({
@@ -67,7 +67,7 @@ export default function CalenderView({
     name: m.title,
     date: eventDate(m),
     type: 'meeting',
-    assignee_id: m.assignee_id || '',
+    assignee_id: (m.assignee_ids && m.assignee_ids[0]) || m.assignee_id || '',
     meeting_time: m.meeting_time || '',
   }));
 

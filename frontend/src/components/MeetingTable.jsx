@@ -16,6 +16,17 @@ function fmtTime(t) {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+function formatAssignees(meeting, profileById) {
+  if (!profileById) return null;
+  const ids = meeting.assignee_ids?.length
+    ? meeting.assignee_ids
+    : meeting.assignee_id
+      ? [meeting.assignee_id]
+      : [];
+  if (!ids.length) return '—';
+  return ids.map((id) => profileById[id] || id.slice(0, 8)).join(', ');
+}
+
 function Th({ label, sortKey, sort, onSort }) {
   const active = sort.key === sortKey;
   return (
@@ -33,7 +44,7 @@ function Th({ label, sortKey, sort, onSort }) {
 
 const STATUSES = ['scheduled', 'completed', 'cancelled'];
 
-export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDelete = true, isAdmin = false }) {
+export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDelete = true, isAdmin = false, profileById }) {
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId] = useState(null);
   const [filesFor, setFilesFor] = useState(null);
@@ -70,6 +81,8 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
         <thead style={{ background: '#0c0c0c' }}>
           <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
             <Th label="Title" sortKey="title" sort={sort} onSort={handleSort} />
+            {profileById && <Th label="Project" sortKey="project_name" sort={sort} onSort={handleSort} />}
+            {profileById && <Th label="Assignees" sortKey={null} sort={sort} onSort={handleSort} />}
             <Th label="Priority" sortKey="priority" sort={sort} onSort={handleSort} />
             <Th label="Status" sortKey="status" sort={sort} onSort={handleSort} />
             <Th label="Meeting Date" sortKey="meeting_date" sort={sort} onSort={handleSort} />
@@ -93,6 +106,17 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
                   </div>
                 )}
               </td>
+
+              {profileById && (
+                <td style={{ padding: '11px 14px', fontSize: 11, color: '#666', maxWidth: 120 }}>
+                  {meeting.project_name || '—'}
+                </td>
+              )}
+              {profileById && (
+                <td style={{ padding: '11px 14px', fontSize: 11, color: '#888', maxWidth: 140 }}>
+                  {formatAssignees(meeting, profileById)}
+                </td>
+              )}
 
               <td style={{ padding: '11px 14px' }}>
                 <PriorityBadge priority={meeting.priority} />
