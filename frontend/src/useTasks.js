@@ -9,7 +9,12 @@ export function useTasks() {
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
-    if (authLoading || !profile?.id) {
+    // While auth is re-resolving, do not clear lists if we already have a profile (duplicate SIGNED_IN / refresh).
+    if (authLoading) {
+      if (!profile?.id) setLoading(true);
+      return;
+    }
+    if (!profile?.id) {
       setLoading(false);
       setTasks([]);
       setError(null);

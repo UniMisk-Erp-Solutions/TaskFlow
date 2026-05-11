@@ -77,6 +77,17 @@ curl -sS "https://api.example.com/functions/v1/api"
 
 Expect: `{"ok":true,"service":"edge-api"}` (or your function’s health JSON).
 
+### Realtime (WebSockets)
+
+The app opens `wss://<your-host>/realtime/v1/websocket` through the same tunnel to Kong on `127.0.0.1:54321`. If the browser shows **403**, connection reset, or `[Realtime] … CHANNEL_ERROR` while REST and Auth work:
+
+- Keep a **single** `ingress` hostname for Supabase (same origin as `VITE_SUPABASE_URL`); avoid splitting Realtime onto another host without CORS/JWT alignment.
+- Cloudflare Tunnel forwards WebSockets to an **http** origin by default; ensure nothing in front strips `Upgrade` / `Connection` headers.
+
+If you need the app stable before WebSocket routing is fixed, set on the **frontend** build:
+
+- `VITE_DISABLE_REALTIME=true` — disables live table subscriptions (lists still load from the Edge API; users refresh or change page to see others’ updates).
+
 ---
 
 ## Part B — Autostart Supabase + Edge `api` (boot)

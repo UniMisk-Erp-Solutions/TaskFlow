@@ -9,16 +9,15 @@ export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const initializedRef = useRef(false);
-  const currentUserIdRef = useRef(null);
-
-  useEffect(() => {
-    currentUserIdRef.current = user?.id ?? null;
-  }, [user]);
+  /** Last user id we successfully loaded `/auth/me` for — avoids duplicate SIGNED_IN nuking the UI. */
+  const hydratedUserIdRef = useRef(null);
+  /** True until first `getSession` + optional `fetchProfile` finishes — SIGNED_IN can fire earlier. */
+  const bootstrapInProgressRef = useRef(true);
 
   /** @returns {Promise<boolean>} */
   async function fetchProfile(session) {
     if (!session) {
+      hydratedUserIdRef.current = null;
       setProfile(null);
       setApiAccessToken(null);
       return false;
@@ -30,6 +29,7 @@ export function AuthProvider({ children }) {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         setProfile(data);
+        hydratedUserIdRef.current = data?.id ?? session.user?.id ?? null;
         return true;
       } catch (err) {
         console.warn('AuthContext - fetchProfile attempt failed:', attempt + 1, err?.message || err);
@@ -62,19 +62,33 @@ export function AuthProvider({ children }) {
       } else {
         window.cachedSession = null;
       }
-      
+
       // Only fetch profile if we have a session
       if (session) {
-        fetchProfile(session).finally(() => setLoading(false));
+        fetchProfile(session).finally(() => {
+          setLoading(false);
+          bootstrapInProgressRef.current = false;
+        });
       } else {
         setLoading(false);
+        bootstrapInProgressRef.current = false;
       }
-      initializedRef.current = true;
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('AuthContext - Auth state changed:', { event, hasSession: !!session });
+
+        // Bootstrap is owned by getSession().then above; handling INITIAL_SESSION again runs
+        // setLoading(true) and races fetchProfile — hooks clear tasks/meetings until many retries.
+        if (event === 'INITIAL_SESSION') {
+          return;
+        }
+
+        // SIGNED_IN often fires before getSession's fetchProfile completes; never run the heavy path then.
+        if (event === 'SIGNED_IN' && bootstrapInProgressRef.current) {
+          return;
+        }
 
         // Token refresh when returning to the tab must not blank the UI or drop profile
         if ((event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
@@ -85,16 +99,12 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        // Prevent UI "refresh" on tab return when Supabase emits SIGNED_IN for an already active user.
-        // Keep screen state and refresh profile in background.
-        if (
-          event === 'SIGNED_IN' &&
-          initializedRef.current &&
-          currentUserIdRef.current &&
-          session?.user?.id === currentUserIdRef.current
-        ) {
+        // setSession() after login often emits SIGNED_IN for the same user again; never toggle
+        // global loading or that briefly clears dashboard data in useTasks/useMeetings.
+        if (event === 'SIGNED_IN' && session?.user?.id && session.user.id === hydratedUserIdRef.current) {
           window.cachedSession = session;
-          setApiAccessToken(session?.access_token ?? null);
+          setApiAccessToken(session.access_token);
+          setUser(session.user);
           await fetchProfile(session);
           return;
         }
@@ -106,11 +116,16 @@ export function AuthProvider({ children }) {
         setApiAccessToken(session?.access_token ?? null);
 
         if (session) {
+          if (session.user?.id && session.user.id !== hydratedUserIdRef.current) {
+            setProfile(null);
+          }
           await fetchProfile(session);
         } else {
+          hydratedUserIdRef.current = null;
           setProfile(null);
         }
         setLoading(false);
+        bootstrapInProgressRef.current = false;
       }
     );
     return () => subscription.unsubscribe();
@@ -218,6 +233,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    hydratedUserIdRef.current = null;
     setApiAccessToken(null);
     window.cachedSession = null;
     await supabase.auth.signOut();

@@ -104,6 +104,7 @@ export default function AdminDashboard() {
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {
+    if (!profile?.id) return;
     api
       .get('/auth/profiles')
       .then(({ data }) => {
@@ -115,15 +116,15 @@ export default function AdminDashboard() {
         setAllProfiles([]);
         setEmployees([]);
       });
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
-    if (page !== 'overview') return;
+    if (page !== 'overview' || !profile?.id) return;
     api
       .get('/admin/overview-stats')
       .then(({ data }) => setOverviewStats(data))
       .catch(() => setOverviewStats(null));
-  }, [page, tasks, meetings]);
+  }, [page, profile?.id, tasks, meetings]);
 
   async function handleSendReminders() {
     setSending(true); setSendMsg('');

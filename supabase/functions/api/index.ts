@@ -151,6 +151,130 @@ function shapeMeeting(row: any) {
   return { ...rest, assignee_ids, project_name };
 }
 
+/** Avoid PostgREST resource-embed failures (400) on some self-hosted / cache setups. */
+const ROW_IN_CHUNK = 120;
+
+async function loadTaskAssigneesByTaskIds(taskIds: string[]): Promise<Map<string, { profile_id: string }[]>> {
+  const map = new Map<string, { profile_id: string }[]>();
+  const unique = [...new Set(taskIds.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += ROW_IN_CHUNK) {
+    const slice = unique.slice(i, i + ROW_IN_CHUNK);
+    const { data, error } = await supabase.from("task_assignees").select("task_id, profile_id").in("task_id", slice);
+    if (error || !data) continue;
+    for (const row of data as { task_id: string; profile_id: string }[]) {
+      const list = map.get(row.task_id) ?? [];
+      list.push({ profile_id: row.profile_id });
+      map.set(row.task_id, list);
+    }
+  }
+  return map;
+}
+
+async function loadMeetingAssigneesByMeetingIds(meetingIds: string[]): Promise<Map<string, { profile_id: string }[]>> {
+  const map = new Map<string, { profile_id: string }[]>();
+  const unique = [...new Set(meetingIds.filter(Boolean))];
+  for (let i = 0; i < unique.length; i += ROW_IN_CHUNK) {
+    const slice = unique.slice(i, i + ROW_IN_CHUNK);
+    const { data, error } = await supabase.from("meeting_assignees").select("meeting_id, profile_id").in(
+      "meeting_id",
+      slice,
+    );
+    if (error || !data) continue;
+    for (const row of data as { meeting_id: string; profile_id: string }[]) {
+      const list = map.get(row.meeting_id) ?? [];
+      list.push({ profile_id: row.profile_id });
+      map.set(row.meeting_id, list);
+    }
+  }
+  return map;
+}
+
+async function loadProjectNames(projectIds: string[]): Promise<Map<string, string>> {
+  const uniq = [...new Set(projectIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  const m = new Map<string, string>();
+  if (!uniq.length) return m;
+  for (let i = 0; i < uniq.length; i += ROW_IN_CHUNK) {
+    const slice = uniq.slice(i, i + ROW_IN_CHUNK);
+    const { data, error } = await supabase.from("projects").select("id, name").in("id", slice);
+    if (error || !data) continue;
+    for (const p of data as { id: string; name: string }[]) {
+      m.set(p.id, p.name);
+    }
+  }
+  return m;
+}
+
+async function shapeTasksWithJoins(rows: any[] | null): Promise<any[]> {
+  const list = rows ?? [];
+  if (!list.length) return [];
+  const ids = list.map((r) => r.id).filter(Boolean);
+  const projectIds = list.map((r) => r.project_id).filter(Boolean) as string[];
+  const [assigneeMap, nameMap] = await Promise.all([
+    loadTaskAssigneesByTaskIds(ids),
+    loadProjectNames(projectIds),
+  ]);
+  return list.map((row) => {
+    const task_assignees = assigneeMap.get(row.id) ?? [];
+    const pn = row.project_id ? nameMap.get(row.project_id) : undefined;
+    const projects = pn !== undefined ? { name: pn } : null;
+    return shapeTask({ ...row, task_assignees, projects });
+  });
+}
+
+async function shapeMeetingsWithJoins(rows: any[] | null): Promise<any[]> {
+  const list = rows ?? [];
+  if (!list.length) return [];
+  const ids = list.map((r) => r.id).filter(Boolean);
+  const projectIds = list.map((r) => r.project_id).filter(Boolean) as string[];
+  const [assigneeMap, nameMap] = await Promise.all([
+    loadMeetingAssigneesByMeetingIds(ids),
+    loadProjectNames(projectIds),
+  ]);
+  return list.map((row) => {
+    const meeting_assignees = assigneeMap.get(row.id) ?? [];
+    const pn = row.project_id ? nameMap.get(row.project_id) : undefined;
+    const projects = pn !== undefined ? { name: pn } : null;
+    return shapeMeeting({ ...row, meeting_assignees, projects });
+  });
+}
+
+/** Row + assignees for access checks (no embed). orgIdFilter: omit org filter when null/undefined. */
+async function fetchMeetingWithAssignees(meetingId: string, orgIdFilter: string | null): Promise<any | null> {
+  let q = supabase.from("meetings").select("*").eq("id", meetingId);
+  if (orgIdFilter) q = q.eq("org_id", orgIdFilter);
+  const { data: row } = await q.maybeSingle();
+  if (!row) return null;
+  const { data: ra } = await supabase.from("meeting_assignees").select("profile_id").eq("meeting_id", meetingId);
+  const meeting_assignees = (ra ?? []).map((r: { profile_id: string }) => ({ profile_id: r.profile_id }));
+  return { ...row, meeting_assignees };
+}
+
+async function fetchTasksByIdsChunked(taskIds: string[]): Promise<{ rows: any[]; error: { message: string } | null }> {
+  const unique = [...new Set(taskIds.filter(Boolean))];
+  const rows: any[] = [];
+  for (let i = 0; i < unique.length; i += ROW_IN_CHUNK) {
+    const slice = unique.slice(i, i + ROW_IN_CHUNK);
+    const { data, error } = await supabase.from("tasks").select("*").in("id", slice);
+    if (error) return { rows: [], error };
+    rows.push(...(data ?? []));
+  }
+  rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+  return { rows, error: null };
+}
+
+async function fetchMeetingsByIdsChunked(meetingIds: string[]): Promise<{ rows: any[]; error: { message: string } | null }> {
+  const unique = [...new Set(meetingIds.filter(Boolean))];
+  const rows: any[] = [];
+  for (let i = 0; i < unique.length; i += ROW_IN_CHUNK) {
+    const slice = unique.slice(i, i + ROW_IN_CHUNK);
+    const { data, error } = await supabase.from("meetings").select("*").in("id", slice);
+    if (error) return { rows: [], error };
+    rows.push(...(data ?? []));
+  }
+  rows.sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")));
+  return { rows, error: null };
+}
+
 async function handleAuthSignup(req: Request) {
   const body = await parseBody(req);
   const { email, password, fullName } = body as any;
@@ -258,9 +382,6 @@ async function handleAuthProfiles(req: Request) {
   return json(data ?? []);
 }
 
-const TASK_SELECT = "*, task_assignees(profile_id), projects(name)";
-const MEETING_SELECT = "*, meeting_assignees(profile_id), projects(name)";
-
 async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response | null> {
   if (user.role === "admin") {
     let aq = supabase.from("tasks").select("id").eq("id", taskId);
@@ -279,9 +400,7 @@ async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response
 }
 
 async function assertMeetingAccess(user: AppUser, meetingId: string): Promise<Response | null> {
-  let mq = supabase.from("meetings").select(MEETING_SELECT).eq("id", meetingId);
-  if (user.org_id) mq = mq.eq("org_id", user.org_id);
-  const { data: meeting } = await mq.maybeSingle();
+  const meeting = await fetchMeetingWithAssignees(meetingId, user.org_id);
   if (!meeting) return json({ error: "Meeting not found or access denied" }, 404);
   if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Access denied" }, 403);
   return null;
@@ -293,13 +412,12 @@ async function handleTasks(req: Request, path: string) {
   const { user } = auth;
 
   if (req.method === "GET" && path === "/tasks") {
-    const select = TASK_SELECT;
     if (user.role === "admin") {
-      let aq = supabase.from("tasks").select(select).order("created_at", { ascending: false });
+      let aq = supabase.from("tasks").select("*").order("created_at", { ascending: false });
       if (user.org_id) aq = aq.eq("org_id", user.org_id);
       const { data, error } = await aq;
       if (error) return json({ error: error.message }, 400);
-      return json((data ?? []).map(shapeTask));
+      return json(await shapeTasksWithJoins(data ?? []));
     }
     const { data: ra } = await supabase.from("task_assignees").select("task_id").eq("profile_id", user.id);
     const fromJ = [...new Set((ra ?? []).map((r: { task_id: string }) => r.task_id))];
@@ -309,15 +427,9 @@ async function handleTasks(req: Request, path: string) {
     const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
     const allIds = [...new Set([...fromJ, ...fromLeg])];
     if (!allIds.length) return json([]);
-    // IDs are already scoped to this user via assignees / legacy assignee_id — do not require org_id match
-    // (null org_id on profile used to make `.eq("org_id", null)` return zero rows).
-    const { data, error } = await supabase
-      .from("tasks")
-      .select(select)
-      .in("id", allIds)
-      .order("created_at", { ascending: false });
-    if (error) return json({ error: error.message }, 400);
-    return json((data ?? []).map(shapeTask));
+    const { rows, error: chunkErr } = await fetchTasksByIdsChunked(allIds);
+    if (chunkErr) return json({ error: chunkErr.message }, 400);
+    return json(await shapeTasksWithJoins(rows));
   }
 
   const getOneTask = path.match(/^\/tasks\/([^/]+)$/);
@@ -325,9 +437,10 @@ async function handleTasks(req: Request, path: string) {
     const id = getOneTask[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
-    const { data, error } = await supabase.from("tasks").select(TASK_SELECT).eq("id", id).single();
+    const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single();
     if (error) return json({ error: error.message }, 400);
-    return json(shapeTask(data));
+    const shaped = await shapeTasksWithJoins([data]);
+    return json(shaped[0]);
   }
 
   if (req.method === "POST" && path === "/tasks") {
@@ -370,9 +483,10 @@ async function handleTasks(req: Request, path: string) {
         return json({ error: aErr.message }, 400);
       }
     }
-    const { data: full, error: fErr } = await supabase.from("tasks").select(TASK_SELECT).eq("id", task!.id).single();
+    const { data: full, error: fErr } = await supabase.from("tasks").select("*").eq("id", task!.id).single();
     if (fErr) return json({ error: fErr.message }, 400);
-    return json(shapeTask(full), 201);
+    const shaped = await shapeTasksWithJoins([full]);
+    return json(shaped[0], 201);
   }
 
   const statusMatch = path.match(/^\/tasks\/([^/]+)\/status$/);
@@ -395,11 +509,12 @@ async function handleTasks(req: Request, path: string) {
       .eq("id", id);
     if (user.org_id) uq = uq.eq("org_id", user.org_id);
     const { data, error } = await uq
-      .select(TASK_SELECT)
+      .select("*")
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Task not found or access denied" }, 404);
-    return json(shapeTask(data));
+    const shaped = await shapeTasksWithJoins([data]);
+    return json(shaped[0]);
   }
 
   const patchTaskDetail = path.match(/^\/tasks\/([^/]+)$/);
@@ -455,9 +570,10 @@ async function handleTasks(req: Request, path: string) {
       }
     }
 
-    const { data: full, error: fErr } = await supabase.from("tasks").select(TASK_SELECT).eq("id", id).single();
+    const { data: full, error: fErr } = await supabase.from("tasks").select("*").eq("id", id).single();
     if (fErr) return json({ error: fErr.message }, 400);
-    return json(shapeTask(full));
+    const shaped = await shapeTasksWithJoins([full]);
+    return json(shaped[0]);
   }
 
   const delMatch = path.match(/^\/tasks\/([^/]+)$/);
@@ -481,13 +597,12 @@ async function handleMeetings(req: Request, path: string) {
   const { user } = auth;
 
   if (req.method === "GET" && path === "/meetings") {
-    const select = MEETING_SELECT;
     if (user.role === "admin") {
-      let aq = supabase.from("meetings").select(select).order("created_at", { ascending: false });
+      let aq = supabase.from("meetings").select("*").order("created_at", { ascending: false });
       if (user.org_id) aq = aq.eq("org_id", user.org_id);
       const { data, error } = await aq;
       if (error) return json({ error: error.message }, 400);
-      return json((data ?? []).map(shapeMeeting));
+      return json(await shapeMeetingsWithJoins(data ?? []));
     }
     const { data: ra } = await supabase.from("meeting_assignees").select("meeting_id").eq("profile_id", user.id);
     const fromJ = [...new Set((ra ?? []).map((r: { meeting_id: string }) => r.meeting_id))];
@@ -497,13 +612,9 @@ async function handleMeetings(req: Request, path: string) {
     const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
     const allIds = [...new Set([...fromJ, ...fromLeg])];
     if (!allIds.length) return json([]);
-    const { data, error } = await supabase
-      .from("meetings")
-      .select(select)
-      .in("id", allIds)
-      .order("created_at", { ascending: false });
-    if (error) return json({ error: error.message }, 400);
-    return json((data ?? []).map(shapeMeeting));
+    const { rows, error: chunkErr } = await fetchMeetingsByIdsChunked(allIds);
+    if (chunkErr) return json({ error: chunkErr.message }, 400);
+    return json(await shapeMeetingsWithJoins(rows));
   }
 
   const getOneMeeting = path.match(/^\/meetings\/([^/]+)$/);
@@ -511,9 +622,10 @@ async function handleMeetings(req: Request, path: string) {
     const id = getOneMeeting[1];
     const deny = await assertMeetingAccess(user, id);
     if (deny) return deny;
-    const { data, error } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", id).single();
+    const { data, error } = await supabase.from("meetings").select("*").eq("id", id).single();
     if (error) return json({ error: error.message }, 400);
-    return json(shapeMeeting(data));
+    const shaped = await shapeMeetingsWithJoins([data]);
+    return json(shaped[0]);
   }
 
   if (req.method === "POST" && path === "/meetings") {
@@ -559,9 +671,10 @@ async function handleMeetings(req: Request, path: string) {
         return json({ error: aErr.message }, 400);
       }
     }
-    const { data: full, error: fErr } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", meeting!.id).single();
+    const { data: full, error: fErr } = await supabase.from("meetings").select("*").eq("id", meeting!.id).single();
     if (fErr) return json({ error: fErr.message }, 400);
-    return json(shapeMeeting(full), 201);
+    const shaped = await shapeMeetingsWithJoins([full]);
+    return json(shaped[0], 201);
   }
 
   const statusMatch = path.match(/^\/meetings\/([^/]+)\/status$/);
@@ -584,11 +697,12 @@ async function handleMeetings(req: Request, path: string) {
       .eq("id", id);
     if (user.org_id) uq = uq.eq("org_id", user.org_id);
     const { data, error } = await uq
-      .select(MEETING_SELECT)
+      .select("*")
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Meeting not found or access denied" }, 404);
-    return json(shapeMeeting(data));
+    const shaped = await shapeMeetingsWithJoins([data]);
+    return json(shaped[0]);
   }
 
   const patchMeetingDetail = path.match(/^\/meetings\/([^/]+)$/);
@@ -652,9 +766,10 @@ async function handleMeetings(req: Request, path: string) {
       }
     }
 
-    const { data: full, error: fErr } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", id).single();
+    const { data: full, error: fErr } = await supabase.from("meetings").select("*").eq("id", id).single();
     if (fErr) return json({ error: fErr.message }, 400);
-    return json(shapeMeeting(full));
+    const shaped = await shapeMeetingsWithJoins([full]);
+    return json(shaped[0]);
   }
 
   const delMatch = path.match(/^\/meetings\/([^/]+)$/);
@@ -673,11 +788,7 @@ async function handleMeetings(req: Request, path: string) {
   const listMatch = path.match(/^\/meetings\/([^/]+)\/attachments$/);
   if (req.method === "GET" && listMatch) {
     const id = listMatch[1];
-    const { data: meeting } = await supabase
-      .from("meetings")
-      .select(MEETING_SELECT)
-      .eq("id", id)
-      .maybeSingle();
+    const meeting = await fetchMeetingWithAssignees(id, user.org_id);
     if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Meeting not found or access denied" }, 404);
 
     const { data, error } = await supabase
@@ -694,11 +805,7 @@ async function handleMeetings(req: Request, path: string) {
     const adminErr = requireAdmin(user);
     if (adminErr) return adminErr;
     const id = listMatch[1];
-    const { data: meeting } = await supabase
-      .from("meetings")
-      .select(MEETING_SELECT)
-      .eq("id", id)
-      .maybeSingle();
+    const meeting = await fetchMeetingWithAssignees(id, user.org_id);
     if (!meeting || !meetingCanBeAccessedBy(user, meeting)) return json({ error: "Meeting not found or access denied" }, 404);
     const orgKey = user.org_id || (meeting as { org_id?: string }).org_id;
     if (!orgKey) return json({ error: "Cannot determine organization for this meeting; cannot upload files." }, 400);
@@ -748,11 +855,7 @@ async function handleMeetings(req: Request, path: string) {
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!att) return json({ error: "Attachment not found" }, 404);
-    const { data: meeting } = await supabase
-      .from("meetings")
-      .select(MEETING_SELECT)
-      .eq("id", att.meeting_id)
-      .maybeSingle();
+    const meeting = await fetchMeetingWithAssignees(att.meeting_id, null);
     if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Access denied" }, 403);
 
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);

@@ -1,5 +1,11 @@
 # Supabase Edge API (Local)
 
+## Local stack vs cloud deploy
+
+- **`supabase functions deploy`** (and `./scripts/deploy-edge-api.sh`) upload to your **hosted** Supabase project after `login` + `link`. There is **no** CLI flag to “deploy” into the local Docker stack.
+- With **`supabase start`**, the Edge runtime reads **`supabase/functions/`** from your machine. Your `config.toml` uses **`[edge_runtime] policy = "per_worker"`**, which enables **hot reload** while developing — saving `index.ts` is usually enough.
+- If the runtime looks stale, restart its container: **`./scripts/reload-local-edge-api.sh`** (or `docker restart supabase_edge_runtime_<project_id>`; `project_id` is in `supabase/config.toml`).
+
 ## CLI: `command not found`
 
 If `supabase` is not installed globally, use **`npx`** (no install needed):

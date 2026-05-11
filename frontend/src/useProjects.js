@@ -9,7 +9,11 @@ export function useProjects() {
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
-    if (authLoading || !profile?.id) {
+    if (authLoading) {
+      if (!profile?.id) setLoading(true);
+      return;
+    }
+    if (!profile?.id) {
       setLoading(false);
       setProjects([]);
       setError(null);
