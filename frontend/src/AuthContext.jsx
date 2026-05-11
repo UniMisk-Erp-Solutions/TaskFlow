@@ -102,8 +102,7 @@ export function AuthProvider({ children }) {
   async function signIn(email, password) {
     try {
       console.log('AuthContext - Starting login...');
-      const { data, error } = await api.post('/auth/login', { email, password });
-      if (error) throw new Error(error.response?.data?.error || 'Login failed');
+      const { data } = await api.post('/auth/login', { email, password });
       
       console.log('AuthContext - Login response:', { hasSession: !!data.session, user: !!data.user });
       
@@ -161,13 +160,12 @@ export function AuthProvider({ children }) {
   async function signUp(email, password, fullName, role) {
     try {
       console.log('AuthContext - Starting signup...');
-      const { data, error } = await api.post('/auth/signup', { 
-        email, 
-        password, 
+      const { data } = await api.post('/auth/signup', {
+        email,
+        password,
         fullName,
-        role 
+        role,
       });
-      if (error) throw new Error(error.response?.data?.error || 'Signup failed');
 
       console.log('AuthContext - Signup response:', { hasSession: !!data.session, user: !!data.user });
 
