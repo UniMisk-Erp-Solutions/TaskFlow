@@ -1,5 +1,19 @@
 # Supabase Edge API (Local)
 
+## CLI: `command not found`
+
+If `supabase` is not installed globally, use **`npx`** (no install needed):
+
+```bash
+npx supabase@latest login
+npx supabase@latest link --project-ref YOUR_PROJECT_REF
+npx supabase@latest functions deploy api
+```
+
+Or from the repo root: **`./scripts/deploy-edge-api.sh`** (same as the last line, forwards extra args to the CLI).
+
+---
+
 This repo now includes an Edge Function API at:
 
 - `supabase/functions/api/index.ts`
