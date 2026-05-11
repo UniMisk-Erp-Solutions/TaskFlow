@@ -9,6 +9,13 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+if (!SUPABASE_URL) console.error("[edge api] SUPABASE_URL is not set");
+if (!SERVICE_ROLE_KEY) {
+  console.error(
+    "[edge api] SUPABASE_SERVICE_ROLE_KEY is not set; queries will run as anon and trigger RLS (possibly causing 'infinite recursion' on cross-table policies).",
+  );
+}
+
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
