@@ -79,9 +79,10 @@ function ProtectedAdmin({ children }) {
 }
 
 function ProtectedEmployee({ children }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <ProfileLoadError />;
   return children;
 }
 

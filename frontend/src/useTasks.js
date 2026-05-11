@@ -1,25 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from './api';
+import { useAuth } from './AuthContext';
 
 export function useTasks() {
-  const [tasks, setTasks]     = useState([]);
+  const { profile, loading: authLoading } = useAuth();
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
+    if (authLoading || !profile?.id) {
+      setLoading(false);
+      setTasks([]);
+      setError(null);
+      return;
+    }
     try {
       setLoading(true);
       const { data } = await api.get('/tasks');
-      setTasks(data);
+      setTasks(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      setTasks([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading, profile?.id]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
 
   async function createTask(payload) {
     const { data } = await api.post('/tasks', payload);

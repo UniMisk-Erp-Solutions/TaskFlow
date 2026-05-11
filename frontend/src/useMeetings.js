@@ -1,25 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from './api';
+import { useAuth } from './AuthContext';
 
 export function useMeetings() {
+  const { profile, loading: authLoading } = useAuth();
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
+    if (authLoading || !profile?.id) {
+      setLoading(false);
+      setMeetings([]);
+      setError(null);
+      return;
+    }
     try {
       setLoading(true);
       const { data } = await api.get('/meetings');
-      setMeetings(data);
+      setMeetings(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      setMeetings([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading, profile?.id]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
 
   async function createMeeting(payload) {
     const { data } = await api.post('/meetings', payload);
