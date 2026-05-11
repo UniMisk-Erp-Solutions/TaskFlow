@@ -10,7 +10,7 @@ function fmt(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function TaskCard({ task, onUpdateStatus }) {
+export default function TaskCard({ task, onUpdateStatus, onOpenDetail }) {
   const [updating, setUpdating] = useState(false);
   const overdue = isOverdue(task.due_date, task.status);
 
@@ -21,12 +21,33 @@ export default function TaskCard({ task, onUpdateStatus }) {
   }
 
   return (
-    <div style={{
-      background: '#111',
-      border: `1px solid ${overdue ? 'rgba(248,113,113,0.2)' : '#1e1e1e'}`,
-      borderRadius: 6, padding: '16px',
-      display: 'flex', flexDirection: 'column', gap: 12,
-    }}>
+    <div
+      role={onOpenDetail ? 'button' : undefined}
+      tabIndex={onOpenDetail ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onOpenDetail) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenDetail();
+        }
+      }}
+      onClick={(e) => {
+        if (!onOpenDetail) return;
+        if (e.target.closest('select')) return;
+        onOpenDetail();
+      }}
+      style={{
+        background: '#111',
+        border: `1px solid ${overdue ? 'rgba(248,113,113,0.2)' : '#1e1e1e'}`,
+        borderRadius: 6,
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        cursor: onOpenDetail ? 'pointer' : 'default',
+        outline: 'none',
+      }}
+    >
       {/* Title + priority */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>

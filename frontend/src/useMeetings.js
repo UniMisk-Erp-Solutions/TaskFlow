@@ -38,5 +38,16 @@ export function useMeetings() {
     setMeetings((prev) => prev.filter((m) => m.id !== id));
   }
 
-  return { meetings, loading, error, refetch: fetch, createMeeting, updateStatus, deleteMeeting };
+  async function getMeeting(id) {
+    const { data } = await api.get(`/meetings/${id}`);
+    return data;
+  }
+
+  async function updateMeeting(id, payload) {
+    const { data } = await api.patch(`/meetings/${id}`, payload);
+    setMeetings((prev) => prev.map((m) => (m.id === id ? data : m)));
+    return data;
+  }
+
+  return { meetings, loading, error, refetch: fetch, createMeeting, updateStatus, deleteMeeting, getMeeting, updateMeeting };
 }

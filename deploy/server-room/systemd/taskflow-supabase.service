@@ -1,0 +1,26 @@
+[Unit]
+Description=Taskflow local Supabase (CLI stack)
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Set TASKFLOW_USER and TASKFLOW_ROOT in install script (expanded at install time).
+WorkingDirectory=TASKFLOW_ROOT_PLACEHOLDER
+User=TASKFLOW_USER_PLACEHOLDER
+Group=TASKFLOW_USER_PLACEHOLDER
+
+# HOME filled by install script (must match user's real home directory)
+Environment=HOME=HOME_DIR_PLACEHOLDER
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/usr/bin/npx supabase start
+ExecStop=/usr/bin/npx supabase stop
+
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

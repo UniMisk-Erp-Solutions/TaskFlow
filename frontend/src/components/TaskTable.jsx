@@ -36,7 +36,7 @@ function Th({ label, sortKey, sort, onSort }) {
 
 const STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
 
-export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById }) {
+export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById, onOpenTask }) {
   const [sort, setSort]         = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId]  = useState(null);
 
@@ -88,7 +88,11 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                 onMouseEnter={(e) => e.currentTarget.style.background = '#0f0f0f'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
 
-                <td style={{ padding: '11px 14px', maxWidth: 300 }}>
+                <td
+                  style={{ padding: '11px 14px', maxWidth: 300, cursor: onOpenTask ? 'pointer' : 'default' }}
+                  onClick={() => onOpenTask?.(task)}
+                  title={onOpenTask ? 'View details' : undefined}
+                >
                   <div style={{ fontWeight: 500, color: '#ddd', fontSize: 13, marginBottom: task.description ? 2 : 0 }}>
                     {task.title}
                   </div>
@@ -117,6 +121,7 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                 <td style={{ padding: '11px 14px' }}>
                   <select
                     value={task.status}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateStatus(task.id, e.target.value)}
                     style={{
                       background: '#111', border: '1px solid #222', color: '#bbb',
@@ -140,7 +145,7 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                 </td>
 
                 <td style={{ padding: '11px 14px' }}>
-                  <button onClick={() => handleDelete(task.id)} disabled={deletingId === task.id}
+                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} disabled={deletingId === task.id}
                     style={{
                       background: 'none', border: '1px solid transparent', borderRadius: 4,
                       cursor: 'pointer', padding: '5px 6px', color: '#444',

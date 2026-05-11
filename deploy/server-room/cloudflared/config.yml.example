@@ -1,0 +1,15 @@
+# Copy to /etc/cloudflared/config.yml and edit placeholders.
+# Docs: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/tunnel-guide/
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /home/REPLACE_USER/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  # Single hostname → local Supabase Kong (REST, Auth, Storage, Edge Functions)
+  - hostname: api.example.com
+    service: http://127.0.0.1:54321
+    originRequest:
+      noHappyEyeballs: true
+      connectTimeout: 30s
+      keepAliveTimeout: 90s
+  - service: http_status:404

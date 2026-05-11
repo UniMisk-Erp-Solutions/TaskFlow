@@ -38,5 +38,16 @@ export function useTasks() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }
 
-  return { tasks, loading, error, refetch: fetch, createTask, updateStatus, deleteTask };
+  async function getTask(id) {
+    const { data } = await api.get(`/tasks/${id}`);
+    return data;
+  }
+
+  async function updateTask(id, payload) {
+    const { data } = await api.patch(`/tasks/${id}`, payload);
+    setTasks((prev) => prev.map((t) => (t.id === id ? data : t)));
+    return data;
+  }
+
+  return { tasks, loading, error, refetch: fetch, createTask, updateStatus, deleteTask, getTask, updateTask };
 }

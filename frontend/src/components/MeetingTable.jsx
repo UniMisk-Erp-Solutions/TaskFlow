@@ -44,7 +44,7 @@ function Th({ label, sortKey, sort, onSort }) {
 
 const STATUSES = ['scheduled', 'completed', 'cancelled'];
 
-export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDelete = true, isAdmin = false, profileById }) {
+export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDelete = true, isAdmin = false, profileById, onOpenMeeting }) {
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId] = useState(null);
   const [filesFor, setFilesFor] = useState(null);
@@ -96,7 +96,11 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
               onMouseEnter={(e) => { e.currentTarget.style.background = '#0f0f0f'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}>
 
-              <td style={{ padding: '11px 14px', maxWidth: 300 }}>
+              <td
+                style={{ padding: '11px 14px', maxWidth: 300, cursor: onOpenMeeting ? 'pointer' : 'default' }}
+                onClick={() => onOpenMeeting?.(meeting)}
+                title={onOpenMeeting ? 'View details' : undefined}
+              >
                 <div style={{ fontWeight: 500, color: '#ddd', fontSize: 13, marginBottom: meeting.description ? 2 : 0 }}>
                   {meeting.title}
                 </div>
@@ -125,6 +129,7 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
               <td style={{ padding: '11px 14px' }}>
                 <select
                   value={meeting.status}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => onUpdateStatus(meeting.id, e.target.value)}
                   style={{
                     background: '#111', border: '1px solid #222', color: '#bbb',
@@ -151,11 +156,11 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
 
               <td style={{ padding: '11px 14px' }}>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setFilesFor(meeting)}>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={(e) => { e.stopPropagation(); setFilesFor(meeting); }}>
                     Files
                   </button>
                   {canDelete && (
-                    <button onClick={() => handleDelete(meeting.id)} disabled={deletingId === meeting.id}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(meeting.id); }} disabled={deletingId === meeting.id}
                       style={{
                         background: 'none', border: '1px solid transparent', borderRadius: 4,
                         cursor: 'pointer', padding: '5px 6px', color: '#444',

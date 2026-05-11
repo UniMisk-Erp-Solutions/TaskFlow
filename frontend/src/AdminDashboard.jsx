@@ -14,6 +14,8 @@ import CalenderView from './components/CalenderView';
 import AiChat from './components/AiChat';
 import FilterBar from './components/FilterBar';
 import OverviewUnified from './components/OverviewUnified';
+import TaskDetailModal from './components/TaskDetailModal';
+import MeetingDetailModal from './components/MeetingDetailModal';
 import ProjectsPanel from './components/ProjectsPanel';
 import { useProjects } from './useProjects';
 import api from './api';
@@ -59,7 +61,7 @@ function MiniStat({ label, value }) {
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const { tasks, loading, refetch, createTask, updateStatus, deleteTask } = useTasks();
+  const { tasks, loading, refetch, createTask, updateStatus, deleteTask, updateTask } = useTasks();
   const {
     meetings,
     loading: meetingsLoading,
@@ -67,6 +69,7 @@ export default function AdminDashboard() {
     createMeeting,
     updateStatus: updateMeetingStatus,
     deleteMeeting,
+    updateMeeting,
   } = useMeetings();
 
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
@@ -81,6 +84,8 @@ export default function AdminDashboard() {
   const [overviewStats, setOverviewStats] = useState(null);
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
+  const [detailTask, setDetailTask] = useState(null);
+  const [detailMeeting, setDetailMeeting] = useState(null);
 
   const profileById = useMemo(() => {
     const m = {};
@@ -304,6 +309,8 @@ export default function AdminDashboard() {
                     onUpdateTaskStatus={updateStatus}
                     onDeleteMeeting={deleteMeeting}
                     onUpdateMeetingStatus={updateMeetingStatus}
+                    onOpenTaskDetail={setDetailTask}
+                    onOpenMeetingDetail={setDetailMeeting}
                     limit={50}
                   />
                 )}
@@ -337,7 +344,7 @@ export default function AdminDashboard() {
                 </div>
                 {loading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} profileById={profileById} />
+                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} profileById={profileById} onOpenTask={setDetailTask} />
                 }
               </div>}
 
@@ -350,7 +357,7 @@ export default function AdminDashboard() {
                 </div>
                 {meetingsLoading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin profileById={profileById} />
+                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin profileById={profileById} onOpenMeeting={setDetailMeeting} />
                 }
               </div>}
             </div>
@@ -455,6 +462,25 @@ export default function AdminDashboard() {
         <MeetingForm projects={projects} onSubmit={createMeeting} onClose={() => setShowMeetingForm(false)} />
       )}
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
+
+      <TaskDetailModal
+        open={!!detailTask}
+        task={detailTask}
+        isAdmin
+        projects={projects}
+        profileById={profileById}
+        updateTask={updateTask}
+        onClose={() => setDetailTask(null)}
+      />
+      <MeetingDetailModal
+        open={!!detailMeeting}
+        meeting={detailMeeting}
+        isAdmin
+        projects={projects}
+        profileById={profileById}
+        updateMeeting={updateMeeting}
+        onClose={() => setDetailMeeting(null)}
+      />
     </div>
   );
 }

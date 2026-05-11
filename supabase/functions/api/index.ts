@@ -228,6 +228,32 @@ async function handleAuthProfiles(req: Request) {
 }
 
 const TASK_SELECT = "*, task_assignees(profile_id), projects(name)";
+const MEETING_SELECT = "*, meeting_assignees(profile_id), projects(name)";
+
+async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response | null> {
+  if (user.role === "admin") {
+    const { data } = await supabase.from("tasks").select("id").eq("id", taskId).eq("org_id", user.org_id).maybeSingle();
+    if (!data) return json({ error: "Task not found" }, 404);
+    return null;
+  }
+  const { data: row } = await supabase.from("tasks").select("id, assignee_id").eq("id", taskId).eq("org_id", user.org_id).maybeSingle();
+  if (!row) return json({ error: "Task not found or access denied" }, 404);
+  const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", taskId).eq("profile_id", user.id).maybeSingle();
+  if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
+  return null;
+}
+
+async function assertMeetingAccess(user: AppUser, meetingId: string): Promise<Response | null> {
+  const { data: meeting } = await supabase
+    .from("meetings")
+    .select(MEETING_SELECT)
+    .eq("id", meetingId)
+    .eq("org_id", user.org_id)
+    .maybeSingle();
+  if (!meeting) return json({ error: "Meeting not found or access denied" }, 404);
+  if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Access denied" }, 403);
+  return null;
+}
 
 async function handleTasks(req: Request, path: string) {
   const auth = await requireAuth(req);
@@ -259,6 +285,16 @@ async function handleTasks(req: Request, path: string) {
       .order("created_at", { ascending: false });
     if (error) return json({ error: error.message }, 400);
     return json((data ?? []).map(shapeTask));
+  }
+
+  const getOneTask = path.match(/^\/tasks\/([^/]+)$/);
+  if (req.method === "GET" && getOneTask) {
+    const id = getOneTask[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const { data, error } = await supabase.from("tasks").select(TASK_SELECT).eq("id", id).eq("org_id", user.org_id).single();
+    if (error) return json({ error: error.message }, 400);
+    return json(shapeTask(data));
   }
 
   if (req.method === "POST" && path === "/tasks") {
@@ -324,6 +360,60 @@ async function handleTasks(req: Request, path: string) {
     return json(shapeTask(data));
   }
 
+  const patchTaskDetail = path.match(/^\/tasks\/([^/]+)$/);
+  if (req.method === "PATCH" && patchTaskDetail) {
+    const id = patchTaskDetail[1];
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const {
+      title,
+      description,
+      priority,
+      due_date,
+      project_id,
+    } = body as any;
+    if (title !== undefined && !String(title).trim()) return json({ error: "Title cannot be empty" }, 400);
+    if (project_id) {
+      const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
+      if (!proj) return json({ error: "Project not found" }, 400);
+    }
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (title !== undefined) patch.title = String(title).trim();
+    if (description !== undefined) patch.description = description;
+    if (priority !== undefined) patch.priority = priority;
+    if (due_date !== undefined) patch.due_date = due_date;
+    if (project_id !== undefined) patch.project_id = project_id || null;
+
+    const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
+      ? normalizeAssigneeIds(body)
+      : null;
+
+    const { data: before } = await supabase.from("tasks").select("id").eq("id", id).single();
+    if (!before) return json({ error: "Task not found" }, 404);
+
+    const { error: upErr } = await supabase.from("tasks").update(patch).eq("id", id).eq("org_id", user.org_id);
+    if (upErr) return json({ error: upErr.message }, 400);
+
+    if (assignee_ids !== null) {
+      await supabase.from("task_assignees").delete().eq("task_id", id);
+      const primary = assignee_ids[0] ?? null;
+      await supabase.from("tasks").update({ assignee_id: primary }).eq("id", id).eq("org_id", user.org_id);
+      if (assignee_ids.length) {
+        const { error: aErr } = await supabase.from("task_assignees").insert(
+          assignee_ids.map((profile_id) => ({ task_id: id, profile_id })),
+        );
+        if (aErr) return json({ error: aErr.message }, 400);
+      }
+    }
+
+    const { data: full, error: fErr } = await supabase.from("tasks").select(TASK_SELECT).eq("id", id).single();
+    if (fErr) return json({ error: fErr.message }, 400);
+    return json(shapeTask(full));
+  }
+
   const delMatch = path.match(/^\/tasks\/([^/]+)$/);
   if (req.method === "DELETE" && delMatch) {
     const adminErr = requireAdmin(user);
@@ -336,8 +426,6 @@ async function handleTasks(req: Request, path: string) {
 
   return null;
 }
-
-const MEETING_SELECT = "*, meeting_assignees(profile_id), projects(name)";
 
 async function handleMeetings(req: Request, path: string) {
   const auth = await requireAuth(req);
@@ -369,6 +457,16 @@ async function handleMeetings(req: Request, path: string) {
       .order("created_at", { ascending: false });
     if (error) return json({ error: error.message }, 400);
     return json((data ?? []).map(shapeMeeting));
+  }
+
+  const getOneMeeting = path.match(/^\/meetings\/([^/]+)$/);
+  if (req.method === "GET" && getOneMeeting) {
+    const id = getOneMeeting[1];
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const { data, error } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", id).eq("org_id", user.org_id).single();
+    if (error) return json({ error: error.message }, 400);
+    return json(shapeMeeting(data));
   }
 
   if (req.method === "POST" && path === "/meetings") {
@@ -435,6 +533,68 @@ async function handleMeetings(req: Request, path: string) {
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Meeting not found or access denied" }, 404);
     return json(shapeMeeting(data));
+  }
+
+  const patchMeetingDetail = path.match(/^\/meetings\/([^/]+)$/);
+  if (req.method === "PATCH" && patchMeetingDetail) {
+    const id = patchMeetingDetail[1];
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const {
+      title,
+      description,
+      priority,
+      meeting_date,
+      meeting_time,
+      project_id,
+    } = body as any;
+    if (title !== undefined && !String(title).trim()) return json({ error: "Title cannot be empty" }, 400);
+    if (meeting_date !== undefined && meeting_date !== null && String(meeting_date).trim() === "") {
+      return json({ error: "Meeting date cannot be empty" }, 400);
+    }
+    if (meeting_time !== undefined && meeting_time !== null && String(meeting_time).trim() === "") {
+      return json({ error: "Meeting time cannot be empty" }, 400);
+    }
+    if (project_id) {
+      const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
+      if (!proj) return json({ error: "Project not found" }, 400);
+    }
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (title !== undefined) patch.title = String(title).trim();
+    if (description !== undefined) patch.description = description;
+    if (priority !== undefined) patch.priority = priority;
+    if (meeting_date !== undefined) patch.meeting_date = meeting_date;
+    if (meeting_time !== undefined) patch.meeting_time = meeting_time;
+    if (project_id !== undefined) patch.project_id = project_id || null;
+
+    const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
+      ? normalizeAssigneeIds(body)
+      : null;
+
+    const { data: before } = await supabase.from("meetings").select("id").eq("id", id).single();
+    if (!before) return json({ error: "Meeting not found" }, 404);
+
+    const { error: upErr } = await supabase.from("meetings").update(patch).eq("id", id).eq("org_id", user.org_id);
+    if (upErr) return json({ error: upErr.message }, 400);
+
+    if (assignee_ids !== null) {
+      await supabase.from("meeting_assignees").delete().eq("meeting_id", id);
+      const primary = assignee_ids[0] ?? null;
+      await supabase.from("meetings").update({ assignee_id: primary }).eq("id", id).eq("org_id", user.org_id);
+      if (assignee_ids.length) {
+        const { error: aErr } = await supabase.from("meeting_assignees").insert(
+          assignee_ids.map((profile_id) => ({ meeting_id: id, profile_id })),
+        );
+        if (aErr) return json({ error: aErr.message }, 400);
+      }
+    }
+
+    const { data: full, error: fErr } = await supabase.from("meetings").select(MEETING_SELECT).eq("id", id).single();
+    if (fErr) return json({ error: fErr.message }, 400);
+    return json(shapeMeeting(full));
   }
 
   const delMatch = path.match(/^\/meetings\/([^/]+)$/);

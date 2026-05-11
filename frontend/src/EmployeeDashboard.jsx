@@ -7,6 +7,7 @@ import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime } from './useRealtime';
 import TaskCard from './components/TaskCard';
+import TaskDetailModal from './components/TaskDetailModal';
 import Navbar from './components/Navbar';
 import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
@@ -20,7 +21,7 @@ function Stat({ label, value, color }) {
   );
 }
 
-function Group({ label, tasks, onUpdateStatus, accent }) {
+function Group({ label, tasks, onUpdateStatus, accent, onOpenTaskDetail }) {
   const [open, setOpen] = useState(true);
   if (!tasks.length) return null;
   return (
@@ -36,7 +37,14 @@ function Group({ label, tasks, onUpdateStatus, accent }) {
       </button>
       {open && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 24 }}>
-          {tasks.map((t) => <TaskCard key={t.id} task={t} onUpdateStatus={onUpdateStatus} />)}
+          {tasks.map((t) => (
+            <TaskCard
+              key={t.id}
+              task={t}
+              onUpdateStatus={onUpdateStatus}
+              onOpenDetail={onOpenTaskDetail ? () => onOpenTaskDetail(t) : undefined}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -51,6 +59,13 @@ export default function EmployeeDashboard() {
   const [showAI, setShowAI] = useState(false);
   const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
+  const [detailTask, setDetailTask] = useState(null);
+
+  const profileById = useMemo(() => {
+    const m = {};
+    if (profile?.id) m[profile.id] = profile.full_name || profile.email;
+    return m;
+  }, [profile]);
 
   React.useEffect(() => {
     sessionStorage.setItem('taskflow_employee_page', page);
@@ -135,11 +150,11 @@ export default function EmployeeDashboard() {
               </div>
             ) : (
               <div>
-                <Group label="Overdue"     tasks={groups.overdue}    onUpdateStatus={updateStatus} accent="#f87171" />
-                <Group label="Blocked"     tasks={groups.blocked}    onUpdateStatus={updateStatus} accent="#f87171" />
-                <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} accent="#818cf8" />
-                <Group label="Pending"     tasks={groups.pending}    onUpdateStatus={updateStatus} accent="#fbbf24" />
-                <Group label="Completed"   tasks={groups.completed}  onUpdateStatus={updateStatus} accent="#4ade80" />
+                <Group label="Overdue"     tasks={groups.overdue}    onUpdateStatus={updateStatus} accent="#f87171" onOpenTaskDetail={setDetailTask} />
+                <Group label="Blocked"     tasks={groups.blocked}    onUpdateStatus={updateStatus} accent="#f87171" onOpenTaskDetail={setDetailTask} />
+                <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} accent="#818cf8" onOpenTaskDetail={setDetailTask} />
+                <Group label="Pending"     tasks={groups.pending}    onUpdateStatus={updateStatus} accent="#fbbf24" onOpenTaskDetail={setDetailTask} />
+                <Group label="Completed"   tasks={groups.completed}  onUpdateStatus={updateStatus} accent="#4ade80" onOpenTaskDetail={setDetailTask} />
               </div>
             )
         )}
@@ -188,6 +203,14 @@ export default function EmployeeDashboard() {
       )}
 
       {showAI && <AiChat onClose={() => setShowAI(false)} />}
+
+      <TaskDetailModal
+        open={!!detailTask}
+        task={detailTask}
+        isAdmin={false}
+        profileById={profileById}
+        onClose={() => setDetailTask(null)}
+      />
     </div>
   );
 }

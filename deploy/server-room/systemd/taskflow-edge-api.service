@@ -1,0 +1,21 @@
+[Unit]
+Description=Taskflow Edge Function api (supabase functions serve)
+After=taskflow-supabase.service docker.service network-online.target
+Requires=docker.service taskflow-supabase.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+
+WorkingDirectory=TASKFLOW_ROOT_PLACEHOLDER
+User=TASKFLOW_USER_PLACEHOLDER
+Group=TASKFLOW_USER_PLACEHOLDER
+
+Environment=HOME=HOME_DIR_PLACEHOLDER
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/usr/bin/npx supabase functions serve api --no-verify-jwt
+
+[Install]
+WantedBy=multi-user.target

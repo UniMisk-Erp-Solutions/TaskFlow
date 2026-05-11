@@ -70,6 +70,8 @@ export default function OverviewUnified({
   onUpdateTaskStatus,
   onDeleteMeeting,
   onUpdateMeetingStatus,
+  onOpenTaskDetail,
+  onOpenMeetingDetail,
   limit = 40,
 }) {
   const [sort, setSort] = useState({ key: 'sort_date', dir: 'desc' });
@@ -126,6 +128,16 @@ export default function OverviewUnified({
 
   function handleSort(key) {
     setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
+  }
+
+  function openRowDetail(row) {
+    if (row.kind === 'task') {
+      const full = tasks.find((t) => t.id === row.id);
+      onOpenTaskDetail?.(full || row);
+    } else {
+      const full = meetings.find((m) => m.id === row.id);
+      onOpenMeetingDetail?.(full || row);
+    }
   }
 
   async function handleDelete(kind, id) {
@@ -195,7 +207,15 @@ export default function OverviewUnified({
                   {row.kind}
                 </span>
               </td>
-              <td style={{ padding: '11px 14px', maxWidth: 220 }}>
+              <td
+                style={{
+                  padding: '11px 14px',
+                  maxWidth: 220,
+                  cursor: onOpenTaskDetail || onOpenMeetingDetail ? 'pointer' : 'default',
+                }}
+                onClick={() => (onOpenTaskDetail || onOpenMeetingDetail) && openRowDetail(row)}
+                title={onOpenTaskDetail || onOpenMeetingDetail ? 'View details' : undefined}
+              >
                 <div style={{ fontWeight: 500, color: '#ddd', fontSize: 13 }}>{row.title}</div>
                 {row.description && (
                   <div
@@ -222,6 +242,7 @@ export default function OverviewUnified({
                 {row.kind === 'task' ? (
                   <select
                     value={row.status}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateTaskStatus(row.id, e.target.value)}
                     style={{
                       background: '#111',
@@ -244,6 +265,7 @@ export default function OverviewUnified({
                 ) : (
                   <select
                     value={row.status}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateMeetingStatus(row.id, e.target.value)}
                     style={{
                       background: '#111',
@@ -285,7 +307,11 @@ export default function OverviewUnified({
               </td>
               <td style={{ padding: '11px 14px' }}>
                 <button
-                  onClick={() => handleDelete(row.kind, row.id)}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(row.kind, row.id);
+                  }}
                   disabled={deletingId === `${row.kind}:${row.id}`}
                   style={{
                     background: 'none',
@@ -295,7 +321,6 @@ export default function OverviewUnified({
                     padding: '5px 6px',
                     color: '#444',
                   }}
-                  type="button"
                 >
                   {deletingId === `${row.kind}:${row.id}` ? (
                     <span className="spinner" style={{ width: 12, height: 12 }} />
