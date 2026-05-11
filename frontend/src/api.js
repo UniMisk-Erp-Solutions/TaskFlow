@@ -1,5 +1,5 @@
 import axios from 'axios';
-import supabase from './supabaseClient';
+import { getApiAccessToken } from './sessionAccess';
 
 const baseURL = import.meta.env.VITE_API_URL;
 if (!baseURL) {
@@ -8,8 +8,6 @@ if (!baseURL) {
 
 const api = axios.create({
   baseURL,
-  // Default `legacyInterceptorReqResOrdering: true` can break async request interceptors
-  // (login/signup would hang or never dispatch). Use the modern chain for this client.
   transitional: {
     silentJSONParsing: true,
     forcedJSONParsing: true,
@@ -23,48 +21,51 @@ function isPublicAuthRequest(config) {
   return u === '/auth/login' || u === '/auth/signup' || u.endsWith('/auth/login') || u.endsWith('/auth/signup');
 }
 
+function getExistingAuthorization(config) {
+  const h = config.headers;
+  if (!h) return null;
+  if (typeof h.get === 'function') {
+    return h.get('Authorization') || h.get('authorization') || null;
+  }
+  return h.Authorization || h.authorization || null;
+}
+
 function setAuthHeader(config, token) {
   const h = config.headers;
   if (!h) {
-    config.headers = { Authorization: `Bearer ${token}` };
+    config.headers = token ? { Authorization: `Bearer ${token}` } : {};
     return;
   }
   if (typeof h.set === 'function') {
     if (token) h.set('Authorization', `Bearer ${token}`);
     else h.delete('Authorization');
+  } else if (token) {
+    h.Authorization = `Bearer ${token}`;
   } else {
-    if (token) h.Authorization = `Bearer ${token}`;
-    else delete h.Authorization;
+    delete h.Authorization;
   }
 }
 
 /**
- * Attach JWT from Supabase on each request (source of truth for multi-device / post-login).
- * Skip getSession() for login/signup so those calls are not blocked by auth state.
+ * Synchronous interceptor only. Token comes from sessionAccess (updated in AuthContext).
+ * Never overwrites an Authorization header already set on the request (e.g. fetchProfile).
  */
 api.interceptors.request.use(
-  async (config) => {
+  (config) => {
     if (isPublicAuthRequest(config)) {
       return config;
     }
-
-    try {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) console.warn('Supabase getSession:', error.message);
-      const session = data?.session ?? null;
-      window.cachedSession = session ?? null;
-      if (session?.access_token) {
-        setAuthHeader(config, session.access_token);
-      } else {
-        setAuthHeader(config, null);
-      }
-    } catch (e) {
-      console.warn('API auth interceptor:', e);
+    if (getExistingAuthorization(config)) {
+      return config;
+    }
+    const token = getApiAccessToken();
+    if (token) {
+      setAuthHeader(config, token);
     }
     return config;
   },
   undefined,
-  { synchronous: false },
+  { synchronous: true },
 );
 
 api.interceptors.response.use(

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import supabase from './supabaseClient';
 import api from './api';
+import { setApiAccessToken } from './sessionAccess';
 
 const AuthContext = createContext(null);
 
@@ -15,21 +16,35 @@ export function AuthProvider({ children }) {
     currentUserIdRef.current = user?.id ?? null;
   }, [user]);
 
+  /** @returns {Promise<boolean>} */
   async function fetchProfile(session) {
     if (!session) {
       setProfile(null);
-      return;
+      setApiAccessToken(null);
+      return false;
     }
-    try {
-      const { data } = await api.get('/auth/me', {
-        headers: { Authorization: `Bearer ${session.access_token}` }
-      });
-      setProfile(data);
-    } catch (err) {
-      console.warn('AuthContext - fetchProfile failed:', err?.message || err);
-      // Keep last known profile on transient errors (avoids kicking admins to /dashboard on tab focus / token refresh)
-      setProfile((prev) => prev);
+    setApiAccessToken(session.access_token);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { data } = await api.get('/auth/me', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        setProfile(data);
+        return true;
+      } catch (err) {
+        console.warn('AuthContext - fetchProfile attempt failed:', attempt + 1, err?.message || err);
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 250));
+      }
     }
+    console.warn('AuthContext - fetchProfile failed after retries');
+    setProfile((prev) => prev);
+    return false;
+  }
+
+  async function refreshProfile() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) return false;
+    return fetchProfile(session);
   }
 
   useEffect(() => {
@@ -39,10 +54,13 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('AuthContext - Initial session:', { hasSession: !!session, hasUser: !!session?.user });
       setUser(session?.user ?? null);
-      
+      setApiAccessToken(session?.access_token ?? null);
+
       // Update cached session in API client
       if (session) {
         window.cachedSession = session;
+      } else {
+        window.cachedSession = null;
       }
       
       // Only fetch profile if we have a session
@@ -61,12 +79,9 @@ export function AuthProvider({ children }) {
         // Token refresh when returning to the tab must not blank the UI or drop profile
         if ((event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
           setUser(session.user);
+          setApiAccessToken(session.access_token);
           window.cachedSession = session;
-          try {
-            await fetchProfile(session);
-          } catch (_) {
-            /* stale profile kept inside fetchProfile */
-          }
+          await fetchProfile(session);
           return;
         }
 
@@ -79,6 +94,7 @@ export function AuthProvider({ children }) {
           session?.user?.id === currentUserIdRef.current
         ) {
           window.cachedSession = session;
+          setApiAccessToken(session?.access_token ?? null);
           await fetchProfile(session);
           return;
         }
@@ -87,6 +103,7 @@ export function AuthProvider({ children }) {
         setUser(session?.user ?? null);
 
         window.cachedSession = session;
+        setApiAccessToken(session?.access_token ?? null);
 
         if (session) {
           await fetchProfile(session);
@@ -103,9 +120,14 @@ export function AuthProvider({ children }) {
     try {
       console.log('AuthContext - Starting login...');
       const { data } = await api.post('/auth/login', { email, password });
-      
+
       console.log('AuthContext - Login response:', { hasSession: !!data.session, user: !!data.user });
-      
+
+      // Set token before setSession / profile fetch so Axios never races getSession()
+      if (data.session?.access_token) {
+        setApiAccessToken(data.session.access_token);
+      }
+
       // Set session in Supabase client for consistency
       if (data.session) {
         console.log('AuthContext - Setting session with tokens:', {
@@ -120,34 +142,22 @@ export function AuthProvider({ children }) {
         
         if (sessionError) {
           console.error('AuthContext - Failed to set session:', sessionError);
-        } else {
-          console.log('AuthContext - Session set successfully');
-          
-          // Small delay to ensure session is stored
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Verify session was set
-          const { data: { session: currentSession } } = await supabase.auth.getSession();
-          console.log('AuthContext - Session verification:', { 
-            hasSession: !!currentSession,
-            hasToken: !!currentSession?.access_token 
-          });
+          setApiAccessToken(null);
+          throw new Error(sessionError.message || 'Could not save your session');
         }
-        
-        // Update user state immediately
+
         setUser(data.user);
-        console.log('AuthContext - User state updated');
-        
-        // Fetch profile with the new session (with timeout)
-        try {
-          await Promise.race([
-            fetchProfile(data.session),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
-          ]);
-          console.log('AuthContext - Profile fetched');
-        } catch (profileError) {
-          console.warn('AuthContext - Profile fetch failed or timed out:', profileError);
-          // Don't fail login, just continue without profile
+
+        const profileOk = await fetchProfile(data.session);
+        if (!profileOk) {
+          setApiAccessToken(null);
+          await supabase.auth.signOut();
+          setUser(null);
+          setProfile(null);
+          window.cachedSession = null;
+          throw new Error(
+            'Signed in but could not load your profile. Confirm VITE_API_URL points to your TaskFlow API and try again.',
+          );
         }
       }
       return data;
@@ -169,6 +179,10 @@ export function AuthProvider({ children }) {
 
       console.log('AuthContext - Signup response:', { hasSession: !!data.session, user: !!data.user });
 
+      if (data.session?.access_token) {
+        setApiAccessToken(data.session.access_token);
+      }
+
       // Set session in Supabase client for consistency
       if (data.session) {
         const { error: sessionError } = await supabase.auth.setSession({
@@ -178,24 +192,22 @@ export function AuthProvider({ children }) {
 
         if (sessionError) {
           console.error('AuthContext - Failed to set session during signup:', sessionError);
-        } else {
-          console.log('AuthContext - Session set successfully during signup');
+          setApiAccessToken(null);
+          throw new Error(sessionError.message || 'Could not save your session');
         }
 
-        // Update user state immediately
         setUser(data.user);
-        console.log('AuthContext - User state updated during signup');
 
-        // Fetch profile with the new session (with timeout)
-        try {
-          await Promise.race([
-            fetchProfile(data.session),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 5000))
-          ]);
-          console.log('AuthContext - Profile fetched during signup');
-        } catch (profileError) {
-          console.warn('AuthContext - Profile fetch failed or timed out during signup:', profileError);
-          // Don't fail signup, just continue without profile
+        const profileOk = await fetchProfile(data.session);
+        if (!profileOk) {
+          setApiAccessToken(null);
+          await supabase.auth.signOut();
+          setUser(null);
+          setProfile(null);
+          window.cachedSession = null;
+          throw new Error(
+            'Account created but could not load your profile. Confirm VITE_API_URL points to your TaskFlow API and try again.',
+          );
         }
       }
       return data;
@@ -206,12 +218,14 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    setApiAccessToken(null);
+    window.cachedSession = null;
     await supabase.auth.signOut();
     setProfile(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
