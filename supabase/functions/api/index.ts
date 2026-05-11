@@ -451,25 +451,37 @@ async function handleAdmin(req: Request, path: string) {
 
   if (req.method === "POST" && path === "/admin/users") {
     const body = await parseBody(req);
-    const { email, password, fullName, role = "employee" } = body as any;
+    const { email, password, fullName, role: rawRole = "employee" } = body as any;
     if (!email || !password || !fullName) return json({ error: "Email, password and full name are required" }, 400);
-    if (role !== "employee") return json({ error: "Only employee role is allowed for invited users" }, 400);
+    if (!user.org_id) {
+      return json({ error: "Your profile has no organization; cannot create users." }, 400);
+    }
+    const role = rawRole === "admin" ? "admin" : "employee";
 
     const { data: created, error } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: fullName, role: "employee" },
+      user_metadata: {
+        full_name: fullName,
+        role,
+        org_id: String(user.org_id),
+      },
     });
     if (error) return json({ error: error.message }, error.status || 400);
 
     const userId = created.user?.id;
     if (userId) {
       const { error: upErr } = await supabase.from("profiles").upsert(
-        { id: userId, email, full_name: fullName, role: "employee", org_id: user.org_id },
+        { id: userId, email, full_name: fullName, role, org_id: user.org_id },
         { onConflict: "id" },
       );
-      if (upErr) return json({ error: "User created but profile linking failed" }, 500);
+      if (upErr) {
+        return json(
+          { error: "User created but profile linking failed", detail: upErr.message },
+          500,
+        );
+      }
     }
 
     return json({
@@ -477,7 +489,7 @@ async function handleAdmin(req: Request, path: string) {
       user_id: created.user?.id,
       email,
       full_name: fullName,
-      role: "employee",
+      role,
     }, 201);
   }
 

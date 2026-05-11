@@ -10,14 +10,19 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   async function fetchProfile(session) {
-    if (!session) { setProfile(null); return; }
+    if (!session) {
+      setProfile(null);
+      return;
+    }
     try {
       const { data } = await api.get('/auth/me', {
         headers: { Authorization: `Bearer ${session.access_token}` }
       });
       setProfile(data);
-    } catch {
-      setProfile(null);
+    } catch (err) {
+      console.warn('AuthContext - fetchProfile failed:', err?.message || err);
+      // Keep last known profile on transient errors (avoids kicking admins to /dashboard on tab focus / token refresh)
+      setProfile((prev) => prev);
     }
   }
 
@@ -43,14 +48,26 @@ export function AuthProvider({ children }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        console.log('AuthContext - Auth state changed:', { event: _event, hasSession: !!session });
+      async (event, session) => {
+        console.log('AuthContext - Auth state changed:', { event, hasSession: !!session });
+
+        // Token refresh when returning to the tab must not blank the UI or drop profile
+        if ((event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session) {
+          setUser(session.user);
+          window.cachedSession = session;
+          try {
+            await fetchProfile(session);
+          } catch (_) {
+            /* stale profile kept inside fetchProfile */
+          }
+          return;
+        }
+
         setLoading(true);
         setUser(session?.user ?? null);
-        
-        // Update cached session in API client
+
         window.cachedSession = session;
-        
+
         if (session) {
           await fetchProfile(session);
         } else {

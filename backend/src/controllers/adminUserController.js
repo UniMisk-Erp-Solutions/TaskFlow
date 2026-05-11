@@ -17,26 +17,28 @@ exports.listUsers = async (req, res) => {
   }
 };
 
-// Create a new employee in the current admin's organization
+// Create a new user in the current admin's organization (employee or co-admin)
 exports.createUser = async (req, res) => {
   try {
-    const { email, password, fullName, role = "employee" } = req.body;
+    const { email, password, fullName, role: rawRole = "employee" } = req.body;
+    const role = rawRole === "admin" ? "admin" : "employee";
 
     if (!email || !password || !fullName) {
       return res.status(400).json({ error: "Email, password and full name are required" });
     }
-    if (role !== "employee") {
-      return res.status(400).json({ error: "Only employee role is allowed for invited users" });
+    if (!req.user.org_id) {
+      return res.status(400).json({ error: "Your profile has no organization; cannot create users." });
     }
 
-    // Create user via service role admin API
+    // Create user via service role admin API (metadata consumed by handle_new_user trigger)
     const { data: created, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: {
         full_name: fullName,
-        role: "employee",
+        role,
+        org_id: String(req.user.org_id),
       },
     });
 
@@ -47,7 +49,7 @@ exports.createUser = async (req, res) => {
 
     const userId = created.user?.id;
 
-    // Ensure profile row exists and is linked to org
+    // Ensure profile row exists and is linked to org (backup if trigger is outdated)
     if (userId) {
       const { error: upsertError } = await supabase
         .from("profiles")
@@ -56,7 +58,7 @@ exports.createUser = async (req, res) => {
             id: userId,
             email,
             full_name: fullName,
-            role: "employee",
+            role,
             org_id: req.user.org_id,
           },
           { onConflict: "id" }
@@ -64,7 +66,10 @@ exports.createUser = async (req, res) => {
 
       if (upsertError) {
         console.error("admin.createUser - profiles upsert error:", upsertError);
-        return res.status(500).json({ error: "User created but profile linking failed" });
+        return res.status(500).json({
+          error: "User created but profile linking failed",
+          detail: upsertError.message,
+        });
       }
     }
 
@@ -73,7 +78,7 @@ exports.createUser = async (req, res) => {
       user_id: created.user?.id,
       email,
       full_name: fullName,
-      role: "employee",
+      role,
     });
   } catch (err) {
     console.error("admin.createUser error:", err);

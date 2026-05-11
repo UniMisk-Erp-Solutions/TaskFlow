@@ -55,6 +55,7 @@ function AddUserModal({ open, onClose, onCreated }) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteRole, setInviteRole] = useState('employee');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -63,6 +64,7 @@ function AddUserModal({ open, onClose, onCreated }) {
       setEmail('');
       setFullName('');
       setPassword('');
+      setInviteRole('employee');
       setError('');
     }
   }, [open]);
@@ -83,7 +85,7 @@ function AddUserModal({ open, onClose, onCreated }) {
         email,
         password,
         fullName,
-        role: 'employee',
+        role: inviteRole,
       });
       onCreated?.();
       onClose();
@@ -152,13 +154,17 @@ function AddUserModal({ open, onClose, onCreated }) {
 
           <div className="form-group">
             <label className="form-label">Role</label>
-            <input
-              className="input"
-              type="text"
-              value="employee"
-              readOnly
-              style={{ opacity: 0.7, cursor: 'not-allowed' }}
-            />
+            <select
+              className="input select"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+            >
+              <option value="employee">Employee — tasks & meetings only</option>
+              <option value="admin">Admin — full workspace + admin panel</option>
+            </select>
+            <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>
+              Admins you add can sign in at the same login URL and open the admin dashboard.
+            </div>
           </div>
 
           {error && <div className="form-error">{error}</div>}
