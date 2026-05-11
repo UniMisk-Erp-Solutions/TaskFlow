@@ -9,9 +9,9 @@ export function useTasks() {
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
-    // While auth is re-resolving, do not clear lists if we already have a profile (duplicate SIGNED_IN / refresh).
-    if (authLoading) {
-      if (!profile?.id) setLoading(true);
+    // Wait for auth only when we do not yet have a profile id; if profile is already set (e.g. during TOKEN_REFRESHED), still fetch so lists load without a hard refresh.
+    if (authLoading && !profile?.id) {
+      setLoading(true);
       return;
     }
     if (!profile?.id) {

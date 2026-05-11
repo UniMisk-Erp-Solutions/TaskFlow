@@ -9,8 +9,8 @@ export function useMeetings() {
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async () => {
-    if (authLoading) {
-      if (!profile?.id) setLoading(true);
+    if (authLoading && !profile?.id) {
+      setLoading(true);
       return;
     }
     if (!profile?.id) {
