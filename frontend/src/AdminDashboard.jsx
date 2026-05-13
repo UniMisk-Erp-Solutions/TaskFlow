@@ -34,27 +34,19 @@ function matchesAssigneeFilter(item, assigneeFilter) {
 
 function MiniStat({ label, value }) {
   return (
-    <div
-      style={{
-        padding: '12px 14px',
-        border: '1px solid #1a1a1a',
-        borderRadius: 6,
-        background: '#0c0c0c',
-        minWidth: 0,
-      }}
-    >
+    <div className="tf-stat-mini">
       <div
         style={{
-          fontSize: 10,
-          color: '#555',
+          fontSize: 11,
+          color: 'var(--tf-muted)',
           textTransform: 'uppercase',
-          letterSpacing: '0.35px',
+          letterSpacing: '0.06em',
           fontWeight: 600,
         }}
       >
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 600, color: '#ddd', marginTop: 8 }}>{value ?? 0}</div>
+      <div style={{ fontSize: 26, fontWeight: 600, color: 'var(--tf-text)', marginTop: 8, letterSpacing: '-0.02em' }}>{value ?? 0}</div>
     </div>
   );
 }
@@ -163,35 +155,43 @@ export default function AdminDashboard() {
   const overdue = tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed');
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#080808' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--tf-page)' }}>
       <Sidebar active={page} onNav={setPage} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Header */}
-        <div style={{
-          height: 52, background: '#0a0a0a', borderBottom: '1px solid #1a1a1a',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 24px', flexShrink: 0,
-        }}>
+        <div className="tf-subnav">
           <div>
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#ddd' }}>
-              {page === 'overview' ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}` :
-               page === 'tasks'   ? 'All Tasks'
-               : page === 'calender' ? 'Calender View'
-               : page === 'projects' ? 'Projects'
-               : page === 'users' ? 'User Management'
-               : 'Reminders'}
+            <span
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 21,
+                fontWeight: 600,
+                letterSpacing: '-0.015em',
+                color: 'var(--tf-text)',
+              }}
+            >
+              {page === 'overview'
+                ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}`
+                : page === 'tasks'
+                  ? 'All Tasks'
+                  : page === 'calender'
+                    ? 'Calender View'
+                    : page === 'projects'
+                      ? 'Projects'
+                      : page === 'users'
+                        ? 'User Management'
+                        : 'Reminders'}
             </span>
             {page === 'overview' && (
-              <span style={{ fontSize: 12, color: '#3a3a3a', marginLeft: 10 }}>
+              <span style={{ fontSize: 15, color: 'var(--tf-muted)', marginLeft: 12, fontWeight: 400 }}>
                 {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               </span>
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {sendMsg && (
-              <span style={{ fontSize: 12, color: sendMsg.startsWith('Failed') ? '#f87171' : '#4ade80' }}>{sendMsg}</span>
+              <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
             <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
               {sending ? <span className="spinner" /> : <Send size={12} />}
@@ -230,8 +230,8 @@ export default function AdminDashboard() {
                 <MiniStat label="Team members" value={overviewStats?.total_users} />
               </div>
 
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)' }}>
                   <FilterBar
                     filters={filters}
                     onChange={setFilters}
@@ -256,7 +256,7 @@ export default function AdminDashboard() {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <span style={{ fontSize: 13, color: '#f87171' }}>
+                  <span style={{ fontSize: 13, color: 'var(--status-danger)' }}>
                     {overdue.length} task{overdue.length !== 1 ? 's' : ''} past due date
                   </span>
                   <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage('tasks')}>
@@ -265,11 +265,11 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
                 <div
                   style={{
                     padding: '13px 16px',
-                    borderBottom: '1px solid #1a1a1a',
+                    borderBottom: '1px solid var(--tf-border)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -279,7 +279,7 @@ export default function AdminDashboard() {
                     style={{
                       fontSize: 12,
                       fontWeight: 600,
-                      color: '#666',
+                      color: 'var(--tf-muted)',
                       letterSpacing: '0.3px',
                       textTransform: 'uppercase',
                     }}
@@ -297,7 +297,7 @@ export default function AdminDashboard() {
                 </div>
                 {!showTaskLists && !showMeetingLists ? (
                   <div className="empty">
-                    <div style={{ fontSize: 13, color: '#444' }}>Both lists hidden by type filter</div>
+                    <div style={{ fontSize: 13, color: 'var(--tf-subhead)' }}>Both lists hidden by type filter</div>
                   </div>
                 ) : (
                   <OverviewUnified
@@ -322,8 +322,8 @@ export default function AdminDashboard() {
           {/* ── TASKS + MEETINGS ── */}
           {page === 'tasks' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a' }}>
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+                <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)' }}>
                   <FilterBar
                     filters={filters}
                     onChange={setFilters}
@@ -336,9 +336,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {showTaskLists && <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+              {showTaskLists && <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
                     {filtered.length} Task{filtered.length !== 1 ? 's' : ''}
                   </span>
                   <button className="btn btn-ghost btn-sm btn-icon" onClick={refetch}><RefreshCw size={12} /></button>
@@ -349,9 +349,9 @@ export default function AdminDashboard() {
                 }
               </div>}
 
-              {showMeetingLists && <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+              {showMeetingLists && <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
                     {filteredMeetings.length} Meeting{filteredMeetings.length !== 1 ? 's' : ''}
                   </span>
                   <button className="btn btn-ghost btn-sm btn-icon" onClick={refetchMeetings}><RefreshCw size={12} /></button>
@@ -398,12 +398,12 @@ export default function AdminDashboard() {
           {/* ── REMINDERS ── */}
           {page === 'email' && (
             <div style={{ maxWidth: 500 }}>
-              <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
-                <div style={{ padding: '13px 16px', borderBottom: '1px solid #1a1a1a' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: '#666', letterSpacing: '0.3px', textTransform: 'uppercase' }}>Email Reminders</span>
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+                <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--tf-border)' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', letterSpacing: '0.3px', textTransform: 'uppercase' }}>Email Reminders</span>
                 </div>
                 <div style={{ padding: '20px 20px 24px' }}>
-                  <p style={{ fontSize: 13, color: '#555', lineHeight: 1.8, marginBottom: 20 }}>
+                  <p style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.8, marginBottom: 20 }}>
                     Sends an AI-written reminder email to every employee with a task due within the next 24 hours. Each email is generated by the AI using the task title, due date, and employee name.
                   </p>
                   <button className="btn btn-primary" onClick={handleSendReminders} disabled={sending}
@@ -411,11 +411,11 @@ export default function AdminDashboard() {
                     {sending ? <><span className="spinner" /> Sending…</> : <><Send size={13} /> Send Reminders Now</>}
                   </button>
                   {sendMsg && (
-                    <div style={{ marginTop: 12, fontSize: 12, color: sendMsg.startsWith('Failed') ? '#f87171' : '#4ade80', textAlign: 'center' }}>
+                    <div style={{ marginTop: 12, fontSize: 12, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)', textAlign: 'center' }}>
                       {sendMsg}
                     </div>
                   )}
-                  <div style={{ marginTop: 20, borderTop: '1px solid #1a1a1a', paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ marginTop: 20, borderTop: '1px solid var(--tf-border)', paddingTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {[
                       'Scans all tasks due within 24 hours',
                       'Generates personalized email per employee via AI',
@@ -423,8 +423,8 @@ export default function AdminDashboard() {
                       'Logs every sent email in email_logs table',
                     ].map((s, i) => (
                       <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: 11, color: '#333', fontWeight: 600, minWidth: 16, paddingTop: 1 }}>{i + 1}.</span>
-                        <span style={{ fontSize: 12, color: '#444', lineHeight: 1.6 }}>{s}</span>
+                        <span style={{ fontSize: 11, color: 'var(--tf-subhead)', fontWeight: 600, minWidth: 16, paddingTop: 1 }}>{i + 1}.</span>
+                        <span style={{ fontSize: 12, color: 'var(--tf-subhead)', lineHeight: 1.6 }}>{s}</span>
                       </div>
                     ))}
                   </div>
@@ -439,20 +439,12 @@ export default function AdminDashboard() {
       {/* Floating AI button */}
       {!showAI && (
         <button
+          type="button"
+          className="tf-fab"
           onClick={() => setShowAI(true)}
           title="AI Assistant"
-          style={{
-            position: 'fixed', bottom: 28, right: 28, zIndex: 40,
-            width: 48, height: 48, borderRadius: '50%',
-            background: '#3b82f6', border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 16px rgba(59,130,246,0.45)',
-            transition: 'transform 150ms ease, box-shadow 150ms ease',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,0.6)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(59,130,246,0.45)'; }}
         >
-          <Sparkles size={20} color="#fff" strokeWidth={1.8} />
+          <Sparkles size={20} color="#ffffff" strokeWidth={1.8} />
         </button>
       )}
 

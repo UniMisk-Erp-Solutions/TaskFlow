@@ -21,11 +21,11 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
   }
 
   if (loading) {
-    return <div style={{ fontSize: 12, color: '#555' }}>Loading team…</div>;
+    return <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>Loading team…</div>;
   }
 
   if (!employees.length) {
-    return <div style={{ fontSize: 12, color: '#555' }}>No employees in workspace yet.</div>;
+    return <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No employees in workspace yet.</div>;
   }
 
   return (
@@ -33,10 +33,10 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
       style={{
         maxHeight: 180,
         overflowY: 'auto',
-        border: '1px solid #1e1e1e',
-        borderRadius: 6,
-        padding: '8px 10px',
-        background: '#0e0e0e',
+        border: '1px solid var(--tf-border)',
+        borderRadius: 11,
+        padding: '10px 12px',
+        background: 'var(--tf-pearl)',
       }}
     >
       {employees.map((e) => (
@@ -46,18 +46,13 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            padding: '6px 4px',
+            padding: '8px 4px',
             cursor: 'pointer',
-            fontSize: 13,
-            color: '#bbb',
+            fontSize: 14,
+            color: 'var(--tf-text)',
           }}
         >
-          <input
-            type="checkbox"
-            checked={value.includes(e.id)}
-            onChange={() => toggle(e.id)}
-            style={{ accentColor: '#e4e4e4' }}
-          />
+          <input type="checkbox" checked={value.includes(e.id)} onChange={() => toggle(e.id)} style={{ accentColor: 'var(--color-primary)' }} />
           <span>{e.full_name || e.email}</span>
         </label>
       ))}

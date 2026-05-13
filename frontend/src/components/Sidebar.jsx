@@ -3,80 +3,150 @@ import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, F
 import { useAuth } from '../AuthContext';
 
 const NAV = [
-  { id: 'overview', icon: LayoutDashboard, label: 'Overview'  },
-  { id: 'tasks',    icon: CheckSquare,     label: 'Tasks'     },
-  { id: 'calender', icon: CalendarDays,    label: 'Calender'  },
-  { id: 'projects', icon: FolderKanban,    label: 'Projects'  },
-  { id: 'users',    icon: Users,           label: 'Users'     },
-  { id: 'email',    icon: Mail,            label: 'Reminders' },
+  { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
+  { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'calender', icon: CalendarDays, label: 'Calender' },
+  { id: 'projects', icon: FolderKanban, label: 'Projects' },
+  { id: 'users', icon: Users, label: 'Users' },
+  { id: 'email', icon: Mail, label: 'Reminders' },
 ];
 
 export default function Sidebar({ active, onNav }) {
   const { profile, signOut } = useAuth();
 
   return (
-    <aside style={{
-      width: 210, flexShrink: 0,
-      background: '#0a0a0a',
-      borderRight: '1px solid #1a1a1a',
-      display: 'flex', flexDirection: 'column',
-      height: '100vh', position: 'sticky', top: 0,
-    }}>
-      {/* Logo */}
-      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Zap size={15} color="#e4e4e4" strokeWidth={1.5} />
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#e4e4e4', letterSpacing: '-0.3px' }}>TaskFlow</span>
-        <span style={{ marginLeft: 2, fontSize: 9, fontWeight: 600, color: '#333', letterSpacing: '1px', textTransform: 'uppercase', paddingTop: 1 }}>Admin</span>
+    <aside
+      style={{
+        width: 220,
+        flexShrink: 0,
+        background: 'var(--tf-panel)',
+        borderRight: '1px solid var(--tf-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        position: 'sticky',
+        top: 0,
+      }}
+    >
+      <div
+        style={{
+          padding: '17px 16px',
+          borderBottom: '1px solid var(--tf-border)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <Zap size={16} color="var(--color-primary)" strokeWidth={2} />
+        <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
+          TaskFlow
+        </span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 10,
+            fontWeight: 600,
+            color: 'var(--tf-muted)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Admin
+        </span>
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <nav style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
         {NAV.map(({ id, icon: Icon, label }) => {
           const isActive = active === id;
           return (
-            <button key={id} onClick={() => onNav(id)} style={{
-              display: 'flex', alignItems: 'center', gap: 9,
-              padding: '8px 10px', borderRadius: 5,
-              border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left',
-              background: isActive ? '#151515' : 'transparent',
-              color: isActive ? '#e4e4e4' : '#555',
-              fontSize: 13, fontWeight: isActive ? 500 : 400,
-              fontFamily: 'inherit', transition: 'all 100ms ease',
-              borderLeft: isActive ? '2px solid #e4e4e4' : '2px solid transparent',
-            }}
-            onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.color='#999'; e.currentTarget.style.background='#111'; } }}
-            onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.color='#555'; e.currentTarget.style.background='transparent'; } }}>
-              <Icon size={14} strokeWidth={isActive ? 2 : 1.5} />
+            <button
+              key={id}
+              type="button"
+              onClick={() => onNav(id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 11,
+                border: 'none',
+                cursor: 'pointer',
+                width: '100%',
+                textAlign: 'left',
+                background: isActive ? 'var(--tf-pearl)' : 'transparent',
+                color: isActive ? 'var(--color-primary)' : 'var(--tf-muted)',
+                fontSize: 15,
+                fontWeight: isActive ? 600 : 400,
+                fontFamily: 'inherit',
+                transition: 'color 120ms ease, background 120ms ease',
+                borderLeft: isActive ? '3px solid var(--color-primary)' : '3px solid transparent',
+                paddingLeft: isActive ? 9 : 12,
+              }}
+            >
+              <Icon size={17} strokeWidth={isActive ? 2 : 1.5} />
               {label}
             </button>
           );
         })}
       </nav>
 
-      {/* User */}
-      <div style={{ padding: '10px 8px 14px', borderTop: '1px solid #1a1a1a' }}>
-        <div style={{ padding: '8px 10px', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{ width: 24, height: 24, borderRadius: 4, background: '#1e1e1e', border: '1px solid #2a2a2a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 600, color: '#666', flexShrink: 0 }}>
+      <div style={{ padding: '12px', borderTop: '1px solid var(--tf-border)' }}>
+        <div style={{ padding: '8px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: 'var(--tf-pearl)',
+              border: '1px solid var(--tf-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--tf-text)',
+              flexShrink: 0,
+            }}
+          >
             {(profile?.full_name || 'A')[0].toUpperCase()}
           </div>
-          <div style={{ overflow: 'hidden', flex: 1 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: '#ccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tf-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {profile?.full_name || 'Admin'}
             </div>
-            <div style={{ fontSize: 10, color: '#444', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {profile?.email}
             </div>
           </div>
         </div>
-        <button onClick={signOut} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 10px', width: '100%', border: 'none', cursor: 'pointer',
-          background: 'transparent', color: '#444', fontSize: 12,
-          fontFamily: 'inherit', borderRadius: 5, transition: 'all 100ms ease',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color='#f87171'; e.currentTarget.style.background='rgba(248,113,113,0.05)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.color='#444'; e.currentTarget.style.background='transparent'; }}>
-          <LogOut size={12} /> Sign Out
+        <button
+          type="button"
+          onClick={signOut}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '9px 12px',
+            width: '100%',
+            border: 'none',
+            cursor: 'pointer',
+            borderRadius: 11,
+            background: 'transparent',
+            color: 'var(--tf-muted)',
+            fontSize: 14,
+            fontFamily: 'inherit',
+            transition: 'color 120ms ease, background 120ms ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--status-danger)';
+            e.currentTarget.style.background = 'var(--status-danger-bg)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--tf-muted)';
+            e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          <LogOut size={14} /> Sign Out
         </button>
       </div>
     </aside>

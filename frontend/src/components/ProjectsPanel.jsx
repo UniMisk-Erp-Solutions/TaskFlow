@@ -3,12 +3,12 @@ import { Plus, FolderKanban } from 'lucide-react';
 
 function ProgressBar({ pct }) {
   return (
-    <div style={{ height: 6, background: '#1a1a1a', borderRadius: 3, overflow: 'hidden', marginTop: 8 }}>
+    <div style={{ height: 6, background: 'var(--color-divider-soft)', borderRadius: 3, overflow: 'hidden', marginTop: 8 }}>
       <div
         style={{
           height: '100%',
           width: `${pct}%`,
-          background: 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+          background: 'var(--color-primary)',
           borderRadius: 3,
           transition: 'width 0.3s ease',
         }}
@@ -84,10 +84,10 @@ export default function ProjectsPanel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Projects
           </div>
-          <div style={{ fontSize: 11, color: '#444', marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>
             Group tasks and meetings; track completion progress per project.
           </div>
         </div>
@@ -136,8 +136,8 @@ export default function ProjectsPanel({
 
       {!projects.length ? (
         <div className="empty" style={{ padding: 32 }}>
-          <FolderKanban size={28} color="#333" style={{ marginBottom: 8 }} />
-          <div style={{ fontSize: 13, color: '#555' }}>No projects yet. Create one to organize tasks and meetings.</div>
+          <FolderKanban size={28} color="var(--tf-muted)" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 15, color: 'var(--tf-muted)' }}>No projects yet. Create one to organize tasks and meetings.</div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -148,23 +148,23 @@ export default function ProjectsPanel({
               <div
                 key={p.id}
                 style={{
-                  border: '1px solid #1a1a1a',
-                  borderRadius: 6,
-                  padding: '14px 16px',
-                  background: '#0c0c0c',
+                  border: '1px solid var(--tf-border)',
+                  borderRadius: 18,
+                  padding: '17px 20px',
+                  background: 'var(--tf-panel)',
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#ddd' }}>{p.name}</div>
+                <div style={{ fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.015em' }}>{p.name}</div>
                 {p.description && (
-                  <div style={{ fontSize: 12, color: '#555', marginTop: 4, lineHeight: 1.5 }}>{p.description}</div>
+                  <div style={{ fontSize: 14, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>{p.description}</div>
                 )}
-                <div style={{ marginTop: 10, fontSize: 11, color: '#555' }}>
+                <div style={{ marginTop: 12, fontSize: 13, color: 'var(--tf-muted)' }}>
                   {pr ? (
                     <>
-                      <span style={{ color: '#888' }}>
+                      <span>
                         {pr.completed}/{pr.total} tasks completed
                       </span>
-                      <span style={{ marginLeft: 12, color: '#666' }}>{pct}%</span>
+                      <span style={{ marginLeft: 12 }}>{pct}%</span>
                     </>
                   ) : (
                     <span>Loading progress…</span>

@@ -16,10 +16,10 @@ export default function FilterBar({
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-        <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#444', pointerEvents: 'none' }} />
+        <Search size={17} strokeWidth={2} style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', color: 'var(--tf-muted)', pointerEvents: 'none' }} />
         <input
           className="input"
-          style={{ paddingLeft: 32 }}
+          style={{ paddingLeft: 48 }}
           placeholder={searchPlaceholder}
           value={filters.search}
           onChange={(e) => onChange({ ...filters, search: e.target.value })}

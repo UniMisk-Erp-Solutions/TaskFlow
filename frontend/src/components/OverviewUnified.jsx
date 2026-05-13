@@ -38,9 +38,9 @@ function Th({ label, sortKey, sort, onSort }) {
           alignItems: 'center',
           gap: 4,
           fontSize: 11,
-          fontWeight: 500,
-          color: active ? '#999' : '#444',
-          letterSpacing: '0.3px',
+          fontWeight: 600,
+          color: active ? 'var(--tf-text)' : 'var(--tf-muted)',
+          letterSpacing: '0.06em',
           textTransform: 'uppercase',
         }}
       >
@@ -162,7 +162,7 @@ export default function OverviewUnified({
   if (!sorted.length) {
     return (
       <div className="empty">
-        <div style={{ fontSize: 13, color: '#444' }}>No tasks or meetings match your filters.</div>
+        <div style={{ fontSize: 15, color: 'var(--tf-subhead)' }}>No tasks or meetings match your filters.</div>
       </div>
     );
   }
@@ -170,8 +170,8 @@ export default function OverviewUnified({
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead style={{ background: '#0c0c0c' }}>
-          <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
+        <thead style={{ background: 'var(--tf-pearl)' }}>
+          <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Type" sortKey="kind" sort={sort} onSort={handleSort} />
             <Th label="Title" sortKey="title" sort={sort} onSort={handleSort} />
             <Th label="Project" sortKey="project_name" sort={sort} onSort={handleSort} />
@@ -186,9 +186,9 @@ export default function OverviewUnified({
           {sorted.map((row) => (
             <tr
               key={`${row.kind}-${row.id}`}
-              style={{ borderBottom: '1px solid #191919' }}
+              style={{ borderBottom: '1px solid var(--color-divider-soft)' }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#0f0f0f';
+                e.currentTarget.style.background = 'var(--tf-pearl)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
@@ -200,7 +200,7 @@ export default function OverviewUnified({
                     fontSize: 10,
                     fontWeight: 600,
                     textTransform: 'uppercase',
-                    color: row.kind === 'task' ? '#818cf8' : '#34d399',
+                    color: row.kind === 'task' ? 'var(--color-primary)' : 'var(--status-success)',
                     letterSpacing: '0.5px',
                   }}
                 >
@@ -216,12 +216,12 @@ export default function OverviewUnified({
                 onClick={() => (onOpenTaskDetail || onOpenMeetingDetail) && openRowDetail(row)}
                 title={onOpenTaskDetail || onOpenMeetingDetail ? 'View details' : undefined}
               >
-                <div style={{ fontWeight: 500, color: '#ddd', fontSize: 13 }}>{row.title}</div>
+                <div style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: 15 }}>{row.title}</div>
                 {row.description && (
                   <div
                     style={{
-                      fontSize: 11,
-                      color: '#444',
+                      fontSize: 13,
+                      color: 'var(--tf-muted)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -231,8 +231,8 @@ export default function OverviewUnified({
                   </div>
                 )}
               </td>
-              <td style={{ padding: '11px 14px', fontSize: 12, color: '#666' }}>{row.project_name || '—'}</td>
-              <td style={{ padding: '11px 14px', fontSize: 11, color: '#888', maxWidth: 160 }}>
+              <td style={{ padding: '11px 14px', fontSize: 14, color: 'var(--tf-muted)' }}>{row.project_name || '—'}</td>
+              <td style={{ padding: '11px 14px', fontSize: 13, color: 'var(--tf-muted)', maxWidth: 160 }}>
                 {assigneeLabel(row, profileById)}
               </td>
               <td style={{ padding: '11px 14px' }}>
@@ -241,20 +241,11 @@ export default function OverviewUnified({
               <td style={{ padding: '11px 14px' }}>
                 {row.kind === 'task' ? (
                   <select
+                    className="tf-select-inline"
                     value={row.status}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateTaskStatus(row.id, e.target.value)}
-                    style={{
-                      background: '#111',
-                      border: '1px solid #222',
-                      color: '#bbb',
-                      borderRadius: 4,
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      width: 120,
-                    }}
+                    style={{ width: 132 }}
                   >
                     {['pending', 'in_progress', 'completed', 'blocked'].map((s) => (
                       <option key={s} value={s}>
@@ -264,20 +255,11 @@ export default function OverviewUnified({
                   </select>
                 ) : (
                   <select
+                    className="tf-select-inline"
                     value={row.status}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateMeetingStatus(row.id, e.target.value)}
-                    style={{
-                      background: '#111',
-                      border: '1px solid #222',
-                      color: '#bbb',
-                      borderRadius: 4,
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      fontFamily: 'inherit',
-                      cursor: 'pointer',
-                      width: 120,
-                    }}
+                    style={{ width: 132 }}
                   >
                     {['scheduled', 'completed', 'cancelled'].map((s) => (
                       <option key={s} value={s}>
@@ -289,18 +271,18 @@ export default function OverviewUnified({
               </td>
               <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                 {row.kind === 'task' ? (
-                  <span style={{ fontSize: 12, color: row.overdue ? '#f87171' : '#555' }}>
+                  <span style={{ fontSize: 13, color: row.overdue ? 'var(--status-danger)' : 'var(--tf-muted)' }}>
                     {fmt(row.due_date)}
                     {row.overdue && (
-                      <div style={{ fontSize: 10, color: '#f87171', marginTop: 2 }}>Overdue</div>
+                      <div style={{ fontSize: 11, color: 'var(--status-danger)', marginTop: 2, fontWeight: 600 }}>Overdue</div>
                     )}
                   </span>
                 ) : (
-                  <span style={{ fontSize: 12, color: row.overdue ? '#f87171' : '#555' }}>
+                  <span style={{ fontSize: 13, color: row.overdue ? 'var(--status-danger)' : 'var(--tf-muted)' }}>
                     {fmt(row.meeting_date)}
-                    <div style={{ fontSize: 11, color: '#777', marginTop: 2 }}>{fmtTime(row.meeting_time)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--tf-muted)', marginTop: 2 }}>{fmtTime(row.meeting_time)}</div>
                     {row.overdue && (
-                      <div style={{ fontSize: 10, color: '#f87171', marginTop: 2 }}>Overdue</div>
+                      <div style={{ fontSize: 11, color: 'var(--status-danger)', marginTop: 2, fontWeight: 600 }}>Overdue</div>
                     )}
                   </span>
                 )}
@@ -318,8 +300,8 @@ export default function OverviewUnified({
                     border: '1px solid transparent',
                     borderRadius: 4,
                     cursor: 'pointer',
-                    padding: '5px 6px',
-                    color: '#444',
+                    padding: '8px',
+                    color: 'var(--tf-muted)',
                   }}
                 >
                   {deletingId === `${row.kind}:${row.id}` ? (

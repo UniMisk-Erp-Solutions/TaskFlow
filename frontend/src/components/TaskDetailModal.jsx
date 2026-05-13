@@ -127,7 +127,7 @@ export default function TaskDetailModal({
       <div className="modal" style={{ maxWidth: 520, width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Task</h2>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555', display: 'flex', padding: 4 }}>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tf-muted)', display: 'flex', padding: 4 }}>
             <X size={16} />
           </button>
         </div>
@@ -141,27 +141,27 @@ export default function TaskDetailModal({
         {!loading && record && !isAdmin && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#e5e5e5', lineHeight: 1.4 }}>{record.title}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tf-text)', lineHeight: 1.4 }}>{record.title}</div>
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Description</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{record.description || '—'}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Description</div>
+              <div style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{record.description || '—'}</div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', borderTop: '1px solid #1a1a1a', paddingTop: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', borderTop: '1px solid var(--tf-border)', paddingTop: 14 }}>
               <StatusBadge status={record.status} />
               <PriorityBadge priority={record.priority} />
-              <span style={{ fontSize: 12, color: '#666' }}>Due {fmtDue(record.due_date)}</span>
+              <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>Due {fmtDue(record.due_date)}</span>
             </div>
-            <div style={{ fontSize: 12, color: '#666' }}>
-              <span style={{ color: '#555' }}>Project · </span>
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+              <span style={{ color: 'var(--tf-muted)' }}>Project · </span>
               {record.project_name || '—'}
             </div>
-            <div style={{ fontSize: 12, color: '#666' }}>
-              <span style={{ color: '#555' }}>Assignees · </span>
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+              <span style={{ color: 'var(--tf-muted)' }}>Assignees · </span>
               {assigneeNames(record, profileById)}
             </div>
-            <p style={{ fontSize: 11, color: '#444', margin: '8px 0 0' }}>Only admins can edit task details.</p>
+            <p style={{ fontSize: 11, color: 'var(--tf-subhead)', margin: '8px 0 0' }}>Only admins can edit task details.</p>
           </div>
         )}
 

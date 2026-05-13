@@ -99,13 +99,13 @@ export default function CalenderView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ border: '1px solid #1a1a1a', borderRadius: 8, background: '#0c0c0c', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>
               <ChevronLeft size={14} />
             </button>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#ddd', minWidth: 170 }}>{prettyMonth(currentMonth)}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tf-text)', minWidth: 170 }}>{prettyMonth(currentMonth)}</div>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>
               <ChevronRight size={14} />
             </button>
@@ -137,20 +137,20 @@ export default function CalenderView({
           </div>
         </div>
 
-        <div style={{ padding: '10px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#9ca3af' }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#3b82f6', display: 'inline-block' }} />
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--tf-muted)' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--color-primary)', display: 'inline-block' }} />
             Tasks ({monthTaskCount})
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#9ca3af' }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: '#22c55e', display: 'inline-block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--tf-muted)' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--status-success)', display: 'inline-block' }} />
             Meetings ({monthMeetingCount})
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #1a1a1a' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--tf-border)' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-            <div key={d} style={{ padding: '8px 10px', fontSize: 11, color: '#666', textTransform: 'uppercase', letterSpacing: '0.3px', textAlign: 'center' }}>
+            <div key={d} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px', textAlign: 'center' }}>
               {d}
             </div>
           ))}
@@ -164,8 +164,8 @@ export default function CalenderView({
             const isToday = date === today;
 
             return (
-              <div key={date} style={{ minHeight: 110, borderRight: '1px solid #161616', borderBottom: '1px solid #161616', padding: 8, background: inMonth ? '#0c0c0c' : '#0a0a0a' }}>
-                <div style={{ fontSize: 12, color: isToday ? '#e5e7eb' : inMonth ? '#777' : '#444', marginBottom: 6, fontWeight: isToday ? 600 : 400 }}>
+              <div key={date} style={{ minHeight: 110, borderRight: '1px solid var(--color-divider-soft)', borderBottom: '1px solid var(--color-divider-soft)', padding: 8, background: inMonth ? 'var(--tf-panel)' : 'var(--tf-pearl)' }}>
+                <div style={{ fontSize: 12, color: isToday ? 'var(--tf-text)' : inMonth ? 'var(--tf-muted)' : 'var(--tf-muted)', marginBottom: 6, fontWeight: isToday ? 600 : 400 }}>
                   {day.getDate()}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -178,7 +178,7 @@ export default function CalenderView({
                         borderRadius: 5,
                         padding: '3px 6px',
                         background: e.type === 'task' ? 'rgba(59,130,246,0.2)' : 'rgba(34,197,94,0.2)',
-                        color: e.type === 'task' ? '#93c5fd' : '#86efac',
+                        color: e.type === 'task' ? 'var(--color-primary-on-dark)' : 'var(--status-success)',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -188,7 +188,7 @@ export default function CalenderView({
                     </div>
                   ))}
                   {dayEvents.length > 3 && (
-                    <span style={{ fontSize: 10, color: '#555' }}>+{dayEvents.length - 3} more</span>
+                    <span style={{ fontSize: 11, color: 'var(--tf-muted)' }}>+{dayEvents.length - 3} more</span>
                   )}
                 </div>
               </div>

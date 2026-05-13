@@ -6,7 +6,7 @@ function UsersTable({ users }) {
   if (!users.length) {
     return (
       <div className="empty">
-        <div style={{ fontSize: 13, color: '#444' }}>No users yet. Click “Add User” to invite your first employee.</div>
+        <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No users yet. Click “Add User” to invite your first employee.</div>
       </div>
     );
   }
@@ -14,27 +14,27 @@ function UsersTable({ users }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead style={{ background: '#0c0c0c' }}>
-          <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
-            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Name</th>
-            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Email</th>
-            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Role</th>
-            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: '#444', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Created</th>
+        <thead style={{ background: 'var(--tf-panel)' }}>
+          <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
+            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Name</th>
+            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Email</th>
+            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Role</th>
+            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Created</th>
           </tr>
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.id} style={{ borderBottom: '1px solid #191919' }}>
-              <td style={{ padding: '9px 14px', fontSize: 13, color: '#ddd' }}>
+            <tr key={u.id} style={{ borderBottom: '1px solid var(--tf-border)' }}>
+              <td style={{ padding: '9px 14px', fontSize: 13, color: 'var(--tf-text)' }}>
                 {u.full_name || '—'}
               </td>
-              <td style={{ padding: '9px 14px', fontSize: 12, color: '#aaa' }}>
+              <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
                 {u.email}
               </td>
-              <td style={{ padding: '9px 14px', fontSize: 12, color: '#bbb', textTransform: 'capitalize' }}>
+              <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)', textTransform: 'capitalize' }}>
                 {u.role}
               </td>
-              <td style={{ padding: '9px 14px', fontSize: 12, color: '#555' }}>
+              <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
                 {u.created_at
                   ? new Date(u.created_at).toLocaleDateString('en-US', {
                       month: 'short',
@@ -110,7 +110,7 @@ function AddUserModal({ open, onClose, onCreated }) {
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: '#555',
+              color: 'var(--color-ink-muted-48)',
               fontSize: 20,
               lineHeight: 1,
             }}
@@ -163,7 +163,7 @@ function AddUserModal({ open, onClose, onCreated }) {
               <option value="employee">Employee — tasks & meetings only</option>
               <option value="admin">Admin — full workspace + admin panel</option>
             </select>
-            <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
               Admins you add can sign in at the same login URL and open the admin dashboard.
             </div>
           </div>
@@ -222,11 +222,11 @@ export default function UserManagement() {
   }, []);
 
   return (
-    <div style={{ border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', background: '#0c0c0c' }}>
+    <div style={{ border: '1px solid var(--tf-border)', borderRadius: 6, overflow: 'hidden', background: 'var(--tf-panel)' }}>
       <div
         style={{
           padding: '13px 16px',
-          borderBottom: '1px solid #1a1a1a',
+          borderBottom: '1px solid var(--tf-border)',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -239,14 +239,14 @@ export default function UserManagement() {
             style={{
               fontSize: 12,
               fontWeight: 600,
-              color: '#666',
+              color: 'var(--tf-muted)',
               letterSpacing: '0.3px',
               textTransform: 'uppercase',
             }}
           >
             Users
           </span>
-          <div style={{ fontSize: 11, color: '#444', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 2 }}>
             Manage employees in your workspace
           </div>
         </div>
@@ -265,7 +265,7 @@ export default function UserManagement() {
       </div>
 
       {error && (
-        <div style={{ padding: '10px 16px', fontSize: 12, color: '#f87171', borderBottom: '1px solid #1a1a1a' }}>
+        <div style={{ padding: '10px 16px', fontSize: 12, color: 'var(--status-danger)', borderBottom: '1px solid var(--tf-border)' }}>
           {error}
         </div>
       )}

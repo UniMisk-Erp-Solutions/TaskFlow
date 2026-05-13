@@ -17,13 +17,13 @@ function ProfileLoadError() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#080808',
+        background: 'var(--tf-page)',
         padding: 24,
         textAlign: 'center',
         gap: 14,
       }}
     >
-      <p style={{ fontSize: 14, color: '#bbb', maxWidth: 380, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 17, color: 'var(--tf-muted)', maxWidth: 420, lineHeight: 1.47 }}>
         You are signed in, but your workspace profile could not be loaded. This is usually a wrong API URL in the
         build or a network issue.
       </p>
@@ -88,7 +88,7 @@ function ProtectedEmployee({ children }) {
 
 function FullLoader() {
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080808' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--tf-page)' }}>
       <div className="spinner" style={{ width: 22, height: 22 }} />
     </div>
   );

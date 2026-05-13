@@ -16,8 +16,11 @@ export default function TaskCard({ task, onUpdateStatus, onOpenDetail }) {
 
   async function handleStatus(e) {
     setUpdating(true);
-    try { await onUpdateStatus(task.id, e.target.value); }
-    finally { setUpdating(false); }
+    try {
+      await onUpdateStatus(task.id, e.target.value);
+    } finally {
+      setUpdating(false);
+    }
   }
 
   return (
@@ -37,54 +40,55 @@ export default function TaskCard({ task, onUpdateStatus, onOpenDetail }) {
         onOpenDetail();
       }}
       style={{
-        background: '#111',
-        border: `1px solid ${overdue ? 'rgba(248,113,113,0.2)' : '#1e1e1e'}`,
-        borderRadius: 6,
-        padding: '16px',
+        background: 'var(--tf-panel)',
+        border: `1px solid ${overdue ? 'rgba(196,30,58,0.35)' : 'var(--tf-border)'}`,
+        borderRadius: 18,
+        padding: 18,
         display: 'flex',
         flexDirection: 'column',
-        gap: 12,
+        gap: 14,
         cursor: onOpenDetail ? 'pointer' : 'default',
         outline: 'none',
       }}
     >
-      {/* Title + priority */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 500, fontSize: 13, color: '#ddd', lineHeight: 1.4 }}>{task.title}</div>
+          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--tf-text)', lineHeight: 1.35, letterSpacing: '-0.015em' }}>{task.title}</div>
           {task.project_name && (
-            <div style={{ fontSize: 10, color: '#555', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Project · {task.project_name}
             </div>
           )}
           {task.description && (
-            <div style={{ fontSize: 12, color: '#444', marginTop: 4, lineHeight: 1.5 }}>{task.description}</div>
+            <div style={{ fontSize: 14, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>{task.description}</div>
           )}
         </div>
         <PriorityBadge priority={task.priority} />
       </div>
 
-      {/* Status + due */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <StatusBadge status={task.status} />
         {task.due_date && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: overdue ? '#f87171' : '#444' }}>
-            <Calendar size={11} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontSize: 13,
+              color: overdue ? 'var(--status-danger)' : 'var(--tf-muted)',
+            }}
+          >
+            <Calendar size={14} strokeWidth={2} />
             {overdue && <span style={{ fontWeight: 600 }}>Overdue · </span>}
             {fmt(task.due_date)}
           </div>
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid #1a1a1a', paddingTop: 12 }}>
-        <select value={task.status} onChange={handleStatus} disabled={updating}
-          style={{
-            width: '100%', background: '#0e0e0e', border: '1px solid #222',
-            color: '#888', borderRadius: 4, padding: '6px 10px', fontSize: 12,
-            fontFamily: 'inherit', cursor: 'pointer', outline: 'none',
-          }}>
+      <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14 }}>
+        <select className="tf-select-inline" value={task.status} onChange={handleStatus} disabled={updating} style={{ width: '100%' }}>
           {STATUSES.map((s) => (
-            <option key={s} value={s} style={{ background: '#191919' }}>
+            <option key={s} value={s}>
               {s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
             </option>
           ))}

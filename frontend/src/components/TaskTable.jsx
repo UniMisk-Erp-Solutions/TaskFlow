@@ -24,7 +24,7 @@ function Th({ label, sortKey, sort, onSort }) {
   return (
     <th style={{ padding: '9px 14px', textAlign: 'left', cursor: sortKey ? 'pointer' : 'default', userSelect: 'none' }}
       onClick={() => sortKey && onSort(sortKey)}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, color: active ? '#999' : '#444', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: active ? 'var(--tf-text)' : 'var(--tf-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         {label}
         {sortKey && (active
           ? (sort.dir === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />)
@@ -60,7 +60,7 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
   if (!tasks.length) {
     return (
       <div className="empty">
-        <div style={{ fontSize: 13, color: '#444' }}>No tasks found</div>
+        <div style={{ fontSize: 15, color: 'var(--tf-subhead)' }}>No tasks found</div>
       </div>
     );
   }
@@ -68,8 +68,8 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead style={{ background: '#0c0c0c' }}>
-          <tr style={{ borderBottom: '1px solid #1e1e1e' }}>
+        <thead style={{ background: 'var(--tf-pearl)' }}>
+          <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Title"    sortKey="title"    sort={sort} onSort={handleSort} />
             {profileById && <Th label="Project" sortKey="project_name" sort={sort} onSort={handleSort} />}
             {profileById && <Th label="Assignees" sortKey={null} sort={sort} onSort={handleSort} />}
@@ -84,32 +84,36 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
             const overdue = isOverdue(task.due_date, task.status);
             return (
               <tr key={task.id}
-                style={{ borderBottom: '1px solid #191919', transition: 'background 80ms ease' }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#0f0f0f'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                style={{ borderBottom: '1px solid var(--color-divider-soft)', transition: 'background 80ms ease' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--tf-pearl)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                }}>
 
                 <td
                   style={{ padding: '11px 14px', maxWidth: 300, cursor: onOpenTask ? 'pointer' : 'default' }}
                   onClick={() => onOpenTask?.(task)}
                   title={onOpenTask ? 'View details' : undefined}
                 >
-                  <div style={{ fontWeight: 500, color: '#ddd', fontSize: 13, marginBottom: task.description ? 2 : 0 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: 15, marginBottom: task.description ? 2 : 0 }}>
                     {task.title}
                   </div>
                   {task.description && (
-                    <div style={{ fontSize: 11, color: '#444', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
+                    <div style={{ fontSize: 13, color: 'var(--tf-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
                       {task.description}
                     </div>
                   )}
                 </td>
 
                 {profileById && (
-                  <td style={{ padding: '11px 14px', fontSize: 11, color: '#666', maxWidth: 120 }}>
+                  <td style={{ padding: '11px 14px', fontSize: 13, color: 'var(--tf-muted)', maxWidth: 120 }}>
                     {task.project_name || '—'}
                   </td>
                 )}
                 {profileById && (
-                  <td style={{ padding: '11px 14px', fontSize: 11, color: '#888', maxWidth: 140 }}>
+                  <td style={{ padding: '11px 14px', fontSize: 13, color: 'var(--tf-muted)', maxWidth: 140 }}>
                     {formatAssignees(task, profileById)}
                   </td>
                 )}
@@ -120,17 +124,14 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
 
                 <td style={{ padding: '11px 14px' }}>
                   <select
+                    className="tf-select-inline"
                     value={task.status}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => onUpdateStatus(task.id, e.target.value)}
-                    style={{
-                      background: '#111', border: '1px solid #222', color: '#bbb',
-                      borderRadius: 4, padding: '4px 8px', fontSize: 12,
-                      fontFamily: 'inherit', cursor: 'pointer', outline: 'none',
-                      width: 128,
-                    }}>
+                    style={{ width: 140 }}
+                  >
                     {STATUSES.map((s) => (
-                      <option key={s} value={s} style={{ background: '#191919' }}>
+                      <option key={s} value={s}>
                         {s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                       </option>
                     ))}
@@ -138,21 +139,33 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                 </td>
 
                 <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: 12, color: overdue ? '#f87171' : '#555' }}>
+                  <span style={{ fontSize: 14, color: overdue ? 'var(--status-danger)' : 'var(--tf-muted)' }}>
                     {fmt(task.due_date)}
                   </span>
-                  {overdue && <div style={{ fontSize: 10, color: '#f87171', marginTop: 2, fontWeight: 500 }}>Overdue</div>}
+                  {overdue && <div style={{ fontSize: 11, color: 'var(--status-danger)', marginTop: 2, fontWeight: 600 }}>Overdue</div>}
                 </td>
 
                 <td style={{ padding: '11px 14px' }}>
                   <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} disabled={deletingId === task.id}
                     style={{
                       background: 'none', border: '1px solid transparent', borderRadius: 4,
-                      cursor: 'pointer', padding: '5px 6px', color: '#444',
-                      display: 'flex', alignItems: 'center', transition: 'all 100ms ease',
+                      cursor: 'pointer',
+                      padding: '8px',
+                      color: 'var(--tf-muted)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      transition: 'all 100ms ease',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color='#f87171'; e.currentTarget.style.borderColor='rgba(248,113,113,0.2)'; e.currentTarget.style.background='rgba(248,113,113,0.05)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color='#444'; e.currentTarget.style.borderColor='transparent'; e.currentTarget.style.background='none'; }}>
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = 'var(--status-danger)';
+                      e.currentTarget.style.borderColor = 'rgba(196,30,58,0.25)';
+                      e.currentTarget.style.background = 'var(--status-danger-bg)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = 'var(--tf-muted)';
+                      e.currentTarget.style.borderColor = 'transparent';
+                      e.currentTarget.style.background = 'none';
+                    }}>
                     {deletingId === task.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={13} />}
                   </button>
                 </td>

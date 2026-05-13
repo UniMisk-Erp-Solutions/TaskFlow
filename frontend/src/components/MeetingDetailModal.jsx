@@ -148,7 +148,7 @@ export default function MeetingDetailModal({
       <div className="modal" style={{ maxWidth: 520, width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Meeting</h2>
-          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#555', display: 'flex', padding: 4 }}>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', display: 'flex', padding: 4 }}>
             <X size={16} />
           </button>
         </div>
@@ -162,29 +162,29 @@ export default function MeetingDetailModal({
         {!loading && record && !isAdmin && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: '#e5e5e5', lineHeight: 1.4 }}>{record.title}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-ink-muted-48)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-ink)', lineHeight: 1.4 }}>{record.title}</div>
             </div>
             <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Description</div>
-              <div style={{ fontSize: 13, color: '#888', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{record.description || '—'}</div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-ink-muted-48)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Description</div>
+              <div style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{record.description || '—'}</div>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', borderTop: '1px solid #1a1a1a', paddingTop: 14 }}>
-              <span style={{ fontSize: 12, color: '#aaa' }}>{statusLabel(record.status)}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', borderTop: '1px solid var(--tf-border)', paddingTop: 14 }}>
+              <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>{statusLabel(record.status)}</span>
               <PriorityBadge priority={record.priority} />
-              <span style={{ fontSize: 12, color: '#666' }}>
+              <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
                 {fmtDate(record.meeting_date)} · {fmtTime(record.meeting_time)}
               </span>
             </div>
-            <div style={{ fontSize: 12, color: '#666' }}>
-              <span style={{ color: '#555' }}>Project · </span>
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+              <span style={{ color: 'var(--color-ink-muted-48)' }}>Project · </span>
               {record.project_name || '—'}
             </div>
-            <div style={{ fontSize: 12, color: '#666' }}>
-              <span style={{ color: '#555' }}>Assignees · </span>
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+              <span style={{ color: 'var(--color-ink-muted-48)' }}>Assignees · </span>
               {assigneeNames(record, profileById)}
             </div>
-            <p style={{ fontSize: 11, color: '#444', margin: '8px 0 0' }}>Only admins can edit meeting details.</p>
+            <p style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '8px 0 0' }}>Only admins can edit meeting details.</p>
           </div>
         )}
 
@@ -209,12 +209,12 @@ export default function MeetingDetailModal({
               </div>
               <div className="form-group">
                 <label className="form-label">Meeting date</label>
-                <input className="input" type="date" style={{ colorScheme: 'dark' }} value={draft.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
+                <input className="input" type="date" style={{ colorScheme: 'light' }} value={draft.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
               </div>
             </div>
             <div className="form-group">
               <label className="form-label">Meeting time</label>
-              <input className="input" type="time" style={{ colorScheme: 'dark' }} value={draft.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
+              <input className="input" type="time" style={{ colorScheme: 'light' }} value={draft.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Project</label>

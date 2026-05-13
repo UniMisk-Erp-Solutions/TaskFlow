@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, CheckSquare, Bell, Users, ArrowRight, Menu, X } from 'lucide-react';
+import { Zap, CheckSquare, Bell, Users, ArrowRight } from 'lucide-react';
 
 const NAV_LINKS = [
   { label: 'Features', href: '#features' },
@@ -31,111 +31,203 @@ const FEATURES = [
 ];
 
 const S = {
-  page: { background: '#080808', minHeight: '100vh', color: '#e4e4e4', fontFamily: "'Inter', -apple-system, sans-serif" },
+  page: { background: 'var(--color-canvas-parchment)', minHeight: '100vh', color: 'var(--tf-text)', fontFamily: 'var(--font-ui)' },
 
-  // Header
   header: (scrolled) => ({
-    position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-    height: 56, display: 'flex', alignItems: 'center',
-    padding: '0 32px', justifyContent: 'space-between',
-    background: scrolled ? 'rgba(8,8,8,0.95)' : 'transparent',
-    borderBottom: scrolled ? '1px solid #1e1e1e' : '1px solid transparent',
-    backdropFilter: scrolled ? 'blur(12px)' : 'none',
-    transition: 'all 200ms ease',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    height: 44,
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 22px',
+    justifyContent: 'space-between',
+    background: scrolled ? 'var(--tf-nav)' : 'var(--tf-nav)',
+    borderBottom: scrolled ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent',
+    transition: 'border-color 200ms ease',
   }),
   logo: { display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' },
-  logoText: { fontSize: 15, fontWeight: 700, color: '#e4e4e4', letterSpacing: '-0.3px' },
-  nav: { display: 'flex', alignItems: 'center', gap: 28 },
-  navLink: { fontSize: 13, color: '#666', textDecoration: 'none', transition: 'color 100ms ease' },
+  logoText: { fontSize: 17, fontWeight: 600, color: 'var(--color-body-on-dark)', letterSpacing: '-0.022em', fontFamily: 'var(--font-display)' },
+  nav: { display: 'flex', alignItems: 'center', gap: 24 },
+  navLink: { fontSize: 12, fontWeight: 400, letterSpacing: '-0.01em', color: 'rgba(255,255,255,0.65)', textDecoration: 'none', transition: 'color 120ms ease' },
   headerActions: { display: 'flex', alignItems: 'center', gap: 10 },
 
-  // Hero
   hero: {
-    minHeight: '92vh', display: 'flex', flexDirection: 'column',
-    alignItems: 'center', justifyContent: 'center',
-    textAlign: 'center', padding: '80px 24px 60px',
-    borderBottom: '1px solid #1e1e1e',
+    minHeight: '88vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center',
+    padding: '96px 24px 72px',
+    paddingTop: 120,
+    background: 'var(--color-canvas)',
   },
   heroTag: {
-    fontSize: 10, fontWeight: 600, letterSpacing: '2px',
-    color: '#444', textTransform: 'uppercase', marginBottom: 28,
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.14em',
+    color: 'var(--tf-muted)',
+    textTransform: 'uppercase',
+    marginBottom: 20,
   },
   heroH1: {
-    fontSize: 'clamp(42px, 6vw, 72px)',
-    fontWeight: 500, letterSpacing: '-2.5px',
-    lineHeight: 1.05, maxWidth: 760, marginBottom: 24,
-    color: '#e8e8e8',
+    fontSize: 'clamp(36px, 5.5vw, 56px)',
+    fontFamily: 'var(--font-display)',
+    fontWeight: 600,
+    letterSpacing: '-0.028px',
+    lineHeight: 1.07,
+    maxWidth: 720,
+    marginBottom: 20,
+    color: 'var(--tf-text)',
   },
   heroSub: {
-    fontSize: 17, fontWeight: 400, color: '#555',
-    maxWidth: 440, lineHeight: 1.7, marginBottom: 40,
+    fontSize: 19,
+    fontWeight: 300,
+    color: 'var(--tf-muted)',
+    maxWidth: 460,
+    lineHeight: 1.5,
+    marginBottom: 36,
   },
-  heroActions: { display: 'flex', gap: 10, alignItems: 'center' },
+  heroActions: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' },
 
-  // Section
-  section: { maxWidth: 1000, margin: '0 auto', padding: '80px 32px' },
+  section: { maxWidth: 1060, margin: '0 auto', padding: '72px 32px' },
   sectionLabel: {
-    fontSize: 10, fontWeight: 600, letterSpacing: '2.5px',
-    color: '#444', textTransform: 'uppercase', marginBottom: 16,
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.08em',
+    color: 'var(--color-primary-on-dark)',
+    textTransform: 'uppercase',
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 'clamp(24px, 3vw, 36px)',
-    fontWeight: 500, letterSpacing: '-1px',
-    color: '#e8e8e8', marginBottom: 56,
-    maxWidth: 480,
+    fontSize: 'clamp(28px, 3.2vw, 40px)',
+    fontFamily: 'var(--font-display)',
+    fontWeight: 600,
+    letterSpacing: '-0.015em',
+    lineHeight: 1.1,
+    color: 'var(--color-body-on-dark)',
+    marginBottom: 40,
+    maxWidth: 520,
   },
 
-  // Features grid
   featuresGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-    gap: 1, border: '1px solid #1e1e1e', borderRadius: 8, overflow: 'hidden',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: 20,
   },
   featureCell: {
-    padding: '28px 24px', background: '#0e0e0e',
-    borderRight: '1px solid #1e1e1e', borderBottom: '1px solid #1e1e1e',
+    padding: 24,
+    background: 'var(--color-surface-tile-2)',
+    borderRadius: 0,
+    border: 'none',
   },
   featureIcon: {
-    width: 32, height: 32, borderRadius: 6,
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid #1e1e1e',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: '50%',
+    background: 'var(--color-surface-chip)',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 14,
   },
-  featureTitle: { fontSize: 14, fontWeight: 600, color: '#e4e4e4', marginBottom: 8 },
-  featureDesc: { fontSize: 13, color: '#555', lineHeight: 1.7 },
+  featureTitle: { fontSize: 19, fontWeight: 600, color: 'var(--color-body-on-dark)', marginBottom: 8, letterSpacing: '-0.015em', fontFamily: 'var(--font-display)' },
+  featureDesc: { fontSize: 15, color: 'var(--color-body-muted-dark)', lineHeight: 1.5, fontWeight: 400 },
 
-  // About
+  aboutSection: {
+    background: 'var(--color-canvas)',
+    borderTop: 'none',
+    borderBottom: 'none',
+  },
   aboutGrid: {
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60,
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 56,
     alignItems: 'start',
-    borderTop: '1px solid #1e1e1e', paddingTop: 80,
   },
-  aboutBody: { fontSize: 14, color: '#555', lineHeight: 1.9, marginTop: 16 },
+  sectionTitleInk: {
+    fontSize: 'clamp(28px, 3.2vw, 40px)',
+    fontFamily: 'var(--font-display)',
+    fontWeight: 600,
+    letterSpacing: '-0.015em',
+    lineHeight: 1.1,
+    color: 'var(--tf-text)',
+    marginBottom: 40,
+    maxWidth: 480,
+  },
+  sectionLabelInk: {
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: 'var(--tf-muted)',
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  aboutBody: { fontSize: 17, color: 'var(--tf-muted)', lineHeight: 1.47, marginTop: 8 },
 
-  // Footer
   footer: {
-    borderTop: '1px solid #1e1e1e',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-    padding: '22px 32px', maxWidth: '100%',
+    background: 'var(--color-canvas-parchment)',
+    borderTop: '1px solid var(--tf-border)',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '32px',
+    flexWrap: 'wrap',
+    gap: 12,
+    maxWidth: '100%',
   },
-  footerLogo: { fontSize: 13, fontWeight: 600, color: '#444' },
-  footerRight: { fontSize: 12, color: '#333' },
+  footerLogo: { fontSize: 13, fontWeight: 600, color: 'var(--tf-subhead)' },
+  footerRight: { fontSize: 12, color: 'var(--tf-muted)' },
 
-  // Buttons
-  btnWhite: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '9px 18px', background: '#e4e4e4', color: '#080808',
-    border: '1px solid #e4e4e4', borderRadius: 4,
-    fontSize: 13, fontWeight: 500, cursor: 'pointer',
-    fontFamily: 'inherit', transition: 'background 100ms ease',
+  btnPrimary: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '14px 28px',
+    background: 'var(--color-primary)',
+    color: 'var(--color-on-primary)',
+    border: `1px solid var(--color-primary)`,
+    borderRadius: 9999,
+    fontSize: 18,
+    fontWeight: 300,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'transform 120ms ease, background 120ms ease',
     textDecoration: 'none',
   },
   btnGhost: {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '9px 18px', background: 'transparent', color: '#666',
-    border: '1px solid #2a2a2a', borderRadius: 4,
-    fontSize: 13, fontWeight: 500, cursor: 'pointer',
-    fontFamily: 'inherit', transition: 'all 100ms ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '11px 22px',
+    background: 'var(--tf-panel)',
+    color: 'var(--color-primary)',
+    border: '1px solid var(--color-primary)',
+    borderRadius: 9999,
+    fontSize: 17,
+    fontWeight: 400,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'transform 120ms ease, background 120ms ease',
+    textDecoration: 'none',
+  },
+  btnHeaderGhost: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 14px',
+    background: 'var(--color-ink)',
+    color: 'var(--color-body-on-dark)',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 400,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
     textDecoration: 'none',
   },
 };
@@ -156,20 +248,28 @@ export default function Landing() {
 
   return (
     <div style={S.page}>
-      {/* Header */}
       <header style={S.header(scrolled)}>
         <a href="/" style={S.logo}>
-          <Zap size={16} color="#e4e4e4" strokeWidth={1.5} />
+          <Zap size={18} color="#ffffff" strokeWidth={2} />
           <span style={S.logoText}>TaskFlow</span>
         </a>
 
         <nav style={S.nav}>
           {NAV_LINKS.map((l) => (
             <a
-              key={l.label} href={l.href} style={S.navLink}
-              onClick={(e) => { e.preventDefault(); scrollTo(l.href); }}
-              onMouseEnter={(e) => (e.target.style.color = '#e4e4e4')}
-              onMouseLeave={(e) => (e.target.style.color = '#666')}
+              key={l.label}
+              href={l.href}
+              style={S.navLink}
+              onClick={(e) => {
+                e.preventDefault();
+                scrollTo(l.href);
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.color = 'rgba(255,255,255,0.95)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.color = 'rgba(255,255,255,0.65)';
+              }}
             >
               {l.label}
             </a>
@@ -177,20 +277,25 @@ export default function Landing() {
         </nav>
 
         <div style={S.headerActions}>
-          <button style={S.btnGhost} onClick={() => navigate('/login')}
-            onMouseEnter={(e) => { e.currentTarget.style.color='#e4e4e4'; e.currentTarget.style.borderColor='#383838'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color='#666'; e.currentTarget.style.borderColor='#2a2a2a'; }}>
+          <button type="button" style={S.btnHeaderGhost} onClick={() => navigate('/login')}>
             Sign In
           </button>
-          <button style={S.btnWhite} onClick={() => navigate('/login')}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffffff')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#e4e4e4')}>
-            Get Started <ArrowRight size={13} />
+          <button
+            type="button"
+            style={S.btnPrimary}
+            onClick={() => navigate('/login')}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            Get Started <ArrowRight size={16} strokeWidth={1.8} />
           </button>
         </div>
       </header>
 
-      {/* Hero */}
       <section style={S.hero}>
         <p style={S.heroTag}>AI-powered task management</p>
         <h1 style={S.heroH1}>
@@ -200,44 +305,56 @@ export default function Landing() {
           Assign tasks, track progress, and send AI-written reminders — all from one dashboard built for serious teams.
         </p>
         <div style={S.heroActions}>
-          <button style={S.btnWhite} onClick={() => navigate('/login')}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffffff')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#e4e4e4')}>
-            Get Started <ArrowRight size={13} />
+          <button
+            type="button"
+            style={S.btnPrimary}
+            onClick={() => navigate('/login')}
+            onMouseDown={(e) => {
+              e.currentTarget.style.transform = 'scale(0.96)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            Get Started <ArrowRight size={16} strokeWidth={1.8} />
           </button>
-          <button style={S.btnGhost} onClick={() => scrollTo('#features')}
-            onMouseEnter={(e) => { e.currentTarget.style.color='#e4e4e4'; e.currentTarget.style.borderColor='#383838'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color='#666'; e.currentTarget.style.borderColor='#2a2a2a'; }}>
+          <button type="button" style={S.btnGhost} onClick={() => scrollTo('#features')}>
             See Features
           </button>
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" style={{ ...S.section, scrollMarginTop: 56 }}>
-        <p style={S.sectionLabel}>Features</p>
-        <h2 style={S.sectionTitle}>Everything your team needs. Nothing it doesn't.</h2>
-        <div style={S.featuresGrid}>
-          {FEATURES.map(({ icon: Icon, title, desc }) => (
-            <div key={title} style={S.featureCell}>
-              <div style={S.featureIcon}>
-                <Icon size={14} color="#666" strokeWidth={1.5} />
+      <section
+        id="features"
+        style={{
+          scrollMarginTop: 52,
+          background: 'var(--color-surface-tile-1)',
+          padding: '72px 0',
+        }}
+      >
+        <div style={{ ...S.section, maxWidth: 1060 }}>
+          <p style={S.sectionLabel}>Features</p>
+          <h2 style={{ ...S.sectionTitle, marginBottom: 44 }}>Everything your team needs. Nothing it doesn't.</h2>
+          <div style={S.featuresGrid}>
+            {FEATURES.map(({ icon: Icon, title, desc }) => (
+              <div key={title} style={S.featureCell}>
+                <div style={S.featureIcon}>
+                  <Icon size={18} color="#1d1d1f" strokeWidth={2} />
+                </div>
+                <div style={S.featureTitle}>{title}</div>
+                <p style={S.featureDesc}>{desc}</p>
               </div>
-              <div style={S.featureTitle}>{title}</div>
-              <p style={S.featureDesc}>{desc}</p>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* About */}
-      <section id="about" style={{ ...S.section, scrollMarginTop: 56 }}>
+      <section id="about" style={{ ...S.aboutSection, ...S.section, scrollMarginTop: 52 }}>
         <div style={S.aboutGrid}>
           <div>
-            <p style={S.sectionLabel}>About</p>
-            <h2 style={{ ...S.sectionTitle, marginBottom: 0 }}>
-              Built for companies that move fast.
-            </h2>
+            <p style={S.sectionLabelInk}>About</p>
+            <h2 style={{ ...S.sectionTitleInk, marginBottom: 0 }}>Built for companies that move fast.</h2>
           </div>
           <div>
             <p style={S.aboutBody}>
