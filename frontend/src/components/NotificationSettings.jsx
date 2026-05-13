@@ -11,6 +11,17 @@ function urlBase64ToUint8Array(base64String) {
   return out;
 }
 
+const rowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 16,
+  padding: '14px 0',
+  borderBottom: '1px solid var(--tf-border)',
+};
+
+const labelStyle = { fontSize: 15, fontWeight: 500, color: 'var(--tf-text)' };
+
 export default function NotificationSettings() {
   const [prefs, setPrefs] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -111,17 +122,6 @@ export default function NotificationSettings() {
       setBusy(false);
     }
   }
-
-  const rowStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
-    padding: '14px 0',
-    borderBottom: '1px solid var(--tf-border)',
-  };
-
-  const labelStyle = { fontSize: 15, fontWeight: 500, color: 'var(--tf-text)' };
 
   if (loading) {
     return (
