@@ -2,8 +2,36 @@
  * Web Push + notification preferences (mirrors backend/src/services/webPushService.js).
  * Used by Supabase Edge `api` when tasks/meetings change.
  */
-import webpush from "npm:web-push@3.6.7";
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
+// `web-push` relies on Node modules that may not load on every Supabase Edge runtime.
+// Import lazily so the API never crashes at boot if push libs fail to load.
+type WebPushLib = {
+  setVapidDetails: (subject: string, pub: string, priv: string) => void;
+  sendNotification: (
+    sub: { endpoint: string; keys: { p256dh: string; auth: string } },
+    payload: string,
+    options?: Record<string, unknown>,
+  ) => Promise<unknown>;
+};
+
+let webpushPromise: Promise<WebPushLib | null> | null = null;
+async function getWebPush(): Promise<WebPushLib | null> {
+  if (!webpushPromise) {
+    webpushPromise = (async (): Promise<WebPushLib | null> => {
+      try {
+        const mod = await import("npm:web-push@3.6.7");
+        const lib = (mod.default ?? mod) as WebPushLib;
+        if (!lib?.setVapidDetails || !lib?.sendNotification) return null;
+        return lib;
+      } catch (err) {
+        console.warn("[push] web-push failed to load on edge:", (err as Error)?.message);
+        return null;
+      }
+    })();
+  }
+  return webpushPromise;
+}
 
 export type NotifyCategory =
   | "task_assigned"
@@ -20,14 +48,22 @@ const DEFAULT_PREFS = {
 };
 
 let vapidReady = false;
-function ensureVapid(): boolean {
-  if (vapidReady) return true;
+async function ensureVapid(): Promise<WebPushLib | null> {
   const pub = Deno.env.get("VAPID_PUBLIC_KEY") ?? "";
   const priv = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
-  if (!pub || !priv) return false;
-  webpush.setVapidDetails(Deno.env.get("VAPID_SUBJECT") ?? "mailto:noreply@localhost", pub, priv);
-  vapidReady = true;
-  return true;
+  if (!pub || !priv) return null;
+  const lib = await getWebPush();
+  if (!lib) return null;
+  if (!vapidReady) {
+    try {
+      lib.setVapidDetails(Deno.env.get("VAPID_SUBJECT") ?? "mailto:noreply@localhost", pub, priv);
+      vapidReady = true;
+    } catch (err) {
+      console.warn("[push] setVapidDetails failed:", (err as Error)?.message);
+      return null;
+    }
+  }
+  return lib;
 }
 
 function prefAllows(prefs: Record<string, unknown> | null, category: NotifyCategory): boolean {
@@ -82,7 +118,8 @@ export async function notifyUsersEdge(
     data?: Record<string, string>;
   },
 ): Promise<void> {
-  if (!ensureVapid()) return;
+  const lib = await ensureVapid();
+  if (!lib) return;
   const { userIds, excludeUserId, category, title, body, data } = opts;
   const unique = [...new Set((userIds || []).filter(Boolean))].filter((id) => id !== excludeUserId);
   if (!unique.length) return;
@@ -115,7 +152,7 @@ export async function notifyUsersEdge(
         keys: { p256dh: sub.p256dh, auth: sub.auth },
       };
       try {
-        await webpush.sendNotification(pushSub, payload, { TTL: 86_400, urgency: "normal" });
+        await lib.sendNotification(pushSub, payload, { TTL: 86_400, urgency: "normal" });
       } catch (err: unknown) {
         const status = (err as { statusCode?: number })?.statusCode;
         if (status === 404 || status === 410) {
@@ -197,7 +234,8 @@ export async function handleNotificationRoutes(
   }
 
   if (req.method === "POST" && path === "/notifications/subscribe") {
-    if (!ensureVapid()) return jsonBody({ error: "Push notifications are not configured." }, 503);
+    const lib = await ensureVapid();
+    if (!lib) return jsonBody({ error: "Push notifications are not configured." }, 503);
     const sub = await parseBody(req) as {
       endpoint?: string;
       keys?: { p256dh?: string; auth?: string };
