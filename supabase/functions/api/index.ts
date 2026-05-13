@@ -291,6 +291,24 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+/**
+ * supabase-js v2 mutates a client's internal auth state whenever you call
+ * `auth.signInWithPassword` on it — even with `persistSession: false`. After
+ * that, the same client sends the *user's* access_token as the Authorization
+ * header instead of the service-role JWT, so PostgREST silently downgrades
+ * us to the `authenticated` role and RLS kicks in. That used to surface as
+ * "new row violates row-level security policy for table task_assignees" when
+ * an admin tried to assign a task right after signing in/up.
+ *
+ * Keep the global `supabase` client pinned to service_role and use a throwaway
+ * client for password sign-in instead.
+ */
+function createAuthClient() {
+  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, storageKey: `auth-${crypto.randomUUID()}` },
+  });
+}
+
 type AppUser = {
   id: string;
   email?: string;
@@ -618,7 +636,8 @@ async function handleAuthSignup(req: Request) {
     );
   }
 
-  const { data: loginData } = await supabase.auth.signInWithPassword({ email, password });
+  const authClient = createAuthClient();
+  const { data: loginData } = await authClient.auth.signInWithPassword({ email, password });
   return json({
     message: "User created successfully",
     user: loginData?.user ?? user,
@@ -631,7 +650,8 @@ async function handleAuthLogin(req: Request) {
   const { email, password } = body as any;
   if (!email || !password) return json({ error: "Missing required fields: email, password" }, 400);
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const authClient = createAuthClient();
+  const { data, error } = await authClient.auth.signInWithPassword({ email, password });
   if (error) return json({ error: "Invalid credentials" }, 401);
 
   const user = data.user;
