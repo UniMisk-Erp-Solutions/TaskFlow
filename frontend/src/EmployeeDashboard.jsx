@@ -91,7 +91,7 @@ export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const selfAssigneePreset = profile?.id ? [profile.id] : [];
   const { tasks, loading, refetch, updateStatus, createTask, updateTask } = useTasks();
-  const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting } = useMeetings();
+  const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
   const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
@@ -266,6 +266,8 @@ export default function EmployeeDashboard() {
             onAddMeetingForProject={(projectId) => launchMeetingForm({ projectId })}
             onOpenTask={(t) => setDetailTask(t)}
             onOpenMeeting={(m) => setDetailMeeting(m)}
+            onUpdateTaskStatus={updateStatus}
+            onUpdateMeetingStatus={updateMeetingStatus}
           />
         )}
       </div>

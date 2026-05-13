@@ -411,6 +411,10 @@ export default function AdminDashboard() {
               onAddMeetingForProject={(projectId) => launchMeetingForm({ projectId })}
               onOpenTask={(t) => setDetailTask(t)}
               onOpenMeeting={(m) => setDetailMeeting(m)}
+              onUpdateTaskStatus={updateStatus}
+              onUpdateMeetingStatus={updateMeetingStatus}
+              onDeleteTask={deleteTask}
+              onDeleteMeeting={deleteMeeting}
             />
           )}
 

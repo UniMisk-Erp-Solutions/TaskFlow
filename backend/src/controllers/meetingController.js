@@ -1,4 +1,10 @@
 const supabase = require("../config/supabase");
+const {
+  loadOrgRoleById,
+  filterMappedMeetingsForAdmin,
+  adminCanSeeAssigneeScopedOrgItem,
+  employeeSeesMappedRow,
+} = require("../utils/orgVisibility");
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["scheduled", "completed", "cancelled"];
@@ -71,6 +77,16 @@ async function loadMeetingForUser(req, id) {
   if (req.user.role !== "admin") {
     const ok = await employeeCanAccessMeeting(req.user.id, row);
     if (!ok) return { error: "forbidden" };
+    return { meeting: mapped };
+  }
+
+  try {
+    const roleById = await loadOrgRoleById(req.user.org_id);
+    if (!adminCanSeeAssigneeScopedOrgItem(mapped, req.user.id, roleById)) {
+      return { error: "forbidden" };
+    }
+  } catch (e) {
+    return { error: e.message };
   }
 
   return { meeting: mapped };
@@ -100,7 +116,19 @@ exports.getMeetings = async (req, res) => {
     const { data, error } = await query.order("meeting_date", { ascending: true });
 
     if (error) return res.status(400).json({ error: error.message });
-    res.json((data || []).map((row) => mapMeetingRow(row)));
+
+    let list = (data || []).map((row) => mapMeetingRow(row));
+
+    if (req.user.role === "admin") {
+      try {
+        const roleById = await loadOrgRoleById(req.user.org_id);
+        list = filterMappedMeetingsForAdmin(list, req.user.id, roleById);
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+
+    res.json(list);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -117,22 +145,49 @@ exports.getMeetingById = async (req, res) => {
 
     const { data: subRows } = await supabase
       .from("meetings")
-      .select("id, title, status, meeting_date, meeting_time, priority, parent_meeting_id, assignee_id")
+      .select(
+        "id, title, status, meeting_date, meeting_time, priority, parent_meeting_id, assignee_id, created_by, meeting_assignees(profile_id)"
+      )
       .eq("org_id", req.user.org_id)
       .eq("parent_meeting_id", id)
       .order("meeting_date", { ascending: true });
 
-    const subs = subRows || [];
+    const subsMapped = (subRows || []).map((s) => mapMeetingRow(s));
 
     if (req.user.role !== "admin") {
-      const filtered = [];
-      for (const s of subs) {
-        if (await employeeCanAccessMeeting(req.user.id, s)) filtered.push(s);
-      }
-      return res.json({ ...r.meeting, submeetings: filtered });
+      const filtered = subsMapped.filter((s) => employeeSeesMappedRow(req.user.id, s));
+      const slim = filtered.map(
+        ({ id: sid, title, status, meeting_date, meeting_time, priority, parent_meeting_id }) => ({
+          id: sid,
+          title,
+          status,
+          meeting_date,
+          meeting_time,
+          priority,
+          parent_meeting_id,
+        })
+      );
+      return res.json({ ...r.meeting, submeetings: slim });
     }
 
-    res.json({ ...r.meeting, submeetings: subs });
+    try {
+      const roleById = await loadOrgRoleById(req.user.org_id);
+      const filtered = filterMappedMeetingsForAdmin(subsMapped, req.user.id, roleById);
+      const slim = filtered.map(
+        ({ id: sid, title, status, meeting_date, meeting_time, priority, parent_meeting_id }) => ({
+          id: sid,
+          title,
+          status,
+          meeting_date,
+          meeting_time,
+          priority,
+          parent_meeting_id,
+        })
+      );
+      return res.json({ ...r.meeting, submeetings: slim });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -391,6 +446,22 @@ exports.deleteMeeting = async (req, res) => {
     }
 
     const { id } = req.params;
+
+    const { data: row, error: fetchErr } = await supabase
+      .from("meetings")
+      .select("id, created_by, assignee_id, meeting_assignees(profile_id)")
+      .eq("id", id)
+      .eq("org_id", req.user.org_id)
+      .maybeSingle();
+
+    if (fetchErr) return res.status(400).json({ error: fetchErr.message });
+    if (!row) return res.status(404).json({ error: "Meeting not found" });
+
+    const mapped = mapMeetingRow(row);
+    const roleById = await loadOrgRoleById(req.user.org_id);
+    if (!adminCanSeeAssigneeScopedOrgItem(mapped, req.user.id, roleById)) {
+      return res.status(404).json({ error: "Meeting not found or access denied" });
+    }
 
     const { error } = await supabase.from("meetings").delete().eq("id", id).eq("org_id", req.user.org_id);
     if (error) return res.status(400).json({ error: error.message });

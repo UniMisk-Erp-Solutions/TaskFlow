@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, FolderKanban, Plus } from 'lucide-react';
+import OverviewUnified from './OverviewUnified';
 
 function ProgressBar({ pct }) {
   return (
@@ -17,10 +18,6 @@ function ProgressBar({ pct }) {
   );
 }
 
-function pickName(id, profileById) {
-  return profileById[id] || (id ? id.slice(0, 8) : '—');
-}
-
 export default function ProjectsPanel({
   projects,
   loading,
@@ -35,6 +32,10 @@ export default function ProjectsPanel({
   onAddMeetingForProject,
   onOpenTask,
   onOpenMeeting,
+  onUpdateTaskStatus,
+  onUpdateMeetingStatus,
+  onDeleteTask,
+  onDeleteMeeting,
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -88,6 +89,8 @@ export default function ProjectsPanel({
     setExpandedId((cur) => (cur === id ? null : id));
   }
 
+  const hideDelete = !(onDeleteTask || onDeleteMeeting);
+
   if (loading) {
     return (
       <div style={{ padding: 48, display: 'flex', justifyContent: 'center' }}>
@@ -97,14 +100,14 @@ export default function ProjectsPanel({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 820 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 980 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Projects
           </div>
           <div style={{ fontSize: 13, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>
-            Open a project to add or review its tasks and meetings.
+            Open a project — task and meeting lists match the Overview table layout (sort columns, inline status).
           </div>
         </div>
         {canCreate && (
@@ -158,8 +161,14 @@ export default function ProjectsPanel({
             const pr = progressById[p.id];
             const pct = pr?.percent_complete ?? 0;
             const expanded = expandedId === p.id;
-            const projTasks = (tasks || []).filter((t) => t.project_id === p.id);
-            const projMeetings = (meetings || []).filter((m) => m.project_id === p.id);
+            const projTasks = (tasks || [])
+              .filter((t) => t.project_id === p.id)
+              .map((t) => ({ ...t, project_name: t.project_name || p.name }));
+            const projMeetings = (meetings || [])
+              .filter((m) => m.project_id === p.id)
+              .map((m) => ({ ...m, project_name: m.project_name || p.name }));
+
+            const hasUnifiedRows = projTasks.length + projMeetings.length > 0;
 
             return (
               <div
@@ -209,8 +218,8 @@ export default function ProjectsPanel({
                 </button>
 
                 {expanded && (
-                  <div style={{ padding: '0 20px 18px', borderTop: '1px solid var(--tf-border)', background: 'var(--tf-pearl)' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '14px 0 12px' }}>
+                  <div style={{ padding: '0 14px 16px', borderTop: '1px solid var(--tf-border)', background: 'var(--tf-pearl)' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '14px 6px 10px' }}>
                       {onAddTaskForProject && (
                         <button type="button" className="btn btn-primary btn-sm" onClick={() => onAddTaskForProject(p.id)}>
                           <Plus size={13} /> Task for project
@@ -223,55 +232,36 @@ export default function ProjectsPanel({
                       )}
                     </div>
 
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                        Tasks ({projTasks.length})
-                      </div>
-                      {!projTasks.length ? (
-                        <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No tasks tagged with this project yet.</div>
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        overflow: 'hidden',
+                        border: '1px solid var(--tf-border)',
+                        background: 'var(--tf-panel)',
+                      }}
+                    >
+                      {hasUnifiedRows ? (
+                        <OverviewUnified
+                          tasks={projTasks}
+                          meetings={projMeetings}
+                          loading={false}
+                          meetingsLoading={false}
+                          profileById={profileById}
+                          onDeleteTask={hideDelete ? undefined : onDeleteTask}
+                          onDeleteMeeting={hideDelete ? undefined : onDeleteMeeting}
+                          onUpdateTaskStatus={onUpdateTaskStatus}
+                          onUpdateMeetingStatus={onUpdateMeetingStatus}
+                          onOpenTaskDetail={onOpenTask}
+                          onOpenMeetingDetail={onOpenMeeting}
+                          hideDeleteColumn={hideDelete}
+                          limit={500}
+                        />
                       ) : (
-                        <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {projTasks.map((t) => (
-                            <li key={t.id}>
-                              {onOpenTask ? (
-                                <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', height: 'auto' }} onClick={() => onOpenTask(t)}>
-                                  <span style={{ fontWeight: 600, color: 'var(--tf-text)' }}>{t.title}</span>
-                                  <span style={{ fontSize: 12, color: 'var(--tf-muted)', marginLeft: 10 }}>{t.status}</span>
-                                  <span style={{ fontSize: 12, color: 'var(--tf-muted)', marginLeft: 10 }}>
-                                    {pickName((t.assignee_ids && t.assignee_ids[0]) || t.assignee_id, profileById)}
-                                  </span>
-                                </button>
-                              ) : (
-                                <span style={{ fontSize: 13 }}>{t.title}</span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                        Meetings ({projMeetings.length})
-                      </div>
-                      {!projMeetings.length ? (
-                        <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No meetings tagged with this project yet.</div>
-                      ) : (
-                        <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {projMeetings.map((m) => (
-                            <li key={m.id}>
-                              {onOpenMeeting ? (
-                                <button type="button" className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 10px', height: 'auto' }} onClick={() => onOpenMeeting(m)}>
-                                  <span style={{ fontWeight: 600, color: 'var(--tf-text)' }}>{m.title}</span>
-                                  <span style={{ fontSize: 12, color: 'var(--tf-muted)', marginLeft: 10 }}>{m.status}</span>
-                                  <span style={{ fontSize: 12, color: 'var(--tf-muted)', marginLeft: 10 }}>{m.meeting_date}</span>
-                                </button>
-                              ) : (
-                                <span style={{ fontSize: 13 }}>{m.title}</span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="empty" style={{ padding: 28 }}>
+                          <div style={{ fontSize: 14, color: 'var(--tf-muted)', lineHeight: 1.5 }}>
+                            No tasks or meetings for this project yet. Use the buttons above or assign an existing item to “{p.name}” from details.
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

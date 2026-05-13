@@ -73,6 +73,7 @@ export default function OverviewUnified({
   onOpenTaskDetail,
   onOpenMeetingDetail,
   limit = 40,
+  hideDeleteColumn = false,
 }) {
   const [sort, setSort] = useState({ key: 'sort_date', dir: 'desc' });
   const [deletingId, setDeletingId] = useState(null);
@@ -141,6 +142,7 @@ export default function OverviewUnified({
   }
 
   async function handleDelete(kind, id) {
+    if ((kind === 'task' && !onDeleteTask) || (kind === 'meeting' && !onDeleteMeeting)) return;
     if (!window.confirm(`Delete this ${kind}?`)) return;
     setDeletingId(`${kind}:${id}`);
     try {
@@ -167,6 +169,8 @@ export default function OverviewUnified({
     );
   }
 
+  const showDelete = !hideDeleteColumn && (onDeleteTask || onDeleteMeeting);
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -179,7 +183,7 @@ export default function OverviewUnified({
             <Th label="Priority" sortKey="priority" sort={sort} onSort={handleSort} />
             <Th label="Status" sortKey="status" sort={sort} onSort={handleSort} />
             <Th label="Date" sortKey="sort_date" sort={sort} onSort={handleSort} />
-            <Th label="" sortKey={null} sort={sort} onSort={handleSort} />
+            {showDelete && <Th label="" sortKey={null} sort={sort} onSort={handleSort} />}
           </tr>
         </thead>
         <tbody>
@@ -244,7 +248,8 @@ export default function OverviewUnified({
                     className="tf-select-inline"
                     value={row.status}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onUpdateTaskStatus(row.id, e.target.value)}
+                    onChange={(e) => onUpdateTaskStatus?.(row.id, e.target.value)}
+                    disabled={!onUpdateTaskStatus}
                     style={{ width: 132 }}
                   >
                     {['pending', 'in_progress', 'completed', 'blocked'].map((s) => (
@@ -258,7 +263,8 @@ export default function OverviewUnified({
                     className="tf-select-inline"
                     value={row.status}
                     onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onUpdateMeetingStatus(row.id, e.target.value)}
+                    onChange={(e) => onUpdateMeetingStatus?.(row.id, e.target.value)}
+                    disabled={!onUpdateMeetingStatus}
                     style={{ width: 132 }}
                   >
                     {['scheduled', 'completed', 'cancelled'].map((s) => (
@@ -287,30 +293,32 @@ export default function OverviewUnified({
                   </span>
                 )}
               </td>
-              <td style={{ padding: '11px 14px' }}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDelete(row.kind, row.id);
-                  }}
-                  disabled={deletingId === `${row.kind}:${row.id}`}
-                  style={{
-                    background: 'none',
-                    border: '1px solid transparent',
-                    borderRadius: 4,
-                    cursor: 'pointer',
-                    padding: '8px',
-                    color: 'var(--tf-muted)',
-                  }}
-                >
-                  {deletingId === `${row.kind}:${row.id}` ? (
-                    <span className="spinner" style={{ width: 12, height: 12 }} />
-                  ) : (
-                    <Trash2 size={13} />
-                  )}
-                </button>
-              </td>
+              {showDelete && (
+                <td style={{ padding: '11px 14px' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(row.kind, row.id);
+                    }}
+                    disabled={deletingId === `${row.kind}:${row.id}`}
+                    style={{
+                      background: 'none',
+                      border: '1px solid transparent',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      padding: '8px',
+                      color: 'var(--tf-muted)',
+                    }}
+                  >
+                    {deletingId === `${row.kind}:${row.id}` ? (
+                      <span className="spinner" style={{ width: 12, height: 12 }} />
+                    ) : (
+                      <Trash2 size={13} />
+                    )}
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

@@ -1,4 +1,10 @@
 const supabase = require("../config/supabase");
+const {
+  loadOrgRoleById,
+  filterMappedTasksForAdmin,
+  employeeSeesMappedRow,
+  mapTaskRowQuick,
+} = require("../utils/orgVisibility");
 
 exports.listProjects = async (req, res) => {
   try {
@@ -60,15 +66,28 @@ exports.getProgress = async (req, res) => {
     if (pErr) return res.status(400).json({ error: pErr.message });
     if (!project) return res.status(404).json({ error: "Project not found" });
 
-    const { data: tasks, error: tErr } = await supabase
+    const { data: taskRows, error: tErr } = await supabase
       .from("tasks")
-      .select("id, status")
+      .select("id, status, created_by, assignee_id, task_assignees(profile_id)")
       .eq("project_id", id)
       .eq("org_id", req.user.org_id);
 
     if (tErr) return res.status(400).json({ error: tErr.message });
 
-    const list = tasks || [];
+    const mappedList = (taskRows || []).map(mapTaskRowQuick);
+
+    let list = mappedList;
+    if (req.user.role === "admin") {
+      try {
+        const roleById = await loadOrgRoleById(req.user.org_id);
+        list = filterMappedTasksForAdmin(mappedList, req.user.id, roleById);
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    } else {
+      list = mappedList.filter((t) => employeeSeesMappedRow(req.user.id, t));
+    }
+
     const total = list.length;
     const completed = list.filter((t) => t.status === "completed").length;
     const percent_complete = total === 0 ? 0 : Math.round((completed / total) * 100);

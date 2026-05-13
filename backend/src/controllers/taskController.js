@@ -1,4 +1,10 @@
 const supabase = require("../config/supabase");
+const {
+  loadOrgRoleById,
+  filterMappedTasksForAdmin,
+  adminCanSeeAssigneeScopedOrgItem,
+  mapTaskRowQuick,
+} = require("../utils/orgVisibility");
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["pending", "in_progress", "completed", "blocked"];
@@ -71,6 +77,16 @@ async function loadTaskForUser(req, id) {
   if (req.user.role !== "admin") {
     const ok = await employeeCanAccessTask(req.user.id, row);
     if (!ok) return { error: "forbidden" };
+    return { task: mapped };
+  }
+
+  try {
+    const roleById = await loadOrgRoleById(req.user.org_id);
+    if (!adminCanSeeAssigneeScopedOrgItem(mapped, req.user.id, roleById)) {
+      return { error: "forbidden" };
+    }
+  } catch (e) {
+    return { error: e.message };
   }
 
   return { task: mapped };
@@ -100,7 +116,19 @@ exports.getTasks = async (req, res) => {
     const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) return res.status(400).json({ error: error.message });
-    res.json((data || []).map((row) => mapTaskRow(row)));
+
+    let list = (data || []).map((row) => mapTaskRow(row));
+
+    if (req.user.role === "admin") {
+      try {
+        const roleById = await loadOrgRoleById(req.user.org_id);
+        list = filterMappedTasksForAdmin(list, req.user.id, roleById);
+      } catch (e) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+
+    res.json(list);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -117,22 +145,41 @@ exports.getTaskById = async (req, res) => {
 
     const { data: subRows } = await supabase
       .from("tasks")
-      .select("id, title, status, due_date, priority, parent_task_id, assignee_id")
+      .select("id, title, status, due_date, priority, parent_task_id, assignee_id, created_by, task_assignees(profile_id)")
       .eq("org_id", req.user.org_id)
       .eq("parent_task_id", id)
       .order("created_at", { ascending: true });
 
-    const subs = subRows || [];
+    const subsMapped = (subRows || []).map((s) => mapTaskRow(s));
 
     if (req.user.role !== "admin") {
-      const filtered = [];
-      for (const s of subs) {
-        if (await employeeCanAccessTask(req.user.id, s)) filtered.push(s);
-      }
-      return res.json({ ...r.task, subtasks: filtered });
+      const filtered = subsMapped.filter((s) => employeeSeesMappedRow(req.user.id, s));
+      const slim = filtered.map(({ id: sid, title, status, due_date, priority, parent_task_id }) => ({
+        id: sid,
+        title,
+        status,
+        due_date,
+        priority,
+        parent_task_id,
+      }));
+      return res.json({ ...r.task, subtasks: slim });
     }
 
-    res.json({ ...r.task, subtasks: subs });
+    try {
+      const roleById = await loadOrgRoleById(req.user.org_id);
+      const filtered = filterMappedTasksForAdmin(subsMapped, req.user.id, roleById);
+      const slim = filtered.map(({ id: sid, title, status, due_date, priority, parent_task_id }) => ({
+        id: sid,
+        title,
+        status,
+        due_date,
+        priority,
+        parent_task_id,
+      }));
+      res.json({ ...r.task, subtasks: slim });
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -166,7 +213,6 @@ async function validateParentTask(req, parentTaskId, orgId) {
 
 exports.createTask = async (req, res) => {
   try {
-    const isAdmin = req.user.role === "admin";
     let {
       title,
       description,
@@ -384,6 +430,22 @@ exports.deleteTask = async (req, res) => {
 
     const { id } = req.params;
 
+    const { data: row, error: fetchErr } = await supabase
+      .from("tasks")
+      .select("id, created_by, assignee_id, task_assignees(profile_id)")
+      .eq("id", id)
+      .eq("org_id", req.user.org_id)
+      .maybeSingle();
+
+    if (fetchErr) return res.status(400).json({ error: fetchErr.message });
+    if (!row) return res.status(404).json({ error: "Task not found" });
+
+    const mapped = mapTaskRow(row);
+    const roleById = await loadOrgRoleById(req.user.org_id);
+    if (!adminCanSeeAssigneeScopedOrgItem(mapped, req.user.id, roleById)) {
+      return res.status(404).json({ error: "Task not found or access denied" });
+    }
+
     const { error } = await supabase.from("tasks").delete().eq("id", id).eq("org_id", req.user.org_id);
     if (error) return res.status(400).json({ error: error.message });
 
@@ -397,12 +459,15 @@ exports.getDashboardStats = async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
 
-    const { data: tasks, error } = await supabase
+    const { data: taskRows, error } = await supabase
       .from("tasks")
-      .select("id, status, due_date")
+      .select("id, status, due_date, created_by, assignee_id, task_assignees(profile_id)")
       .eq("org_id", req.user.org_id);
 
     if (error) throw error;
+
+    const roleById = await loadOrgRoleById(req.user.org_id);
+    const tasks = filterMappedTasksForAdmin((taskRows || []).map(mapTaskRowQuick), req.user.id, roleById);
 
     const total = tasks.length;
     const completed = tasks.filter((t) => t.status === "completed").length;
