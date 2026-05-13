@@ -14,3 +14,6 @@ Thumbs.db
 **/*credentials*.json
 **/*secret*
 **/secrets/*
+
+# Supabase SQL editor “Untitled query” exports (local scratch, not for the repo)
+supabase/snippets/Untitled*.sql
