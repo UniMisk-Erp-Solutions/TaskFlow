@@ -1,8 +1,15 @@
 /**
  * Web Push + notification preferences (mirrors backend/src/services/webPushService.js).
  * Used by Supabase Edge `api` when tasks/meetings change.
+ *
+ * IMPORTANT: nothing in this file may load Node-only npm modules at module-evaluation
+ * time. The Supabase Edge runtime is Deno; loading `web-push` synchronously crashed the
+ * whole `api` function (every route returned 503, including `/auth/login` and `/auth/me`).
+ * web-push is now loaded lazily and `SupabaseClient` is typed loosely so we don't import
+ * any external module just to get a type.
  */
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = any;
 
 // `web-push` relies on Node modules that may not load on every Supabase Edge runtime.
 // Import lazily so the API never crashes at boot if push libs fail to load.
