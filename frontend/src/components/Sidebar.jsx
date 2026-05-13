@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { id: 'calender', icon: CalendarDays, label: 'Calender' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
+  { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
 ];
 

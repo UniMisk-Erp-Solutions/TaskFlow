@@ -1,4 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  getActorDisplayName,
+  handleNotificationRoutes,
+  notifyUsersEdge,
+  scheduleNotify,
+} from "./push_notifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -523,7 +529,19 @@ async function handleTasks(req: Request, path: string) {
     const { data: full, error: fErr } = await supabase.from("tasks").select("*").eq("id", task!.id).single();
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeTasksWithJoins([full]);
-    return json(shaped[0], 201);
+    const out = shaped[0];
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "task_assigned",
+        title: "New task assigned",
+        body: `${who} assigned you: ${out.title}`,
+        data: { type: "task", taskId: String(out.id), url: "/" },
+      });
+    });
+    return json(out, 201);
   }
 
   const statusMatch = path.match(/^\/tasks\/([^/]+)\/status$/);
@@ -551,7 +569,19 @@ async function handleTasks(req: Request, path: string) {
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Task not found or access denied" }, 404);
     const shaped = await shapeTasksWithJoins([data]);
-    return json(shaped[0]);
+    const out = shaped[0];
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "task_update",
+        title: "Task status updated",
+        body: `${who} set "${out.title}" to ${status}`,
+        data: { type: "task", taskId: id, url: "/" },
+      });
+    });
+    return json(out);
   }
 
   const patchTaskDetail = path.match(/^\/tasks\/([^/]+)$/);
@@ -585,6 +615,12 @@ async function handleTasks(req: Request, path: string) {
       ? normalizeAssigneeIds(body)
       : null;
 
+    let previousAssigneeIds: string[] = [];
+    if (assignee_ids !== null) {
+      const { data: oldLinks } = await supabase.from("task_assignees").select("profile_id").eq("task_id", id);
+      previousAssigneeIds = [...new Set((oldLinks ?? []).map((r: { profile_id: string }) => r.profile_id))];
+    }
+
     const { data: before } = await supabase.from("tasks").select("id").eq("id", id).single();
     if (!before) return json({ error: "Task not found" }, 404);
 
@@ -610,10 +646,25 @@ async function handleTasks(req: Request, path: string) {
     const { data: full, error: fErr } = await supabase.from("tasks").select("*").eq("id", id).single();
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeTasksWithJoins([full]);
-    return json(shaped[0]);
-  }
-
-  const delMatch = path.match(/^\/tasks\/([^/]+)$/);
+    const out = shaped[0];
+    if (assignee_ids !== null) {
+      const oldSet = new Set(previousAssigneeIds);
+      const added = (out.assignee_ids || []).filter((uid: string) => !oldSet.has(uid));
+      if (added.length) {
+        scheduleNotify(async () => {
+          const who = await getActorDisplayName(supabase, user.id);
+          await notifyUsersEdge(supabase, {
+            userIds: added,
+            excludeUserId: user.id,
+            category: "task_assigned",
+            title: "Task assignment updated",
+            body: `${who} added you to: ${out.title}`,
+            data: { type: "task", taskId: id, url: "/" },
+          });
+        });
+      }
+    }
+    return json(out);
   if (req.method === "DELETE" && delMatch) {
     const adminErr = requireAdmin(user);
     if (adminErr) return adminErr;
@@ -711,7 +762,19 @@ async function handleMeetings(req: Request, path: string) {
     const { data: full, error: fErr } = await supabase.from("meetings").select("*").eq("id", meeting!.id).single();
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeMeetingsWithJoins([full]);
-    return json(shaped[0], 201);
+    const out = shaped[0];
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "meeting_assigned",
+        title: "New meeting assigned",
+        body: `${who} added you: ${out.title}`,
+        data: { type: "meeting", meetingId: String(out.id), url: "/" },
+      });
+    });
+    return json(out, 201);
   }
 
   const statusMatch = path.match(/^\/meetings\/([^/]+)\/status$/);
@@ -739,7 +802,19 @@ async function handleMeetings(req: Request, path: string) {
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Meeting not found or access denied" }, 404);
     const shaped = await shapeMeetingsWithJoins([data]);
-    return json(shaped[0]);
+    const out = shaped[0];
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "meeting_update",
+        title: "Meeting status updated",
+        body: `${who} set "${out.title}" to ${status}`,
+        data: { type: "meeting", meetingId: id, url: "/" },
+      });
+    });
+    return json(out);
   }
 
   const patchMeetingDetail = path.match(/^\/meetings\/([^/]+)$/);
@@ -781,6 +856,12 @@ async function handleMeetings(req: Request, path: string) {
       ? normalizeAssigneeIds(body)
       : null;
 
+    let previousMeetingAssigneeIds: string[] = [];
+    if (assignee_ids !== null) {
+      const { data: oldLinks } = await supabase.from("meeting_assignees").select("profile_id").eq("meeting_id", id);
+      previousMeetingAssigneeIds = [...new Set((oldLinks ?? []).map((r: { profile_id: string }) => r.profile_id))];
+    }
+
     const { data: before } = await supabase.from("meetings").select("id").eq("id", id).single();
     if (!before) return json({ error: "Meeting not found" }, 404);
 
@@ -806,10 +887,25 @@ async function handleMeetings(req: Request, path: string) {
     const { data: full, error: fErr } = await supabase.from("meetings").select("*").eq("id", id).single();
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeMeetingsWithJoins([full]);
-    return json(shaped[0]);
-  }
-
-  const delMatch = path.match(/^\/meetings\/([^/]+)$/);
+    const out = shaped[0];
+    if (assignee_ids !== null) {
+      const oldSet = new Set(previousMeetingAssigneeIds);
+      const added = (out.assignee_ids || []).filter((uid: string) => !oldSet.has(uid));
+      if (added.length) {
+        scheduleNotify(async () => {
+          const who = await getActorDisplayName(supabase, user.id);
+          await notifyUsersEdge(supabase, {
+            userIds: added,
+            excludeUserId: user.id,
+            category: "meeting_assigned",
+            title: "Meeting participants updated",
+            body: `${who} added you to: ${out.title}`,
+            data: { type: "meeting", meetingId: id, url: "/" },
+          });
+        });
+      }
+    }
+    return json(out);
   if (req.method === "DELETE" && delMatch) {
     const adminErr = requireAdmin(user);
     if (adminErr) return adminErr;
@@ -1129,6 +1225,9 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && path === "/auth/login") return await handleAuthLogin(req);
     if (req.method === "GET" && path === "/auth/me") return await handleAuthMe(req);
     if (req.method === "GET" && path === "/auth/profiles") return await handleAuthProfiles(req);
+
+    const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
+    if (notificationsResp) return notificationsResp;
 
     const projectsResp = await handleProjects(req, path);
     if (projectsResp) return projectsResp;

@@ -15,6 +15,7 @@ import MeetingDetailModal from './components/MeetingDetailModal';
 import Navbar from './components/Navbar';
 import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
+import NotificationSettings from './components/NotificationSettings';
 
 function Stat({ label, value, color }) {
   return (
@@ -191,7 +192,10 @@ export default function EmployeeDashboard() {
           <button className={`btn btn-sm ${page === 'projects' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('projects')}>
             Projects
           </button>
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button className={`btn btn-sm ${page === 'notifications' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('notifications')}>
+            Notifications
+          </button>
+          <span style={{ marginLeft: 'auto', display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
             </button>
@@ -201,18 +205,33 @@ export default function EmployeeDashboard() {
           </span>
         </div>
 
+        {page !== 'notifications' && (
         <div className="tf-stat-row" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, display: 'flex', background: 'var(--tf-panel)', marginBottom: 28, overflow: 'hidden', boxShadow: 'none' }}>
           <Stat label="Total" value={stats.total} />
           <Stat label="Pending" value={stats.pending} color="var(--status-warning)" />
           <Stat label="Completed" value={stats.completed} color="var(--status-success)" />
           <Stat label="Overdue" value={stats.overdue} color={stats.overdue > 0 ? 'var(--status-danger)' : 'var(--tf-text)'} />
         </div>
+        )}
 
-        {stats.overdue > 0 && (
+        {page !== 'notifications' && stats.overdue > 0 && (
           <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
             <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
               {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.
             </span>
+          </div>
+        )}
+
+        {page === 'notifications' && (
+          <div
+            style={{
+              border: '1px solid var(--tf-border)',
+              borderRadius: 18,
+              background: 'var(--tf-panel)',
+              padding: '24px 28px',
+            }}
+          >
+            <NotificationSettings />
           </div>
         )}
 

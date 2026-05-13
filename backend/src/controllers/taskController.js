@@ -1,4 +1,5 @@
 const supabase = require("../config/supabase");
+const webPush = require("../services/webPushService");
 const {
   loadOrgRoleById,
   filterMappedTasksForAdmin,
@@ -289,7 +290,23 @@ exports.createTask = async (req, res) => {
       .eq("id", created.id)
       .single();
 
-    res.status(201).json(mapTaskRow(fresh));
+    const mapped = mapTaskRow(fresh);
+    res.status(201).json(mapped);
+
+    const assigneeIds = mapped.assignee_ids || [];
+    void webPush
+      .getActorDisplayName(req.user.id)
+      .then((who) =>
+        webPush.notifyUsers({
+          userIds: assigneeIds,
+          excludeUserId: req.user.id,
+          category: "task_assigned",
+          title: "New task assigned",
+          body: `${who} assigned you: ${mapped.title}`,
+          data: { type: "task", taskId: mapped.id, url: "/" },
+        }),
+      )
+      .catch(() => {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -313,6 +330,9 @@ exports.patchTask = async (req, res) => {
       return res.status(r.error === "forbidden" ? 403 : 404).json({ error: "Task not found or access denied" });
     }
     if (r.error) return res.status(400).json({ error: r.error });
+
+    const previousAssigneeIds =
+      assignee_ids !== undefined && r.task?.assignee_ids ? [...r.task.assignee_ids] : [];
 
     if (priority && !VALID_PRIORITIES.includes(priority)) {
       return res.status(400).json({ error: `Priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
@@ -383,7 +403,28 @@ exports.patchTask = async (req, res) => {
       .eq("id", id)
       .single();
 
-    res.json(mapTaskRow(fresh));
+    const mappedOut = mapTaskRow(fresh);
+    res.json(mappedOut);
+
+    if (assignee_ids !== undefined) {
+      const oldSet = new Set(previousAssigneeIds);
+      const added = (mappedOut.assignee_ids || []).filter((uid) => !oldSet.has(uid));
+      if (added.length) {
+        void webPush
+          .getActorDisplayName(req.user.id)
+          .then((who) =>
+            webPush.notifyUsers({
+              userIds: added,
+              excludeUserId: req.user.id,
+              category: "task_assigned",
+              title: "Task assignment updated",
+              body: `${who} added you to: ${mappedOut.title}`,
+              data: { type: "task", taskId: mappedOut.id, url: "/" },
+            }),
+          )
+          .catch(() => {});
+      }
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -405,6 +446,9 @@ exports.updateStatus = async (req, res) => {
     }
     if (access.error) return res.status(400).json({ error: access.error });
 
+    const taskTitle = access.task?.title || "Task";
+    const notifyIds = access.task?.assignee_ids || [];
+
     const { data, error } = await supabase
       .from("tasks")
       .update({ status, updated_at: new Date().toISOString() })
@@ -416,7 +460,22 @@ exports.updateStatus = async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: "Task not found or access denied" });
 
-    res.json(mapTaskRow(data));
+    const out = mapTaskRow(data);
+    res.json(out);
+
+    void webPush
+      .getActorDisplayName(req.user.id)
+      .then((who) =>
+        webPush.notifyUsers({
+          userIds: notifyIds,
+          excludeUserId: req.user.id,
+          category: "task_update",
+          title: "Task status updated",
+          body: `${who} set "${taskTitle}" to ${status}`,
+          data: { type: "task", taskId: id, url: "/" },
+        }),
+      )
+      .catch(() => {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

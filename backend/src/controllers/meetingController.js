@@ -1,4 +1,5 @@
 const supabase = require("../config/supabase");
+const webPush = require("../services/webPushService");
 const {
   loadOrgRoleById,
   filterMappedMeetingsForAdmin,
@@ -304,7 +305,23 @@ exports.createMeeting = async (req, res) => {
       .eq("id", created.id)
       .single();
 
-    res.status(201).json(mapMeetingRow(fresh));
+    const mapped = mapMeetingRow(fresh);
+    res.status(201).json(mapped);
+
+    const participantIds = mapped.assignee_ids || [];
+    void webPush
+      .getActorDisplayName(req.user.id)
+      .then((who) =>
+        webPush.notifyUsers({
+          userIds: participantIds,
+          excludeUserId: req.user.id,
+          category: "meeting_assigned",
+          title: "New meeting assigned",
+          body: `${who} added you: ${mapped.title}`,
+          data: { type: "meeting", meetingId: mapped.id, url: "/" },
+        }),
+      )
+      .catch(() => {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -329,6 +346,9 @@ exports.patchMeeting = async (req, res) => {
       return res.status(r.error === "forbidden" ? 403 : 404).json({ error: "Meeting not found or access denied" });
     }
     if (r.error) return res.status(400).json({ error: r.error });
+
+    const previousAssigneeIds =
+      assignee_ids !== undefined && r.meeting?.assignee_ids ? [...r.meeting.assignee_ids] : [];
 
     if (priority && !VALID_PRIORITIES.includes(priority)) {
       return res.status(400).json({ error: `Priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
@@ -400,7 +420,28 @@ exports.patchMeeting = async (req, res) => {
       .eq("id", id)
       .single();
 
-    res.json(mapMeetingRow(fresh));
+    const mappedOut = mapMeetingRow(fresh);
+    res.json(mappedOut);
+
+    if (assignee_ids !== undefined) {
+      const oldSet = new Set(previousAssigneeIds);
+      const added = (mappedOut.assignee_ids || []).filter((uid) => !oldSet.has(uid));
+      if (added.length) {
+        void webPush
+          .getActorDisplayName(req.user.id)
+          .then((who) =>
+            webPush.notifyUsers({
+              userIds: added,
+              excludeUserId: req.user.id,
+              category: "meeting_assigned",
+              title: "Meeting participants updated",
+              body: `${who} added you to: ${mappedOut.title}`,
+              data: { type: "meeting", meetingId: mappedOut.id, url: "/" },
+            }),
+          )
+          .catch(() => {});
+      }
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -422,6 +463,9 @@ exports.updateStatus = async (req, res) => {
     }
     if (access.error) return res.status(400).json({ error: access.error });
 
+    const meetingTitle = access.meeting?.title || "Meeting";
+    const notifyIds = access.meeting?.assignee_ids || [];
+
     const { data, error } = await supabase
       .from("meetings")
       .update({ status, updated_at: new Date().toISOString() })
@@ -433,7 +477,22 @@ exports.updateStatus = async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: "Meeting not found or access denied" });
 
-    res.json(mapMeetingRow(data));
+    const out = mapMeetingRow(data);
+    res.json(out);
+
+    void webPush
+      .getActorDisplayName(req.user.id)
+      .then((who) =>
+        webPush.notifyUsers({
+          userIds: notifyIds,
+          excludeUserId: req.user.id,
+          category: "meeting_update",
+          title: "Meeting status updated",
+          body: `${who} set "${meetingTitle}" to ${status}`,
+          data: { type: "meeting", meetingId: id, url: "/" },
+        }),
+      )
+      .catch(() => {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

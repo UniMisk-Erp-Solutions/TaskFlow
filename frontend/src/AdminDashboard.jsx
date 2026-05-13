@@ -17,6 +17,7 @@ import OverviewUnified from './components/OverviewUnified';
 import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
 import ProjectsPanel from './components/ProjectsPanel';
+import NotificationSettings from './components/NotificationSettings';
 import { useProjects } from './useProjects';
 import api from './api';
 
@@ -195,7 +196,9 @@ export default function AdminDashboard() {
                       ? 'Projects'
                       : page === 'users'
                         ? 'User Management'
-                        : 'Reminders'}
+                        : page === 'notifications'
+                          ? 'Notifications'
+                          : 'Reminders'}
             </span>
             {page === 'overview' && (
               <span style={{ fontSize: 15, color: 'var(--tf-muted)', marginLeft: 12, fontWeight: 400 }}>
@@ -205,22 +208,26 @@ export default function AdminDashboard() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {sendMsg && (
+            {sendMsg && page === 'email' && (
               <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
-            <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
-              {sending ? <span className="spinner" /> : <Send size={12} />}
-              Send Reminders
-            </button>
-            <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowAI(true)} title="AI Assistant">
-              <Sparkles size={13} />
-            </button>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
-              <Plus size={13} /> New Task
-            </button>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
-              <Plus size={13} /> New Meeting
-            </button>
+            {page !== 'notifications' && page !== 'users' && (
+              <>
+                <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
+                  {sending ? <span className="spinner" /> : <Send size={12} />}
+                  Send Reminders
+                </button>
+                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowAI(true)} title="AI Assistant">
+                  <Sparkles size={13} />
+                </button>
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
+                  <Plus size={13} /> New Task
+                </button>
+                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
+                  <Plus size={13} /> New Meeting
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -422,6 +429,20 @@ export default function AdminDashboard() {
           {page === 'users' && (
             <div style={{ maxWidth: 900 }}>
               <UserManagement />
+            </div>
+          )}
+
+          {page === 'notifications' && (
+            <div
+              style={{
+                border: '1px solid var(--tf-border)',
+                borderRadius: 18,
+                background: 'var(--tf-panel)',
+                padding: '24px 28px',
+                maxWidth: 720,
+              }}
+            >
+              <NotificationSettings />
             </div>
           )}
 

@@ -9,6 +9,7 @@ const taskRoutes = require("./src/routes/tasks");
 const meetingRoutes = require("./src/routes/meetings");
 const aiRoutes = require("./src/routes/ai");
 const adminRoutes = require("./src/routes/admin");
+const notificationRoutes = require("./src/routes/notifications");
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use("/api/tasks", taskRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // Serve frontend static files
 app.use(express.static(path.join(__dirname, "frontend/dist")));
