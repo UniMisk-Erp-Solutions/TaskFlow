@@ -46,49 +46,6 @@ async function parseBody(req: Request) {
   return {};
 }
 
-async function loadOrgRoleByIdForEdge(orgId: string) {
-  const { data, error } = await supabase.from("profiles").select("id, role").eq("org_id", orgId);
-  if (error) throw error;
-  const roleById: Record<string, string> = {};
-  for (const p of data ?? []) roleById[String((p as { id: string }).id)] = String((p as { role: string }).role);
-  return roleById;
-}
-
-function taskAssigneeIds(t: {
-  assignee_id?: string;
-  task_assignees?: { profile_id: string }[];
-}) {
-  const from = (t.task_assignees ?? []).map((x) => x.profile_id).filter(Boolean);
-  if (from.length) return [...new Set(from)];
-  if (t.assignee_id) return [t.assignee_id];
-  return [];
-}
-
-function meetingAssigneeIds(m: {
-  assignee_id?: string;
-  meeting_assignees?: { profile_id: string }[];
-}) {
-  const from = (m.meeting_assignees ?? []).map((x) => x.profile_id).filter(Boolean);
-  if (from.length) return [...new Set(from)];
-  if (m.assignee_id) return [m.assignee_id];
-  return [];
-}
-
-/** Admin-only assignee roster: hide from other admins unless creator/participant */
-function edgeAdminSeesItem(
-  row: { assignee_id?: string; created_by?: string; task_assignees?: { profile_id: string }[]; meeting_assignees?: { profile_id: string }[] },
-  viewerId: string,
-  roleById: Record<string, string>,
-  mode: "task" | "meeting",
-): boolean {
-  const assignees = mode === "task" ? taskAssigneeIds(row) : meetingAssigneeIds(row);
-  if (assignees.length === 0) return true;
-  const restricted = assignees.every((id) => roleById[id] === "admin");
-  if (!restricted) return true;
-  if (row.created_by === viewerId) return true;
-  return assignees.includes(viewerId);
-}
-
 async function getAuthUser(req: Request): Promise<AppUser | null> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return null;
@@ -164,6 +121,31 @@ function meetingAssigneeIds(m: any): string[] {
   const fromJ = (m.meeting_assignees ?? []).map((x: any) => x.profile_id).filter(Boolean);
   if (m.assignee_id && !fromJ.includes(m.assignee_id)) return [m.assignee_id, ...fromJ];
   return fromJ.length ? fromJ : (m.assignee_id ? [m.assignee_id] : []);
+}
+
+async function loadOrgRoleByIdForEdge(orgId: string): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("profiles").select("id, role").eq("org_id", orgId);
+  if (error) throw error;
+  const roleById: Record<string, string> = {};
+  for (const p of (data ?? []) as { id: string; role: string }[]) {
+    roleById[String(p.id)] = String(p.role);
+  }
+  return roleById;
+}
+
+/** Admin-only assignee roster: hide from other admins unless creator/participant */
+function edgeAdminSeesItem(
+  row: any,
+  viewerId: string,
+  roleById: Record<string, string>,
+  mode: "task" | "meeting",
+): boolean {
+  const assignees = mode === "task" ? taskAssigneeIds(row) : meetingAssigneeIds(row);
+  if (assignees.length === 0) return true;
+  const restricted = assignees.every((id) => roleById[id] === "admin");
+  if (!restricted) return true;
+  if (row.created_by === viewerId) return true;
+  return assignees.includes(viewerId);
 }
 
 function meetingCanBeAccessedBy(user: AppUser, meeting: any) {
@@ -1021,12 +1003,8 @@ async function handleAdmin(req: Request, path: string) {
     if (uErr) return json({ error: uErr.message }, 500);
 
     const viewerId = user.id;
-    const tList = (tasks ?? []).filter((row: Record<string, unknown>) =>
-      edgeAdminSeesItem(row as Parameters<typeof edgeAdminSeesItem>[0], viewerId, roleById, "task")
-    );
-    const mList = (meetings ?? []).filter((row: Record<string, unknown>) =>
-      edgeAdminSeesItem(row as Parameters<typeof edgeAdminSeesItem>[0], viewerId, roleById, "meeting")
-    );
+    const tList = (tasks ?? []).filter((row: any) => edgeAdminSeesItem(row, viewerId, roleById, "task"));
+    const mList = (meetings ?? []).filter((row: any) => edgeAdminSeesItem(row, viewerId, roleById, "meeting"));
     const pending_tasks = tList.filter((t: { status: string }) =>
       t.status === "pending" || t.status === "in_progress" || t.status === "blocked"
     ).length;
@@ -1064,9 +1042,7 @@ async function handleAdmin(req: Request, path: string) {
       .eq("org_id", user.org_id);
     if (error) return json({ error: error.message }, 500);
     const viewerId = user.id;
-    const filtered = (tasks ?? []).filter((row: Record<string, unknown>) =>
-      edgeAdminSeesItem(row as Parameters<typeof edgeAdminSeesItem>[0], viewerId, roleById, "task")
-    );
+    const filtered = (tasks ?? []).filter((row: any) => edgeAdminSeesItem(row, viewerId, roleById, "task"));
     const total = filtered.length;
     const completed = filtered.filter((t: any) => t.status === "completed").length;
     const overdue = filtered.filter((t: any) => t.due_date && t.due_date < today && t.status !== "completed").length;
