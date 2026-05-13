@@ -3,25 +3,52 @@ import { X } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 
-const DEFAULT = { title: '', description: '', assignee_ids: [], priority: 'medium', due_date: '', project_id: '' };
+const DEFAULT = {
+  title: '',
+  description: '',
+  assignee_ids: [],
+  priority: 'medium',
+  due_date: '',
+  project_id: '',
+};
 
-export default function TaskForm({ onSubmit, onClose, projects = [] }) {
-  const [form,    setForm]    = useState(DEFAULT);
+export default function TaskForm({
+  onSubmit,
+  onClose,
+  projects = [],
+  defaultProjectId = '',
+  parentTaskId = '',
+  initialAssigneeIds = [],
+}) {
+  const [form, setForm] = useState({
+    ...DEFAULT,
+    project_id: defaultProjectId || '',
+    assignee_ids: initialAssigneeIds?.length ? [...initialAssigneeIds] : [],
+  });
   const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState('');
+  const [error, setError] = useState('');
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => setForm((ff) => ({ ...ff, [k]: v }));
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.title.trim()) { setError('Title is required'); return; }
-    setLoading(true); setError('');
+    if (!form.title.trim()) {
+      setError('Title is required');
+      return;
+    }
+    if (!form.assignee_ids?.length) {
+      setError('Select at least one assignee');
+      return;
+    }
+    setLoading(true);
+    setError('');
     try {
       await onSubmit({
         ...form,
         title: form.title.trim(),
         project_id: form.project_id || null,
         assignee_ids: form.assignee_ids,
+        parent_task_id: parentTaskId || null,
       });
       onClose();
     } catch (err) {
@@ -32,16 +59,22 @@ export default function TaskForm({ onSubmit, onClose, projects = [] }) {
   }
 
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+    <div className="overlay" role="presentation">
+      <div className="modal" role="dialog" aria-modal="true">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2>New Task</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', display: 'flex', padding: 4 }}>
+          <h2>{parentTaskId ? 'New subtask' : 'New Task'}</h2>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', display: 'flex', padding: 4 }}>
             <X size={16} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {parentTaskId && (
+            <div style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.5 }}>
+              This task will be linked under the selected parent task.
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Title</label>
             <input className="input" placeholder="e.g. Prepare Q3 report" value={form.title} onChange={(e) => set('title', e.target.value)} />
@@ -61,9 +94,9 @@ export default function TaskForm({ onSubmit, onClose, projects = [] }) {
                 <option value="high">High</option>
               </select>
             </div>
-            <div className="form-group">
+            <div className="form-group tf-date-field">
               <label className="form-label">Due Date</label>
-              <input className="input" type="date" style={{ colorScheme: 'dark' }} value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
+              <input className="input input-date" type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
             </div>
           </div>
 
@@ -73,14 +106,16 @@ export default function TaskForm({ onSubmit, onClose, projects = [] }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Assign to employees (multi-select)</label>
+            <label className="form-label">Assign to</label>
             <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
           </div>
 
           {error && <div className="form-error">{error}</div>}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+              Cancel
+            </button>
             <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
               {loading ? <span className="spinner" /> : 'Create Task'}
             </button>

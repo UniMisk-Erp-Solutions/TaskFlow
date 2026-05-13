@@ -98,7 +98,7 @@ function AddUserModal({ open, onClose, onCreated }) {
   }
 
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && !loading && onClose()}>
+    <div className="overlay" role="presentation">
       <div className="modal">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <h2 style={{ fontSize: 16 }}>Add User</h2>

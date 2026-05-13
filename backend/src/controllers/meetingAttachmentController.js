@@ -9,6 +9,19 @@ function createServiceClient() {
 
 const BUCKET = "meeting-assets";
 
+async function canAccessMeetingAttachments(serviceClient, user, meeting) {
+  if (!meeting) return false;
+  if (user.role === "admin") return true;
+  if (meeting.assignee_id === user.id) return true;
+  const { data: link } = await serviceClient
+    .from("meeting_assignees")
+    .select("meeting_id")
+    .eq("meeting_id", meeting.id)
+    .eq("profile_id", user.id)
+    .maybeSingle();
+  return !!link;
+}
+
 async function loadMeetingOrDeny(serviceClient, req) {
   const { id } = req.params;
 
@@ -26,8 +39,8 @@ async function loadMeetingOrDeny(serviceClient, req) {
     return { error: { status: 404, message: "Meeting not found or access denied" } };
   }
 
-  // Employees can only access their own meeting attachments
-  if (req.user.role !== "admin" && meeting.assignee_id !== req.user.id) {
+  const allowed = await canAccessMeetingAttachments(serviceClient, req.user, meeting);
+  if (!allowed) {
     return { error: { status: 403, message: "Access denied" } };
   }
 
@@ -132,7 +145,14 @@ exports.download = async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     if (!att) return res.status(404).json({ error: "Attachment not found" });
 
-    if (req.user.role !== "admin" && att.assignee_id !== req.user.id) {
+    const { data: meeting } = await serviceClient
+      .from("meetings")
+      .select("id, assignee_id")
+      .eq("id", att.meeting_id)
+      .maybeSingle();
+
+    const allowed = await canAccessMeetingAttachments(serviceClient, req.user, meeting);
+    if (!allowed) {
       return res.status(403).json({ error: "Access denied" });
     }
 

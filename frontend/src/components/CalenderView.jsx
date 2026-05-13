@@ -50,6 +50,7 @@ export default function CalenderView({
   onFiltersChange,
   assignees = [],
   includeEmployeeFilter = false,
+  onSelectEvent = undefined,
 }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const today = ymd(new Date());
@@ -60,6 +61,7 @@ export default function CalenderView({
     date: eventDate(t),
     type: 'task',
     assignee_id: (t.assignee_ids && t.assignee_ids[0]) || t.assignee_id || '',
+    payload: { kind: 'task', row: t },
   }));
 
   const meetingEvents = meetings.map((m) => ({
@@ -69,6 +71,7 @@ export default function CalenderView({
     type: 'meeting',
     assignee_id: (m.assignee_ids && m.assignee_ids[0]) || m.assignee_id || '',
     meeting_time: m.meeting_time || '',
+    payload: { kind: 'meeting', row: m },
   }));
 
   const events = useMemo(() => {
@@ -125,8 +128,8 @@ export default function CalenderView({
               <option value="meeting">Meetings</option>
             </select>
             {includeEmployeeFilter && (
-              <select className="select" value={filters.assignee_id || ''} onChange={(e) => onFiltersChange({ ...filters, assignee_id: e.target.value })} style={{ width: 180 }}>
-                <option value="">All Employees</option>
+              <select className="select" value={filters.assignee_id || ''} onChange={(e) => onFiltersChange({ ...filters, assignee_id: e.target.value })} style={{ width: 200 }}>
+                <option value="">All team members</option>
                 {assignees.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.full_name || a.email}
@@ -170,10 +173,18 @@ export default function CalenderView({
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {dayEvents.slice(0, 3).map((e) => (
-                    <div
+                    <button
                       key={e.id}
+                      type="button"
                       title={e.type === 'meeting' && e.meeting_time ? `${formatMeetingTime(e.meeting_time)} • ${e.name}` : e.name}
+                      disabled={!onSelectEvent}
+                      onClick={() => onSelectEvent?.(e.payload)}
                       style={{
+                        fontFamily: 'inherit',
+                        border: 'none',
+                        cursor: onSelectEvent ? 'pointer' : 'default',
+                        textAlign: 'left',
+                        width: '100%',
                         fontSize: 11,
                         borderRadius: 5,
                         padding: '3px 6px',
@@ -182,10 +193,11 @@ export default function CalenderView({
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
+                        opacity: onSelectEvent ? 1 : 0.92,
                       }}
                     >
                       {e.type === 'meeting' && e.meeting_time ? `${formatMeetingTime(e.meeting_time)} ${e.name}` : e.name}
-                    </div>
+                    </button>
                   ))}
                   {dayEvents.length > 3 && (
                     <span style={{ fontSize: 11, color: 'var(--tf-muted)' }}>+{dayEvents.length - 3} more</span>

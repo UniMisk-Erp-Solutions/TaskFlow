@@ -3,29 +3,180 @@ const supabase = require("../config/supabase");
 const VALID_PRIORITIES = ["low", "medium", "high"];
 const VALID_STATUSES = ["scheduled", "completed", "cancelled"];
 
+async function profilesInOrg(orgId, ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (!unique.length) return [];
+  const { data, error } = await supabase.from("profiles").select("id, role").eq("org_id", orgId).in("id", unique);
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function fetchMeetingAssigneeIds(meetingId) {
+  const { data } = await supabase.from("meeting_assignees").select("profile_id").eq("meeting_id", meetingId);
+  return (data || []).map((r) => r.profile_id);
+}
+
+function mapMeetingRow(row, assigneeIdsOverride) {
+  if (!row) return null;
+  const fromJunction = assigneeIdsOverride
+    ? assigneeIdsOverride
+    : (row.meeting_assignees || []).map((t) => t.profile_id).filter(Boolean);
+  const assignee_ids = fromJunction.length
+    ? [...new Set(fromJunction)]
+    : row.assignee_id
+      ? [row.assignee_id]
+      : [];
+  const rest = { ...row };
+  delete rest.meeting_assignees;
+  return {
+    ...rest,
+    assignee_ids,
+  };
+}
+
+async function employeeCanAccessMeeting(userId, meeting) {
+  if (!meeting) return false;
+  if (meeting.assignee_id === userId) return true;
+  const ids = await fetchMeetingAssigneeIds(meeting.id);
+  return ids.includes(userId);
+}
+
+async function replaceMeetingAssignees(meetingId, profileIds, bumpUpdated = true) {
+  const unique = [...new Set((profileIds || []).filter(Boolean))];
+  await supabase.from("meeting_assignees").delete().eq("meeting_id", meetingId);
+  if (unique.length) {
+    const { error } = await supabase.from("meeting_assignees").insert(
+      unique.map((profile_id) => ({ meeting_id: meetingId, profile_id }))
+    );
+    if (error) throw new Error(error.message);
+  }
+  if (bumpUpdated) {
+    await supabase.from("meetings").update({ updated_at: new Date().toISOString() }).eq("id", meetingId);
+  }
+}
+
+async function loadMeetingForUser(req, id) {
+  const { data: row, error } = await supabase
+    .from("meetings")
+    .select("*, meeting_assignees(profile_id)")
+    .eq("id", id)
+    .eq("org_id", req.user.org_id)
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!row) return { error: "not_found" };
+
+  const mapped = mapMeetingRow(row);
+
+  if (req.user.role !== "admin") {
+    const ok = await employeeCanAccessMeeting(req.user.id, row);
+    if (!ok) return { error: "forbidden" };
+  }
+
+  return { meeting: mapped };
+}
+
 exports.getMeetings = async (req, res) => {
   try {
     let query = supabase
       .from("meetings")
-      .select("*")
+      .select("*, meeting_assignees(profile_id)")
       .eq("org_id", req.user.org_id);
 
-    // Admins see all meetings; employees see only meetings assigned to them
     if (req.user.role !== "admin") {
-      query = query.eq("assignee_id", req.user.id);
+      const { data: links } = await supabase
+        .from("meeting_assignees")
+        .select("meeting_id")
+        .eq("profile_id", req.user.id);
+
+      const linkIds = [...new Set((links || []).map((l) => l.meeting_id).filter(Boolean))];
+      if (linkIds.length) {
+        query = query.or(`assignee_id.eq.${req.user.id},id.in.(${linkIds.join(",")})`);
+      } else {
+        query = query.eq("assignee_id", req.user.id);
+      }
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.order("meeting_date", { ascending: true });
+
     if (error) return res.status(400).json({ error: error.message });
-    res.json(data);
+    res.json((data || []).map((row) => mapMeetingRow(row)));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
+exports.getMeetingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await loadMeetingForUser(req, id);
+    if (r.error === "not_found" || r.error === "forbidden") {
+      return res.status(r.error === "forbidden" ? 403 : 404).json({ error: "Meeting not found or access denied" });
+    }
+    if (r.error) return res.status(400).json({ error: r.error });
+
+    const { data: subRows } = await supabase
+      .from("meetings")
+      .select("id, title, status, meeting_date, meeting_time, priority, parent_meeting_id, assignee_id")
+      .eq("org_id", req.user.org_id)
+      .eq("parent_meeting_id", id)
+      .order("meeting_date", { ascending: true });
+
+    const subs = subRows || [];
+
+    if (req.user.role !== "admin") {
+      const filtered = [];
+      for (const s of subs) {
+        if (await employeeCanAccessMeeting(req.user.id, s)) filtered.push(s);
+      }
+      return res.json({ ...r.meeting, submeetings: filtered });
+    }
+
+    res.json({ ...r.meeting, submeetings: subs });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+async function validateParentMeeting(req, parentMeetingId, orgId) {
+  if (!parentMeetingId) return { ok: true };
+  const { data: parent } = await supabase
+    .from("meetings")
+    .select("id, org_id")
+    .eq("id", parentMeetingId)
+    .maybeSingle();
+
+  if (!parent || parent.org_id !== orgId) {
+    return { ok: false, message: "Invalid parent meeting" };
+  }
+
+  if (req.user.role === "admin") return { ok: true };
+
+  const { data: mrow } = await supabase
+    .from("meetings")
+    .select("id, assignee_id, org_id")
+    .eq("id", parentMeetingId)
+    .maybeSingle();
+
+  const can = await employeeCanAccessMeeting(req.user.id, mrow);
+  if (!can) return { ok: false, message: "You can only add sub-meetings to meetings you are assigned to" };
+
+  return { ok: true };
+}
+
 exports.createMeeting = async (req, res) => {
   try {
-    const { title, description, assignee_id, priority, meeting_date, meeting_time } = req.body;
+    const {
+      title,
+      description,
+      assignee_id,
+      assignee_ids,
+      priority,
+      meeting_date,
+      meeting_time,
+      project_id,
+      parent_meeting_id,
+    } = req.body;
 
     if (!title?.trim()) {
       return res.status(400).json({ error: "Title is required" });
@@ -40,24 +191,161 @@ exports.createMeeting = async (req, res) => {
       return res.status(400).json({ error: `Priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
     }
 
-    const { data, error } = await supabase
-      .from("meetings")
-      .insert([{
-        title: title.trim(),
-        description,
-        assignee_id,
-        priority: priority || "medium",
-        meeting_date,
-        meeting_time,
-        status: "scheduled",
-        created_by: req.user.id,
-        org_id: req.user.org_id,
-      }])
-      .select()
-      .single();
+    const ids = assignee_ids?.length ? assignee_ids : assignee_id ? [assignee_id] : [];
+    if (!ids.length) {
+      return res.status(400).json({ error: "At least one participant is required" });
+    }
+
+    const validated = await profilesInOrg(req.user.org_id, ids);
+    if (validated.length !== [...new Set(ids)].length) {
+      return res.status(400).json({ error: "One or more participants are not in your workspace" });
+    }
+
+    const parentCheck = await validateParentMeeting(req, parent_meeting_id, req.user.org_id);
+    if (!parentCheck.ok) {
+      return res.status(400).json({ error: parentCheck.message });
+    }
+
+    if (project_id) {
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("id", project_id)
+        .eq("org_id", req.user.org_id)
+        .maybeSingle();
+      if (!proj) return res.status(400).json({ error: "Invalid project" });
+    }
+
+    const primaryAssignee = ids[0];
+
+    const insertRow = {
+      title: title.trim(),
+      description,
+      assignee_id: primaryAssignee,
+      priority: priority || "medium",
+      meeting_date,
+      meeting_time,
+      status: "scheduled",
+      created_by: req.user.id,
+      org_id: req.user.org_id,
+      project_id: project_id || null,
+      parent_meeting_id: parent_meeting_id || null,
+    };
+
+    const { data: created, error } = await supabase.from("meetings").insert([insertRow]).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
-    res.status(201).json(data);
+
+    try {
+      await replaceMeetingAssignees(created.id, ids, true);
+    } catch (syncErr) {
+      await supabase.from("meetings").delete().eq("id", created.id);
+      return res.status(400).json({ error: syncErr.message });
+    }
+
+    const { data: fresh } = await supabase
+      .from("meetings")
+      .select("*, meeting_assignees(profile_id)")
+      .eq("id", created.id)
+      .single();
+
+    res.status(201).json(mapMeetingRow(fresh));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.patchMeeting = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      description,
+      priority,
+      meeting_date,
+      meeting_time,
+      project_id,
+      assignee_ids,
+      parent_meeting_id,
+    } = req.body;
+
+    const r = await loadMeetingForUser(req, id);
+    if (r.error === "not_found" || r.error === "forbidden") {
+      return res.status(r.error === "forbidden" ? 403 : 404).json({ error: "Meeting not found or access denied" });
+    }
+    if (r.error) return res.status(400).json({ error: r.error });
+
+    if (priority && !VALID_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ error: `Priority must be one of: ${VALID_PRIORITIES.join(", ")}` });
+    }
+
+    if (parent_meeting_id !== undefined && parent_meeting_id !== null) {
+      const pc = await validateParentMeeting(req, parent_meeting_id, req.user.org_id);
+      if (!pc.ok) return res.status(400).json({ error: pc.message });
+      if (parent_meeting_id === id) {
+        return res.status(400).json({ error: "Meeting cannot be its own parent" });
+      }
+    }
+
+    if (assignee_ids !== undefined) {
+      const ids = assignee_ids || [];
+      if (!ids.length) {
+        return res.status(400).json({ error: "At least one participant is required" });
+      }
+      const validated = await profilesInOrg(req.user.org_id, ids);
+      if (validated.length !== [...new Set(ids)].length) {
+        return res.status(400).json({ error: "One or more participants are not in your workspace" });
+      }
+    }
+
+    if (project_id !== undefined && project_id !== null && project_id !== "") {
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("id", project_id)
+        .eq("org_id", req.user.org_id)
+        .maybeSingle();
+      if (!proj) return res.status(400).json({ error: "Invalid project" });
+    }
+
+    const updates = { updated_at: new Date().toISOString() };
+
+    if (title !== undefined) {
+      if (!String(title).trim()) return res.status(400).json({ error: "Title is required" });
+      updates.title = String(title).trim();
+    }
+    if (description !== undefined) updates.description = description;
+    if (priority !== undefined) updates.priority = priority;
+    if (meeting_date !== undefined) updates.meeting_date = meeting_date;
+    if (meeting_time !== undefined) updates.meeting_time = meeting_time;
+    if (project_id !== undefined) updates.project_id = project_id || null;
+    if (parent_meeting_id !== undefined) updates.parent_meeting_id = parent_meeting_id || null;
+
+    const { data: updated, error } = await supabase
+      .from("meetings")
+      .update(updates)
+      .eq("id", id)
+      .eq("org_id", req.user.org_id)
+      .select()
+      .maybeSingle();
+
+    if (error) return res.status(400).json({ error: error.message });
+    if (!updated) return res.status(404).json({ error: "Meeting not found" });
+
+    if (assignee_ids !== undefined) {
+      const ids = assignee_ids || [];
+      const primary = ids[0];
+      await supabase.from("meetings").update({ assignee_id: primary, updated_at: new Date().toISOString() }).eq("id", id);
+      await replaceMeetingAssignees(id, ids, true);
+    }
+
+    const { data: fresh } = await supabase
+      .from("meetings")
+      .select("*, meeting_assignees(profile_id)")
+      .eq("id", id)
+      .single();
+
+    res.json(mapMeetingRow(fresh));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -73,22 +361,24 @@ exports.updateStatus = async (req, res) => {
       return res.status(400).json({ error: `Status must be one of: ${VALID_STATUSES.join(", ")}` });
     }
 
-    let query = supabase
+    const access = await loadMeetingForUser(req, id);
+    if (access.error === "not_found" || access.error === "forbidden") {
+      return res.status(access.error === "forbidden" ? 403 : 404).json({ error: "Meeting not found or access denied" });
+    }
+    if (access.error) return res.status(400).json({ error: access.error });
+
+    const { data, error } = await supabase
       .from("meetings")
       .update({ status, updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("org_id", req.user.org_id);
+      .eq("org_id", req.user.org_id)
+      .select("*, meeting_assignees(profile_id)")
+      .maybeSingle();
 
-    // Non-admins can only update meetings assigned to them
-    if (req.user.role !== "admin") {
-      query = query.eq("assignee_id", req.user.id);
-    }
-
-    const { data, error } = await query.select().maybeSingle();
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: "Meeting not found or access denied" });
 
-    res.json(data);
+    res.json(mapMeetingRow(data));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -96,9 +386,13 @@ exports.updateStatus = async (req, res) => {
 
 exports.deleteMeeting = async (req, res) => {
   try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
     const { id } = req.params;
 
-    const { error } = await supabase.from("meetings").delete().eq("id", id);
+    const { error } = await supabase.from("meetings").delete().eq("id", id).eq("org_id", req.user.org_id);
     if (error) return res.status(400).json({ error: error.message });
 
     res.json({ message: "Deleted" });

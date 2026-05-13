@@ -1,13 +1,17 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { RefreshCw, Sparkles } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Plus, RefreshCw, Sparkles } from 'lucide-react';
+import api from './api';
 import { useProjects } from './useProjects';
 import ProjectsPanel from './components/ProjectsPanel';
+import TaskForm from './components/TaskForm';
+import MeetingForm from './components/MeetingForm';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime } from './useRealtime';
 import TaskCard from './components/TaskCard';
 import TaskDetailModal from './components/TaskDetailModal';
+import MeetingDetailModal from './components/MeetingDetailModal';
 import Navbar from './components/Navbar';
 import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
@@ -85,42 +89,76 @@ function Group({ label, tasks, onUpdateStatus, accent, onOpenTaskDetail }) {
 
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
-  const { tasks, loading, refetch, updateStatus } = useTasks();
-  const { meetings, refetch: refetchMeetings } = useMeetings();
+  const selfAssigneePreset = profile?.id ? [profile.id] : [];
+  const { tasks, loading, refetch, updateStatus, createTask, updateTask } = useTasks();
+  const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
   const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
+  const [detailMeeting, setDetailMeeting] = useState(null);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [showMeetingForm, setShowMeetingForm] = useState(false);
+  const [taskFormKey, setTaskFormKey] = useState(0);
+  const [meetingFormKey, setMeetingFormKey] = useState(0);
+  const [taskFormCtx, setTaskFormCtx] = useState({ projectId: '', parentTaskId: '' });
+  const [meetingFormCtx, setMeetingFormCtx] = useState({ projectId: '', parentMeetingId: '' });
+  const [allProfiles, setAllProfiles] = useState([]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    api
+      .get('/auth/profiles')
+      .then(({ data }) => setAllProfiles(data || []))
+      .catch(() => setAllProfiles([]));
+  }, [profile?.id]);
 
   const profileById = useMemo(() => {
     const m = {};
-    if (profile?.id) m[profile.id] = profile.full_name || profile.email;
+    (allProfiles || []).forEach((p) => {
+      m[p.id] = p.full_name || p.email;
+    });
+    if (profile?.id && !m[profile.id]) m[profile.id] = profile.full_name || profile.email;
     return m;
-  }, [profile]);
+  }, [allProfiles, profile]);
 
   React.useEffect(() => {
     sessionStorage.setItem('taskflow_employee_page', page);
   }, [page]);
 
+  function launchTaskForm(ctx = {}) {
+    setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '' });
+    setTaskFormKey((k) => k + 1);
+    setShowTaskForm(true);
+  }
+
+  function launchMeetingForm(ctx = {}) {
+    setMeetingFormCtx({ projectId: ctx.projectId || '', parentMeetingId: ctx.parentMeetingId || '' });
+    setMeetingFormKey((k) => k + 1);
+    setShowMeetingForm(true);
+  }
+
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
+  useRealtime('task_assignees', useCallback(() => refetch(), [refetch]));
+  useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   const today = new Date().toISOString().split('T')[0];
 
   const groups = useMemo(() => ({
-    overdue:    tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed'),
-    blocked:    tasks.filter((t) => t.status === 'blocked'),
+    overdue: tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed'),
+    blocked: tasks.filter((t) => t.status === 'blocked'),
     inProgress: tasks.filter((t) => t.status === 'in_progress'),
-    pending:    tasks.filter((t) => t.status === 'pending' && !(t.due_date && t.due_date < today)),
-    completed:  tasks.filter((t) => t.status === 'completed'),
+    pending: tasks.filter((t) => t.status === 'pending' && !(t.due_date && t.due_date < today)),
+    completed: tasks.filter((t) => t.status === 'completed'),
   }), [tasks, today]);
 
   const stats = {
-    total:     tasks.length,
-    pending:   groups.pending.length,
+    total: tasks.length,
+    pending: groups.pending.length,
     completed: groups.completed.length,
-    overdue:   groups.overdue.length,
+    overdue: groups.overdue.length,
   };
 
   return (
@@ -128,7 +166,6 @@ export default function EmployeeDashboard() {
       <Navbar />
 
       <div style={{ flex: 1, maxWidth: 920, width: '100%', margin: '0 auto', padding: '28px 24px' }}>
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>
@@ -144,7 +181,7 @@ export default function EmployeeDashboard() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
           <button className={`btn btn-sm ${page === 'tasks' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('tasks')}>
             Tasks
           </button>
@@ -154,9 +191,16 @@ export default function EmployeeDashboard() {
           <button className={`btn btn-sm ${page === 'projects' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('projects')}>
             Projects
           </button>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
+              <Plus size={14} /> Task
+            </button>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
+              <Plus size={14} /> Meeting
+            </button>
+          </span>
         </div>
 
-        {/* Stats */}
         <div className="tf-stat-row" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, display: 'flex', background: 'var(--tf-panel)', marginBottom: 28, overflow: 'hidden', boxShadow: 'none' }}>
           <Stat label="Total" value={stats.total} />
           <Stat label="Pending" value={stats.pending} color="var(--status-warning)" />
@@ -164,33 +208,33 @@ export default function EmployeeDashboard() {
           <Stat label="Overdue" value={stats.overdue} color={stats.overdue > 0 ? 'var(--status-danger)' : 'var(--tf-text)'} />
         </div>
 
-        {/* Overdue alert */}
         {stats.overdue > 0 && (
           <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
             <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
-              {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue. Update the status or contact your admin.
+              {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.
             </span>
           </div>
         )}
 
-        {/* Tasks */}
-        {page === 'tasks' && (loading
-          ? <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner" style={{ width: 20, height: 20 }} /></div>
-          : tasks.length === 0
-            ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--tf-muted)' }}>
-                <div style={{ fontSize: 13 }}>No tasks assigned to you yet.</div>
-              </div>
-            ) : (
-              <div>
-                <Group label="Overdue" tasks={groups.overdue} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
-                <Group label="Blocked" tasks={groups.blocked} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
-                <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} accent="var(--color-primary)" onOpenTaskDetail={setDetailTask} />
-                <Group label="Pending" tasks={groups.pending} onUpdateStatus={updateStatus} accent="var(--status-warning)" onOpenTaskDetail={setDetailTask} />
-                <Group label="Completed" tasks={groups.completed} onUpdateStatus={updateStatus} accent="var(--status-success)" onOpenTaskDetail={setDetailTask} />
-              </div>
-            )
-        )}
+        {page === 'tasks'
+          && (loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+              <span className="spinner" style={{ width: 20, height: 20 }} />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--tf-muted)' }}>
+              <div style={{ fontSize: 15, marginBottom: 8 }}>No tasks assigned to you yet.</div>
+              <div style={{ fontSize: 13 }}>Create one with “Task”, or assign yourself plus teammates or admins.</div>
+            </div>
+          ) : (
+            <div>
+              <Group label="Overdue" tasks={groups.overdue} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Blocked" tasks={groups.blocked} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
+              <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} accent="var(--color-primary)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Pending" tasks={groups.pending} onUpdateStatus={updateStatus} accent="var(--status-warning)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Completed" tasks={groups.completed} onUpdateStatus={updateStatus} accent="var(--status-success)" onOpenTaskDetail={setDetailTask} />
+            </div>
+          ))}
 
         {page === 'calender' && (
           <CalenderView
@@ -198,8 +242,12 @@ export default function EmployeeDashboard() {
             meetings={meetings}
             filters={filters}
             onFiltersChange={setFilters}
-            assignees={[]}
-            includeEmployeeFilter={false}
+            assignees={allProfiles}
+            includeEmployeeFilter
+            onSelectEvent={(payload) => {
+              if (payload?.kind === 'task') setDetailTask(payload.row);
+              if (payload?.kind === 'meeting') setDetailMeeting(payload.row);
+            }}
           />
         )}
 
@@ -211,11 +259,17 @@ export default function EmployeeDashboard() {
             getProgress={getProgress}
             onRefresh={refetchProjects}
             canCreate={false}
+            tasks={tasks}
+            meetings={meetings}
+            profileById={profileById}
+            onAddTaskForProject={(projectId) => launchTaskForm({ projectId })}
+            onAddMeetingForProject={(projectId) => launchMeetingForm({ projectId })}
+            onOpenTask={(t) => setDetailTask(t)}
+            onOpenMeeting={(m) => setDetailMeeting(m)}
           />
         )}
       </div>
 
-      {/* Floating AI button */}
       {!showAI && (
         <button type="button" className="tf-fab" onClick={() => setShowAI(true)} title="AI Assistant">
           <Sparkles size={20} color="#ffffff" strokeWidth={1.8} />
@@ -224,12 +278,58 @@ export default function EmployeeDashboard() {
 
       {showAI && <AiChat onClose={() => setShowAI(false)} />}
 
+      {showTaskForm && (
+        <TaskForm
+          key={taskFormKey}
+          projects={projects}
+          defaultProjectId={taskFormCtx.projectId}
+          parentTaskId={taskFormCtx.parentTaskId}
+          initialAssigneeIds={selfAssigneePreset}
+          onSubmit={createTask}
+          onClose={() => {
+            setShowTaskForm(false);
+            setTaskFormCtx({ projectId: '', parentTaskId: '' });
+          }}
+        />
+      )}
+      {showMeetingForm && (
+        <MeetingForm
+          key={meetingFormKey}
+          projects={projects}
+          defaultProjectId={meetingFormCtx.projectId}
+          parentMeetingId={meetingFormCtx.parentMeetingId}
+          initialAssigneeIds={selfAssigneePreset}
+          onSubmit={createMeeting}
+          onClose={() => {
+            setShowMeetingForm(false);
+            setMeetingFormCtx({ projectId: '', parentMeetingId: '' });
+          }}
+        />
+      )}
+
       <TaskDetailModal
         open={!!detailTask}
         task={detailTask}
         isAdmin={false}
+        profile={profile}
+        projects={projects}
         profileById={profileById}
+        updateTask={updateTask}
         onClose={() => setDetailTask(null)}
+        onNavigateTask={(t) => setDetailTask(t)}
+        onAddSubtask={(parentId) => launchTaskForm({ parentTaskId: parentId })}
+      />
+      <MeetingDetailModal
+        open={!!detailMeeting}
+        meeting={detailMeeting}
+        isAdmin={false}
+        profile={profile}
+        projects={projects}
+        profileById={profileById}
+        updateMeeting={updateMeeting}
+        onClose={() => setDetailMeeting(null)}
+        onNavigateMeeting={(m) => setDetailMeeting(m)}
+        onAddSubmeeting={(parentId) => launchMeetingForm({ parentMeetingId: parentId })}
       />
     </div>
   );

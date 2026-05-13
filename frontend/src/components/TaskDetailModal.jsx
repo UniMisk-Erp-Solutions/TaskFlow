@@ -20,14 +20,24 @@ function fmtDue(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function userCanEditTask(record, profileId, isAdmin) {
+  if (isAdmin || !profileId || !record) return isAdmin;
+  if (record.assignee_id === profileId) return true;
+  const ids = record.assignee_ids || [];
+  return ids.includes(profileId);
+}
+
 export default function TaskDetailModal({
   open,
   task,
   isAdmin = false,
+  profile = null,
   projects = [],
   profileById = {},
   onClose,
   updateTask,
+  onNavigateTask,
+  onAddSubtask,
 }) {
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -96,10 +106,16 @@ export default function TaskDetailModal({
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
+  const canEdit = userCanEditTask(record, profile?.id, isAdmin) && !!updateTask;
+
   async function handleSave(e) {
     e.preventDefault();
     if (!draft.title.trim()) {
       setError('Title is required');
+      return;
+    }
+    if (!draft.assignee_ids?.length) {
+      setError('Select at least one assignee');
       return;
     }
     if (!updateTask) return;
@@ -122,9 +138,11 @@ export default function TaskDetailModal({
     }
   }
 
+  const subtasks = record?.subtasks || [];
+
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 520, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" role="presentation">
+      <div className="modal" style={{ maxWidth: 520, width: '100%' }} role="dialog" aria-modal="true">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Task</h2>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tf-muted)', display: 'flex', padding: 4 }}>
@@ -138,7 +156,7 @@ export default function TaskDetailModal({
           </div>
         )}
 
-        {!loading && record && !isAdmin && (
+        {!loading && record && !canEdit && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
@@ -161,11 +179,30 @@ export default function TaskDetailModal({
               <span style={{ color: 'var(--tf-muted)' }}>Assignees · </span>
               {assigneeNames(record, profileById)}
             </div>
-            <p style={{ fontSize: 11, color: 'var(--tf-subhead)', margin: '8px 0 0' }}>Only admins can edit task details.</p>
+            {subtasks.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Subtasks</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--tf-text)' }}>
+                  {subtasks.map((s) => (
+                    <li key={s.id} style={{ marginBottom: 6 }}>
+                      {onNavigateTask ? (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => onNavigateTask(s)}>
+                          {s.title}
+                        </button>
+                      ) : (
+                        s.title
+                      )}
+                      <span style={{ color: 'var(--tf-muted)', marginLeft: 8 }}>{s.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: 'var(--tf-subhead)', margin: '8px 0 0' }}>You do not have permission to edit this task.</p>
           </div>
         )}
 
-        {!loading && record && isAdmin && (
+        {!loading && record && canEdit && (
           <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="form-group">
               <label className="form-label">Title</label>
@@ -184,9 +221,9 @@ export default function TaskDetailModal({
                   <option value="high">High</option>
                 </select>
               </div>
-              <div className="form-group">
+              <div className="form-group tf-date-field">
                 <label className="form-label">Due date</label>
-                <input className="input" type="date" style={{ colorScheme: 'dark' }} value={draft.due_date} onChange={(e) => set('due_date', e.target.value)} />
+                <input className="input input-date" type="date" value={draft.due_date} onChange={(e) => set('due_date', e.target.value)} />
               </div>
             </div>
             <div className="form-group">
@@ -197,6 +234,35 @@ export default function TaskDetailModal({
               <label className="form-label">Assignees</label>
               <MultiEmployeeSelect value={draft.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
             </div>
+
+            {subtasks.length > 0 && (
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 11, padding: 12, background: 'var(--tf-pearl)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Subtasks</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                  {subtasks.map((s) => (
+                    <li key={s.id} style={{ marginBottom: 6 }}>
+                      {onNavigateTask ? (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => onNavigateTask(s)}>
+                          {s.title}
+                        </button>
+                      ) : (
+                        s.title
+                      )}
+                      <span style={{ color: 'var(--tf-muted)', marginLeft: 8 }}>{s.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {onAddSubtask && (
+              <div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddSubtask(record.id)}>
+                  + Add subtask
+                </button>
+              </div>
+            )}
+
             {error && <div className="form-error">{error}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>

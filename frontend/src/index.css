@@ -359,6 +359,25 @@ textarea.input {
   animation: modalIn 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* Native date/timePickers stay visible on light theme (fixes hidden calendar icon). */
+.tf-date-field .input-date,
+.tf-date-field .input-time {
+  color-scheme: light;
+}
+input.input-date[type='date'],
+input.input-time[type='time'] {
+  color-scheme: light;
+}
+input.input-date::-webkit-calendar-picker-indicator,
+input.input-time::-webkit-calendar-picker-indicator {
+  opacity: 0.72;
+  cursor: pointer;
+}
+input.input-date::-webkit-calendar-picker-indicator:hover,
+input.input-time::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* ── Misc ───────────────────────────────────────────── */
 .divider {
   border: none;

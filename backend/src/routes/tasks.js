@@ -4,8 +4,10 @@ const admin = require("../middleware/adminMiddleware");
 const ctrl = require("../controllers/taskController");
 
 router.get("/", auth, ctrl.getTasks);
-router.post("/", auth, admin, ctrl.createTask);        // admin only
+router.post("/", auth, ctrl.createTask);
 router.patch("/:id/status", auth, ctrl.updateStatus);
-router.delete("/:id", auth, admin, ctrl.deleteTask);   // admin only
+router.get("/:id", auth, ctrl.getTaskById);
+router.patch("/:id", auth, ctrl.patchTask);
+router.delete("/:id", auth, admin, ctrl.deleteTask);
 
 module.exports = router;

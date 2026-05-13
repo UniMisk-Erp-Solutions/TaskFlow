@@ -70,7 +70,7 @@ export default function MeetingFilesModal({ open, meeting, isAdmin, onClose }) {
   if (!open) return null;
 
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && !uploading && onClose()}>
+    <div className="overlay" role="presentation">
       <div className="modal" style={{ maxWidth: 760, width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ fontSize: 16 }}>{title}</h2>

@@ -69,9 +69,12 @@ export default function AdminDashboard() {
   const [page,     setPage]     = useState(() => sessionStorage.getItem('taskflow_admin_page') || 'overview');
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
+  const [taskFormKey, setTaskFormKey] = useState(0);
+  const [meetingFormKey, setMeetingFormKey] = useState(0);
+  const [taskFormCtx, setTaskFormCtx] = useState({ projectId: '', parentTaskId: '' });
+  const [meetingFormCtx, setMeetingFormCtx] = useState({ projectId: '', parentMeetingId: '' });
   const [showAI,   setShowAI]   = useState(false);
   const [filters,  setFilters]  = useState(FILTERS_DEFAULT);
-  const [employees, setEmployees] = useState([]);
   const [allProfiles, setAllProfiles] = useState([]);
   const [overviewStats, setOverviewStats] = useState(null);
   const [sending,  setSending]  = useState(false);
@@ -92,8 +95,22 @@ export default function AdminDashboard() {
     sessionStorage.setItem('taskflow_admin_page', page);
   }, [page]);
 
+  function launchTaskForm(ctx = {}) {
+    setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '' });
+    setTaskFormKey((k) => k + 1);
+    setShowForm(true);
+  }
+
+  function launchMeetingForm(ctx = {}) {
+    setMeetingFormCtx({ projectId: ctx.projectId || '', parentMeetingId: ctx.parentMeetingId || '' });
+    setMeetingFormKey((k) => k + 1);
+    setShowMeetingForm(true);
+  }
+
   useRealtime('tasks', useCallback(() => refetch(), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
+  useRealtime('task_assignees', useCallback(() => refetch(), [refetch]));
+  useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -102,11 +119,9 @@ export default function AdminDashboard() {
       .then(({ data }) => {
         const list = data || [];
         setAllProfiles(list);
-        setEmployees(list.filter((p) => p.role === 'employee'));
       })
       .catch(() => {
         setAllProfiles([]);
-        setEmployees([]);
       });
   }, [profile?.id]);
 
@@ -200,10 +215,10 @@ export default function AdminDashboard() {
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowAI(true)} title="AI Assistant">
               <Sparkles size={13} />
             </button>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={13} /> New Task
             </button>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowMeetingForm(true)}>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
               <Plus size={13} /> New Meeting
             </button>
           </div>
@@ -238,7 +253,7 @@ export default function AdminDashboard() {
                     onClear={() => setFilters(FILTERS_DEFAULT)}
                     includeType
                     includeAssignee
-                    assignees={employees}
+                    assignees={allProfiles}
                     searchPlaceholder="Search tasks and meetings"
                   />
                 </div>
@@ -330,7 +345,7 @@ export default function AdminDashboard() {
                     onClear={() => setFilters(FILTERS_DEFAULT)}
                     includeType
                     includeAssignee
-                    assignees={employees}
+                    assignees={allProfiles}
                     searchPlaceholder="Search tasks and meetings"
                   />
                 </div>
@@ -371,8 +386,12 @@ export default function AdminDashboard() {
               meetings={meetings}
               filters={filters}
               onFiltersChange={setFilters}
-              assignees={employees}
+              assignees={allProfiles}
               includeEmployeeFilter
+              onSelectEvent={(payload) => {
+                if (payload?.kind === 'task') setDetailTask(payload.row);
+                if (payload?.kind === 'meeting') setDetailMeeting(payload.row);
+              }}
             />
           )}
 
@@ -385,6 +404,13 @@ export default function AdminDashboard() {
               getProgress={getProgress}
               onRefresh={refetchProjects}
               canCreate
+              tasks={tasks}
+              meetings={meetings}
+              profileById={profileById}
+              onAddTaskForProject={(projectId) => launchTaskForm({ projectId })}
+              onAddMeetingForProject={(projectId) => launchMeetingForm({ projectId })}
+              onOpenTask={(t) => setDetailTask(t)}
+              onOpenMeeting={(m) => setDetailMeeting(m)}
             />
           )}
 
@@ -449,10 +475,32 @@ export default function AdminDashboard() {
       )}
 
       {showForm && (
-        <TaskForm projects={projects} onSubmit={createTask} onClose={() => setShowForm(false)} />
+        <TaskForm
+          key={taskFormKey}
+          projects={projects}
+          defaultProjectId={taskFormCtx.projectId}
+          parentTaskId={taskFormCtx.parentTaskId}
+          initialAssigneeIds={[]}
+          onSubmit={createTask}
+          onClose={() => {
+            setShowForm(false);
+            setTaskFormCtx({ projectId: '', parentTaskId: '' });
+          }}
+        />
       )}
       {showMeetingForm && (
-        <MeetingForm projects={projects} onSubmit={createMeeting} onClose={() => setShowMeetingForm(false)} />
+        <MeetingForm
+          key={meetingFormKey}
+          projects={projects}
+          defaultProjectId={meetingFormCtx.projectId}
+          parentMeetingId={meetingFormCtx.parentMeetingId}
+          initialAssigneeIds={[]}
+          onSubmit={createMeeting}
+          onClose={() => {
+            setShowMeetingForm(false);
+            setMeetingFormCtx({ projectId: '', parentMeetingId: '' });
+          }}
+        />
       )}
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
 
@@ -460,19 +508,25 @@ export default function AdminDashboard() {
         open={!!detailTask}
         task={detailTask}
         isAdmin
+        profile={profile}
         projects={projects}
         profileById={profileById}
         updateTask={updateTask}
         onClose={() => setDetailTask(null)}
+        onNavigateTask={(t) => setDetailTask(t)}
+        onAddSubtask={(parentId) => launchTaskForm({ parentTaskId: parentId })}
       />
       <MeetingDetailModal
         open={!!detailMeeting}
         meeting={detailMeeting}
         isAdmin
+        profile={profile}
         projects={projects}
         profileById={profileById}
         updateMeeting={updateMeeting}
         onClose={() => setDetailMeeting(null)}
+        onNavigateMeeting={(m) => setDetailMeeting(m)}
+        onAddSubmeeting={(parentId) => launchMeetingForm({ parentMeetingId: parentId })}
       />
     </div>
   );

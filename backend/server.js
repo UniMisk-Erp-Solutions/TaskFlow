@@ -4,6 +4,7 @@ const cors = require("cors");
 const path = require("path");
 
 const authRoutes = require("./src/routes/auth");
+const projectRoutes = require("./src/routes/projects");
 const taskRoutes = require("./src/routes/tasks");
 const meetingRoutes = require("./src/routes/meetings");
 const aiRoutes = require("./src/routes/ai");
@@ -31,6 +32,7 @@ app.use(express.json());
 
 // API routes
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/meetings", meetingRoutes);
 app.use("/api/ai", aiRoutes);

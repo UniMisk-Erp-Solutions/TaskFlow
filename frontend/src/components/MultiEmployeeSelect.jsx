@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 
+/** Org-wide assignee picker: employees + admins (same workspace). */
 export default function MultiEmployeeSelect({ value = [], onChange }) {
-  const [employees, setEmployees] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
       .get('/auth/profiles')
       .then(({ data }) => {
-        setEmployees((data || []).filter((p) => p.role === 'employee'));
+        setMembers(data || []);
       })
-      .catch(() => setEmployees([]))
+      .catch(() => setMembers([]))
       .finally(() => setLoading(false));
   }, []);
 
@@ -24,8 +25,8 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
     return <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>Loading team…</div>;
   }
 
-  if (!employees.length) {
-    return <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No employees in workspace yet.</div>;
+  if (!members.length) {
+    return <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No people in this workspace yet.</div>;
   }
 
   return (
@@ -39,7 +40,7 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
         background: 'var(--tf-pearl)',
       }}
     >
-      {employees.map((e) => (
+      {members.map((e) => (
         <label
           key={e.id}
           style={{
@@ -53,7 +54,10 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
           }}
         >
           <input type="checkbox" checked={value.includes(e.id)} onChange={() => toggle(e.id)} style={{ accentColor: 'var(--color-primary)' }} />
-          <span>{e.full_name || e.email}</span>
+          <span>
+            {e.full_name || e.email}
+            <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--tf-muted)', textTransform: 'capitalize' }}>({e.role})</span>
+          </span>
         </label>
       ))}
     </div>

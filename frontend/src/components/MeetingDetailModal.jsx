@@ -33,14 +33,24 @@ function statusLabel(s) {
   return s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function userCanEditMeeting(record, profileId, isAdmin) {
+  if (isAdmin || !profileId || !record) return isAdmin;
+  if (record.assignee_id === profileId) return true;
+  const ids = record.assignee_ids || [];
+  return ids.includes(profileId);
+}
+
 export default function MeetingDetailModal({
   open,
   meeting,
   isAdmin = false,
+  profile = null,
   projects = [],
   profileById = {},
   onClose,
   updateMeeting,
+  onNavigateMeeting,
+  onAddSubmeeting,
 }) {
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -112,6 +122,8 @@ export default function MeetingDetailModal({
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
+  const canEdit = userCanEditMeeting(record, profile?.id, isAdmin) && !!updateMeeting;
+
   async function handleSave(e) {
     e.preventDefault();
     if (!draft.title.trim()) {
@@ -120,6 +132,10 @@ export default function MeetingDetailModal({
     }
     if (!draft.meeting_date || !draft.meeting_time) {
       setError('Meeting date and time are required');
+      return;
+    }
+    if (!draft.assignee_ids?.length) {
+      setError('Select at least one participant');
       return;
     }
     if (!updateMeeting) return;
@@ -143,9 +159,11 @@ export default function MeetingDetailModal({
     }
   }
 
+  const submeetings = record?.submeetings || [];
+
   return (
-    <div className="overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 520, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" role="presentation">
+      <div className="modal" style={{ maxWidth: 520, width: '100%' }} role="dialog" aria-modal="true">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16 }}>Meeting</h2>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', display: 'flex', padding: 4 }}>
@@ -159,7 +177,7 @@ export default function MeetingDetailModal({
           </div>
         )}
 
-        {!loading && record && !isAdmin && (
+        {!loading && record && !canEdit && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-ink-muted-48)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
@@ -184,11 +202,30 @@ export default function MeetingDetailModal({
               <span style={{ color: 'var(--color-ink-muted-48)' }}>Assignees · </span>
               {assigneeNames(record, profileById)}
             </div>
-            <p style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '8px 0 0' }}>Only admins can edit meeting details.</p>
+            {submeetings.length > 0 && (
+              <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sub-meetings</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                  {submeetings.map((s) => (
+                    <li key={s.id} style={{ marginBottom: 6 }}>
+                      {onNavigateMeeting ? (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => onNavigateMeeting(s)}>
+                          {s.title}
+                        </button>
+                      ) : (
+                        s.title
+                      )}
+                      <span style={{ color: 'var(--tf-muted)', marginLeft: 8 }}>{statusLabel(s.status)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '8px 0 0' }}>You do not have permission to edit this meeting.</p>
           </div>
         )}
 
-        {!loading && record && isAdmin && (
+        {!loading && record && canEdit && (
           <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div className="form-group">
               <label className="form-label">Title</label>
@@ -207,14 +244,14 @@ export default function MeetingDetailModal({
                   <option value="high">High</option>
                 </select>
               </div>
-              <div className="form-group">
+              <div className="form-group tf-date-field">
                 <label className="form-label">Meeting date</label>
-                <input className="input" type="date" style={{ colorScheme: 'light' }} value={draft.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
+                <input className="input input-date" type="date" value={draft.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
               </div>
             </div>
-            <div className="form-group">
+            <div className="form-group tf-date-field">
               <label className="form-label">Meeting time</label>
-              <input className="input" type="time" style={{ colorScheme: 'light' }} value={draft.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
+              <input className="input input-time" type="time" value={draft.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
             </div>
             <div className="form-group">
               <label className="form-label">Project</label>
@@ -224,6 +261,35 @@ export default function MeetingDetailModal({
               <label className="form-label">Assignees</label>
               <MultiEmployeeSelect value={draft.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
             </div>
+
+            {submeetings.length > 0 && (
+              <div style={{ border: '1px solid var(--tf-border)', borderRadius: 11, padding: 12, background: 'var(--tf-pearl)' }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Sub-meetings</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                  {submeetings.map((s) => (
+                    <li key={s.id} style={{ marginBottom: 6 }}>
+                      {onNavigateMeeting ? (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => onNavigateMeeting(s)}>
+                          {s.title}
+                        </button>
+                      ) : (
+                        s.title
+                      )}
+                      <span style={{ color: 'var(--tf-muted)', marginLeft: 8 }}>{statusLabel(s.status)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {onAddSubmeeting && (
+              <div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddSubmeeting(record.id)}>
+                  + Add sub-meeting
+                </button>
+              </div>
+            )}
+
             {error && <div className="form-error">{error}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
