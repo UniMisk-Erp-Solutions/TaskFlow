@@ -1,6 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { ThemeToggle } from '../ThemeContext';
 
 const NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
@@ -119,6 +120,7 @@ export default function Sidebar({ active, onNav }) {
               {profile?.email}
             </div>
           </div>
+          <ThemeToggle size={15} />
         </div>
         <button
           type="button"

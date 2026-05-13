@@ -1,6 +1,7 @@
 import React from 'react';
 import { LogOut, Zap } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { ThemeToggle } from '../ThemeContext';
 
 export default function Navbar() {
   const { profile, signOut } = useAuth();
@@ -21,7 +22,8 @@ export default function Navbar() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <ThemeToggle onDark size={14} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{

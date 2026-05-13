@@ -1,59 +1,108 @@
 /*
- * TaskFlow — Apple-inspired design tokens (premium / modern, light-first).
- * Interactive accent: single Action Blue. No decorative gradients on chrome.
+ * TaskFlow — Notion-inspired design system (premium, light + dark).
+ *
+ * All component layouts, spacing, and radii are unchanged from the previous
+ * Apple-leaning iteration; only the *palette* shifts toward the Notion
+ * design language (signature purple primary, navy hero band, sober editorial
+ * surfaces). Dark mode is opt-in via `data-theme="dark"` on <html>, set by
+ * the ThemeProvider in `ThemeContext.jsx`.
+ *
+ * Tokens that components reference directly (do not rename):
+ *   --color-primary, --color-primary-focus, --color-primary-on-dark
+ *   --color-ink, --color-ink-muted-80, --color-ink-muted-48
+ *   --color-canvas, --color-canvas-parchment, --color-surface-pearl
+ *   --color-surface-chip, --color-hairline, --color-divider-soft
+ *   --color-nav-black, --color-on-primary, --color-body-on-dark,
+ *   --color-body-muted-dark
+ *   --tf-page, --tf-panel, --tf-border, --tf-text, --tf-muted,
+ *   --tf-subhead, --tf-pearl, --tf-nav
+ *   --status-success(-bg), --status-warning(-bg), --status-danger(-bg),
+ *   --status-info(-bg)
  */
 
 :root {
-  --color-primary: #0066cc;
-  --color-primary-focus: #0071e3;
-  --color-primary-on-dark: #2997ff;
-  --color-ink: #1d1d1f;
-  --color-body-on-dark: #ffffff;
-  --color-body-muted-dark: #cccccc;
-  --color-ink-muted-80: #333333;
-  --color-ink-muted-48: #7a7a7a;
-  --color-divider-soft: #f0f0f0;
-  --color-hairline: #e0e0e0;
-  --color-canvas: #ffffff;
-  --color-canvas-parchment: #f5f5f7;
-  --color-surface-pearl: #fafafc;
-  --color-surface-tile-1: #272729;
-  --color-surface-tile-2: #2a2a2c;
-  --color-surface-chip: rgba(210, 210, 215, 0.64);
-  --color-nav-black: #000000;
+  color-scheme: light;
+
+  /* Notion primary (signature purple). */
+  --color-primary: #5645d4;
+  --color-primary-focus: #4534b3;
+  --color-primary-deep: #3a2a99;
+  --color-primary-on-dark: #b3a5ff;
   --color-on-primary: #ffffff;
 
-  /* Semantic shortcuts (use in inline styles) */
+  /* Brand navy (used by the top global nav band). */
+  --color-nav-black: #0a1530;
+
+  /* Ink / type. */
+  --color-ink: #1a1a1a;
+  --color-ink-muted-80: #37352f;   /* Notion charcoal */
+  --color-ink-muted-48: #787671;   /* Notion steel    */
+  --color-body-on-dark: #ffffff;
+  --color-body-muted-dark: rgba(255, 255, 255, 0.72);
+
+  /* Surfaces. */
+  --color-canvas: #ffffff;             /* primary panel surface         */
+  --color-canvas-parchment: #fafaf9;   /* page bg (surface-soft)        */
+  --color-surface-pearl: #f6f5f4;      /* quieter raised area (surface) */
+  --color-surface-tile-1: #1a2a52;     /* dark tile (brand-navy-mid)    */
+  --color-surface-tile-2: #1f3268;     /* dark tile variant             */
+  --color-surface-chip: rgba(10, 21, 48, 0.08);
+
+  /* Hairlines + dividers. */
+  --color-hairline: #e5e3df;
+  --color-divider-soft: #ede9e4;
+
+  /* Status (Notion semantics). */
+  --status-success: #1aae39;
+  --status-success-bg: rgba(26, 174, 57, 0.10);
+  --status-warning: #dd5b00;
+  --status-warning-bg: rgba(221, 91, 0, 0.10);
+  --status-danger: #e03131;
+  --status-danger-bg: rgba(224, 49, 49, 0.10);
+  --status-info: var(--color-primary);
+  --status-info-bg: rgba(86, 69, 212, 0.10);
+
+  /* Semantic theme shortcuts. */
   --tf-page: var(--color-canvas-parchment);
   --tf-panel: var(--color-canvas);
   --tf-border: var(--color-hairline);
+  --tf-border-soft: rgba(10, 21, 48, 0.08);
   --tf-text: var(--color-ink);
   --tf-muted: var(--color-ink-muted-48);
   --tf-subhead: var(--color-ink-muted-80);
   --tf-pearl: var(--color-surface-pearl);
   --tf-nav: var(--color-nav-black);
 
-  /* Status (informational; not brand accent) */
-  --status-success: #248a3d;
-  --status-success-bg: rgba(36, 138, 61, 0.08);
-  --status-warning: #b45309;
-  --status-warning-bg: rgba(180, 83, 9, 0.08);
-  --status-danger: #c41e3a;
-  --status-danger-bg: rgba(196, 30, 58, 0.08);
-  --status-info: var(--color-primary);
-  --status-info-bg: rgba(0, 102, 204, 0.08);
+  /* Glass surface used by the sticky subnav (must adapt across themes). */
+  --tf-glass-bg: rgba(255, 255, 255, 0.78);
+  --tf-glass-border: rgba(10, 21, 48, 0.06);
 
-  /* Legacy variable names → light theme (existing class rules) */
+  /* Focus halo derived from primary so it adapts in dark mode. */
+  --tf-focus-ring: rgba(86, 69, 212, 0.20);
+
+  /* Card tints (echo Notion's database property palette). Reserved for
+     future "feature card" surfaces — none of the existing components use
+     them, so introducing them here is additive. */
+  --card-tint-peach: #ffe8d4;
+  --card-tint-rose: #fde0ec;
+  --card-tint-mint: #d9f3e1;
+  --card-tint-lavender: #e6e0f5;
+  --card-tint-sky: #dcecfa;
+  --card-tint-yellow: #fef7d6;
+  --card-tint-yellow-bold: #f9e79f;
+  --card-tint-cream: #f8f5e8;
+
+  /* Legacy aliases — kept so any rule below still resolves. */
   --bg: var(--tf-page);
   --surface: var(--tf-pearl);
   --card: var(--tf-panel);
   --raised: var(--color-surface-pearl);
   --line: var(--tf-border);
-  --line-2: rgba(0, 0, 0, 0.08);
+  --line-2: var(--tf-border-soft);
   --line-3: var(--color-divider-soft);
   --t1: var(--tf-text);
   --t2: var(--tf-muted);
-  --t3: rgba(122, 122, 122, 0.55);
+  --t3: var(--color-ink-muted-48);
 
   --green: var(--status-success);
   --green-bg: var(--status-success-bg);
@@ -64,14 +113,69 @@
   --indigo: var(--color-primary);
   --indigo-bg: var(--status-info-bg);
 
+  /* Radii (unchanged — keeps existing alignment intact). */
   --r: 8px;
   --r-lg: 11px;
   --r-xl: 18px;
   --r-pill: 9999px;
   --t: 120ms ease;
 
-  --font-display: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Type stack — Notion uses an Inter-derived face; Inter is the safe fallback. */
+  --font-display: "Inter", "Notion Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: "Inter", "Notion Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ── Dark theme (Notion-style sober surfaces) ──────────────────────────── */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-primary: #8b75ff;
+  --color-primary-focus: #a89aff;
+  --color-primary-deep: #6856e6;
+  --color-primary-on-dark: #b3a5ff;
+  --color-on-primary: #ffffff;
+
+  --color-nav-black: #050a1c;
+
+  --color-ink: #f1f0ec;
+  --color-ink-muted-80: #d4d3cf;
+  --color-ink-muted-48: #9b9a93;
+  --color-body-on-dark: #ffffff;
+  --color-body-muted-dark: rgba(255, 255, 255, 0.65);
+
+  --color-canvas: #1f1f1f;
+  --color-canvas-parchment: #161616;
+  --color-surface-pearl: #262626;
+  --color-surface-tile-1: #1a1a1a;
+  --color-surface-tile-2: #232323;
+  --color-surface-chip: rgba(255, 255, 255, 0.10);
+
+  --color-hairline: #373737;
+  --color-divider-soft: #2a2a2a;
+
+  --status-success: #2cc54a;
+  --status-success-bg: rgba(44, 197, 74, 0.16);
+  --status-warning: #ff8c3d;
+  --status-warning-bg: rgba(255, 140, 61, 0.16);
+  --status-danger: #ff5a5a;
+  --status-danger-bg: rgba(255, 90, 90, 0.16);
+  --status-info: var(--color-primary);
+  --status-info-bg: rgba(139, 117, 255, 0.16);
+
+  --tf-page: var(--color-canvas-parchment);
+  --tf-panel: var(--color-canvas);
+  --tf-border: var(--color-hairline);
+  --tf-border-soft: rgba(255, 255, 255, 0.10);
+  --tf-text: var(--color-ink);
+  --tf-muted: var(--color-ink-muted-48);
+  --tf-subhead: var(--color-ink-muted-80);
+  --tf-pearl: var(--color-surface-pearl);
+  --tf-nav: var(--color-nav-black);
+
+  --tf-glass-bg: rgba(31, 31, 31, 0.78);
+  --tf-glass-border: rgba(255, 255, 255, 0.08);
+
+  --tf-focus-ring: rgba(139, 117, 255, 0.32);
 }
 
 *,
@@ -96,6 +200,7 @@ body {
   line-height: 1.47;
   letter-spacing: -0.022em;
   -webkit-font-smoothing: antialiased;
+  transition: background var(--t), color var(--t);
 }
 
 #root {
@@ -156,7 +261,7 @@ h3 {
   letter-spacing: -0.022em;
   line-height: 1;
   cursor: pointer;
-  transition: transform var(--t), opacity var(--t), border-color var(--t), background var(--t);
+  transition: transform var(--t), opacity var(--t), border-color var(--t), background var(--t), color var(--t);
   border: 1px solid transparent;
   white-space: nowrap;
 }
@@ -185,7 +290,7 @@ h3 {
 .btn-ghost {
   background: var(--tf-panel);
   color: var(--color-primary);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--tf-border-soft);
 }
 .btn-ghost:hover:not(:disabled) {
   background: var(--tf-pearl);
@@ -196,10 +301,11 @@ h3 {
 .btn-danger {
   background: var(--status-danger-bg);
   color: var(--status-danger);
-  border-color: rgba(196, 30, 58, 0.2);
+  border-color: var(--status-danger-bg);
 }
 .btn-danger:hover:not(:disabled) {
-  background: rgba(196, 30, 58, 0.12);
+  background: var(--status-danger-bg);
+  opacity: 0.85;
 }
 
 .btn-sm {
@@ -224,7 +330,7 @@ textarea.input {
   width: 100%;
   background: var(--tf-panel);
   color: var(--tf-text);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--tf-border-soft);
   border-radius: var(--r-pill);
   padding: 12px 20px;
   min-height: 44px;
@@ -232,7 +338,7 @@ textarea.input {
   font-family: inherit;
   letter-spacing: -0.022em;
   line-height: 1.2;
-  transition: border-color var(--t), box-shadow var(--t);
+  transition: border-color var(--t), box-shadow var(--t), background var(--t), color var(--t);
   outline: none;
 }
 .input::placeholder {
@@ -242,7 +348,7 @@ textarea.input {
 .select:focus,
 textarea.input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.15);
+  box-shadow: 0 0 0 3px var(--tf-focus-ring);
 }
 .select {
   cursor: pointer;
@@ -272,6 +378,7 @@ textarea.input {
   border: 1px solid var(--tf-border);
   border-radius: var(--r-xl);
   overflow: hidden;
+  transition: background var(--t), border-color var(--t);
 }
 
 .tf-panel-head {
@@ -304,29 +411,29 @@ textarea.input {
   padding: 4px 10px;
   border-radius: var(--r-pill);
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 .badge-green {
   background: var(--green-bg);
   color: var(--green);
-  border: 1px solid rgba(36, 138, 61, 0.2);
+  border: 1px solid transparent;
 }
 .badge-yellow {
   background: var(--yellow-bg);
   color: var(--yellow);
-  border: 1px solid rgba(180, 83, 9, 0.2);
+  border: 1px solid transparent;
 }
 .badge-red {
   background: var(--red-bg);
   color: var(--red);
-  border: 1px solid rgba(196, 30, 58, 0.2);
+  border: 1px solid transparent;
 }
 .badge-indigo {
   background: var(--indigo-bg);
   color: var(--indigo);
-  border: 1px solid rgba(0, 102, 204, 0.22);
+  border: 1px solid transparent;
 }
 .badge-muted {
   background: var(--tf-pearl);
@@ -359,14 +466,15 @@ textarea.input {
   animation: modalIn 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* Native date/timePickers stay visible on light theme (fixes hidden calendar icon). */
+/* Native date/time pickers — adapt to active theme so the calendar icon
+   stays visible in both light and dark mode. */
 .tf-date-field .input-date,
 .tf-date-field .input-time {
-  color-scheme: light;
+  color-scheme: light dark;
 }
 input.input-date[type='date'],
 input.input-time[type='time'] {
-  color-scheme: light;
+  color-scheme: light dark;
 }
 input.input-date::-webkit-calendar-picker-indicator,
 input.input-time::-webkit-calendar-picker-indicator {
@@ -389,7 +497,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(0, 102, 204, 0.2);
+  border: 2px solid var(--tf-focus-ring);
   border-top-color: var(--color-primary);
   animation: spin 600ms linear infinite;
 }
@@ -422,7 +530,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   text-align: center;
 }
 
-/* AI floating action — brand blue, minimal elevation */
+/* AI floating action — Notion purple, minimal elevation. */
 .tf-fab {
   position: fixed;
   bottom: 28px;
@@ -437,8 +545,11 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform var(--t);
-  box-shadow: none;
+  transition: transform var(--t), background var(--t);
+  box-shadow: 0 6px 18px -8px rgba(86, 69, 212, 0.55);
+}
+.tf-fab:hover {
+  background: var(--color-primary-focus);
 }
 .tf-fab:active {
   transform: scale(0.95);
@@ -465,10 +576,10 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 
 .tf-subnav {
   min-height: 52px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--tf-glass-bg);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--tf-glass-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -476,9 +587,10 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   flex-shrink: 0;
   flex-wrap: wrap;
   gap: 12px;
+  transition: background var(--t), border-color var(--t);
 }
 
-/* Table primitives (lighter rows on parchment) */
+/* Table primitives (lighter rows on parchment). */
 .tf-table thead {
   background: var(--tf-pearl);
 }
@@ -503,7 +615,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   background: var(--tf-pearl);
 }
 
-/* Inline select inside tables — pearl capsule */
+/* Inline select inside tables — pearl capsule. */
 .tf-select-inline {
   background: var(--tf-pearl);
   border: 1px solid var(--tf-border);
@@ -514,9 +626,49 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   font-family: inherit;
   outline: none;
   cursor: pointer;
+  transition: border-color var(--t), background var(--t), color var(--t);
 }
 .tf-select-inline:focus {
   border-color: var(--color-primary);
+}
+
+/* ── Theme toggle (used in Sidebar + Navbar) ────────── */
+.tf-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-lg);
+  background: var(--tf-pearl);
+  border: 1px solid var(--tf-border);
+  color: var(--tf-subhead);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t), color var(--t), border-color var(--t), transform var(--t);
+}
+.tf-theme-toggle:hover {
+  color: var(--tf-text);
+  border-color: var(--tf-border);
+  background: var(--tf-panel);
+}
+.tf-theme-toggle:active {
+  transform: scale(0.94);
+}
+.tf-theme-toggle:focus-visible {
+  outline: 2px solid var(--color-primary-focus);
+  outline-offset: 2px;
+}
+.tf-theme-toggle-on-dark {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--color-body-on-dark);
+}
+.tf-theme-toggle-on-dark:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.30);
+  color: var(--color-body-on-dark);
 }
 
 @keyframes fadeIn {

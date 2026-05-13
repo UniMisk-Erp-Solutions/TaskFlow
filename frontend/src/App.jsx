@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import { ThemeProvider } from './ThemeContext';
 import Landing from './Landing';
 import Login from './Login';
 import AdminDashboard from './AdminDashboard';
@@ -96,17 +97,19 @@ function FullLoader() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/"          element={<Landing />} />
-          <Route path="/login"     element={<Login />} />
-          <Route path="/app"       element={<RoleRouter />} />
-          <Route path="/admin"     element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
-          <Route path="/dashboard" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
-          <Route path="*"          element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/"          element={<Landing />} />
+            <Route path="/login"     element={<Login />} />
+            <Route path="/app"       element={<RoleRouter />} />
+            <Route path="/admin"     element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
+            <Route path="/dashboard" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
+            <Route path="*"          element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
