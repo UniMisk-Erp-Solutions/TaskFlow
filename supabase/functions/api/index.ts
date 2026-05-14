@@ -388,7 +388,7 @@ async function hydrateEmployeeOrg(user: AppUser): Promise<AppUser> {
   return user;
 }
 
-async function requireAuth(req: Request) {
+async function requireAuth(req: Request): Promise<{ error: Response } | { user: AppUser }> {
   const user = await getAuthUser(req);
   if (!user) return { error: json({ error: "Unauthorized" }, 401) };
   const hydrated = await hydrateEmployeeOrg(user);
@@ -734,6 +734,128 @@ async function assertMeetingAccess(user: AppUser, meetingId: string): Promise<Re
   return null;
 }
 
+/** Mirrors backend `employeeSeesMappedRow` for shaped task/meeting rows. */
+function employeeSeesShapedAssigneeRow(
+  userId: string,
+  row: { assignee_id?: string | null; assignee_ids?: string[] },
+): boolean {
+  if (!row || !userId) return false;
+  if (row.assignee_id === userId) return true;
+  const ids = row.assignee_ids || [];
+  return ids.includes(userId);
+}
+
+async function validateParentTaskEdge(user: AppUser, parentTaskId: string | null | undefined): Promise<Response | null> {
+  if (!parentTaskId) return null;
+  let pq = supabase.from("tasks").select("id, org_id, assignee_id").eq("id", parentTaskId);
+  if (user.org_id) pq = pq.eq("org_id", user.org_id);
+  const { data: parent } = await pq.maybeSingle();
+  if (!parent) return json({ error: "Invalid parent task" }, 400);
+  if (user.role === "admin") return null;
+  const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", parentTaskId).eq(
+    "profile_id",
+    user.id,
+  ).maybeSingle();
+  if (parent.assignee_id !== user.id && !inj) {
+    return json({ error: "You can only add subtasks to tasks you are assigned to" }, 403);
+  }
+  return null;
+}
+
+async function validateParentMeetingEdge(
+  user: AppUser,
+  parentMeetingId: string | null | undefined,
+): Promise<Response | null> {
+  if (!parentMeetingId) return null;
+  const parentRow = await fetchMeetingWithAssignees(parentMeetingId, user.org_id);
+  if (!parentRow) return json({ error: "Invalid parent meeting" }, 400);
+  if (user.org_id && parentRow.org_id !== user.org_id) return json({ error: "Invalid parent meeting" }, 400);
+  if (user.role === "admin") return null;
+  if (!meetingCanBeAccessedBy(user, parentRow)) {
+    return json({ error: "You can only add sub-meetings to meetings you are assigned to" }, 403);
+  }
+  return null;
+}
+
+async function fetchSubtasksForDetail(
+  parentId: string,
+  user: AppUser,
+): Promise<
+  { id: string; title: string; status: string; due_date: unknown; priority: unknown; parent_task_id: string | null }[]
+> {
+  let q = supabase.from("tasks").select("*").eq("parent_task_id", parentId);
+  if (user.org_id) q = q.eq("org_id", user.org_id);
+  const { data: rows } = await q.order("created_at", { ascending: true });
+  if (!rows?.length) return [];
+  const shaped = await shapeTasksWithJoins(rows);
+  let filtered = shaped;
+  if (user.role === "admin") {
+    let roleById: Record<string, string> = {};
+    if (user.org_id) {
+      try {
+        roleById = await loadOrgRoleByIdForEdge(user.org_id);
+      } catch {
+        roleById = {};
+      }
+    }
+    filtered = shaped.filter((t) => edgeAdminSeesItem(t, user.id, roleById, "task"));
+  } else {
+    filtered = shaped.filter((t) => employeeSeesShapedAssigneeRow(user.id, t));
+  }
+  return filtered.map(({ id: sid, title, status, due_date, priority, parent_task_id }) => ({
+    id: sid,
+    title,
+    status,
+    due_date,
+    priority,
+    parent_task_id: parent_task_id ?? null,
+  }));
+}
+
+async function fetchSubmeetingsForDetail(
+  parentId: string,
+  user: AppUser,
+): Promise<
+  {
+    id: string;
+    title: string;
+    status: string;
+    meeting_date: unknown;
+    meeting_time: unknown;
+    priority: unknown;
+    parent_meeting_id: string | null;
+  }[]
+> {
+  let q = supabase.from("meetings").select("*").eq("parent_meeting_id", parentId);
+  if (user.org_id) q = q.eq("org_id", user.org_id);
+  const { data: rows } = await q.order("created_at", { ascending: true });
+  if (!rows?.length) return [];
+  const shaped = await shapeMeetingsWithJoins(rows);
+  let filtered = shaped;
+  if (user.role === "admin") {
+    let roleById: Record<string, string> = {};
+    if (user.org_id) {
+      try {
+        roleById = await loadOrgRoleByIdForEdge(user.org_id);
+      } catch {
+        roleById = {};
+      }
+    }
+    filtered = shaped.filter((m) => edgeAdminSeesItem(m, user.id, roleById, "meeting"));
+  } else {
+    filtered = shaped.filter((m) => employeeSeesShapedAssigneeRow(user.id, m));
+  }
+  return filtered.map(({ id: sid, title, status, meeting_date, meeting_time, priority, parent_meeting_id }) => ({
+    id: sid,
+    title,
+    status,
+    meeting_date,
+    meeting_time,
+    priority,
+    parent_meeting_id: parent_meeting_id ?? null,
+  }));
+}
+
 async function handleTasks(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -768,16 +890,25 @@ async function handleTasks(req: Request, path: string) {
     const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single();
     if (error) return json({ error: error.message }, 400);
     const shaped = await shapeTasksWithJoins([data]);
-    return json(shaped[0]);
+    const base = shaped[0];
+    const subtasks = await fetchSubtasksForDetail(id, user);
+    return json({ ...base, subtasks });
   }
 
   if (req.method === "POST" && path === "/tasks") {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
     if (!user.org_id) {
       return json({ error: "Your profile has no organization; cannot create tasks." }, 400);
     }
     const body = await parseBody(req);
+    const parent_task_id =
+      (body as any).parent_task_id ?? (body as any).parentTaskId ?? null;
+    if (!parent_task_id) {
+      const adminErr = requireAdmin(user);
+      if (adminErr) return adminErr;
+    } else {
+      const pErr = await validateParentTaskEdge(user, String(parent_task_id));
+      if (pErr) return pErr;
+    }
     const { title, description, priority, due_date, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
@@ -798,6 +929,7 @@ async function handleTasks(req: Request, path: string) {
         status: "pending",
         created_by: user.id,
         org_id: user.org_id,
+        parent_task_id: parent_task_id || null,
       }])
       .select("id")
       .single();
@@ -884,10 +1016,21 @@ async function handleTasks(req: Request, path: string) {
       due_date,
       project_id,
     } = body as any;
+    const parent_task_id_in = (body as any).parent_task_id ?? (body as any).parentTaskId;
     if (title !== undefined && !String(title).trim()) return json({ error: "Title cannot be empty" }, 400);
     if (project_id) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
+    }
+    if (parent_task_id_in !== undefined) {
+      const nextParent = parent_task_id_in === null || parent_task_id_in === ""
+        ? null
+        : String(parent_task_id_in);
+      if (nextParent !== null) {
+        const pErr = await validateParentTaskEdge(user, nextParent);
+        if (pErr) return pErr;
+        if (nextParent === id) return json({ error: "Task cannot be its own parent" }, 400);
+      }
     }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (title !== undefined) patch.title = String(title).trim();
@@ -895,6 +1038,11 @@ async function handleTasks(req: Request, path: string) {
     if (priority !== undefined) patch.priority = priority;
     if (due_date !== undefined) patch.due_date = due_date;
     if (project_id !== undefined) patch.project_id = project_id || null;
+    if (parent_task_id_in !== undefined) {
+      patch.parent_task_id = parent_task_id_in === null || parent_task_id_in === ""
+        ? null
+        : String(parent_task_id_in);
+    }
 
     const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
       ? normalizeAssigneeIds(body)
@@ -1001,16 +1149,25 @@ async function handleMeetings(req: Request, path: string) {
     const { data, error } = await supabase.from("meetings").select("*").eq("id", id).single();
     if (error) return json({ error: error.message }, 400);
     const shaped = await shapeMeetingsWithJoins([data]);
-    return json(shaped[0]);
+    const base = shaped[0];
+    const submeetings = await fetchSubmeetingsForDetail(id, user);
+    return json({ ...base, submeetings });
   }
 
   if (req.method === "POST" && path === "/meetings") {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
     if (!user.org_id) {
       return json({ error: "Your profile has no organization; cannot create meetings." }, 400);
     }
     const body = await parseBody(req);
+    const parent_meeting_id =
+      (body as any).parent_meeting_id ?? (body as any).parentMeetingId ?? null;
+    if (!parent_meeting_id) {
+      const adminErr = requireAdmin(user);
+      if (adminErr) return adminErr;
+    } else {
+      const pErr = await validateParentMeetingEdge(user, String(parent_meeting_id));
+      if (pErr) return pErr;
+    }
     const { title, description, priority, meeting_date, meeting_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
@@ -1034,6 +1191,7 @@ async function handleMeetings(req: Request, path: string) {
         status: "scheduled",
         created_by: user.id,
         org_id: user.org_id,
+        parent_meeting_id: parent_meeting_id || null,
       }])
       .select("id")
       .single();
@@ -1121,6 +1279,7 @@ async function handleMeetings(req: Request, path: string) {
       meeting_time,
       project_id,
     } = body as any;
+    const parent_meeting_id_in = (body as any).parent_meeting_id ?? (body as any).parentMeetingId;
     if (title !== undefined && !String(title).trim()) return json({ error: "Title cannot be empty" }, 400);
     if (meeting_date !== undefined && meeting_date !== null && String(meeting_date).trim() === "") {
       return json({ error: "Meeting date cannot be empty" }, 400);
@@ -1132,6 +1291,16 @@ async function handleMeetings(req: Request, path: string) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
     }
+    if (parent_meeting_id_in !== undefined) {
+      const nextParent = parent_meeting_id_in === null || parent_meeting_id_in === ""
+        ? null
+        : String(parent_meeting_id_in);
+      if (nextParent !== null) {
+        const pErr = await validateParentMeetingEdge(user, nextParent);
+        if (pErr) return pErr;
+        if (nextParent === id) return json({ error: "Meeting cannot be its own parent" }, 400);
+      }
+    }
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (title !== undefined) patch.title = String(title).trim();
     if (description !== undefined) patch.description = description;
@@ -1139,6 +1308,11 @@ async function handleMeetings(req: Request, path: string) {
     if (meeting_date !== undefined) patch.meeting_date = meeting_date;
     if (meeting_time !== undefined) patch.meeting_time = meeting_time;
     if (project_id !== undefined) patch.project_id = project_id || null;
+    if (parent_meeting_id_in !== undefined) {
+      patch.parent_meeting_id = parent_meeting_id_in === null || parent_meeting_id_in === ""
+        ? null
+        : String(parent_meeting_id_in);
+    }
 
     const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
       ? normalizeAssigneeIds(body)
@@ -1503,7 +1677,7 @@ async function handleAdmin(req: Request, path: string) {
   return null;
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
@@ -1533,8 +1707,9 @@ Deno.serve(async (req) => {
     if (adminResp) return adminResp;
 
     return json({ error: "Not found" }, 404);
-  } catch (err) {
-    return json({ error: err?.message || "Internal server error" }, 500);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Internal server error";
+    return json({ error: msg }, 500);
   }
 });
 
