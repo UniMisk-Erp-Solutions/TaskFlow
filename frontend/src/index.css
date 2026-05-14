@@ -485,14 +485,30 @@ textarea.input {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
   animation: fadeIn var(--t);
+}
+
+/* Blur/dim live on a sibling layer, not on an ancestor of `.modal`. Chromium
+ * breaks native `<select>` and date/time pickers when `backdrop-filter` wraps
+ * the same subtree as those controls. */
+.overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.overlay > .modal {
+  position: relative;
+  z-index: 1;
 }
 
 .modal {
