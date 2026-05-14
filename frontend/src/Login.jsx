@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Eye, EyeOff, Zap, ArrowLeft } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { signIn, signUp } = useAuth();
 
-  const [mode, setMode] = useState('signin');
+  const initialMode =
+    new URLSearchParams(location.search).get('mode') === 'signup' ? 'signup' : 'signin';
+  const [mode, setMode] = useState(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

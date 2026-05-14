@@ -1,24 +1,37 @@
 /*
- * TaskFlow — Notion-inspired design system (premium, light + dark).
+ * TaskFlow — design system (premium, light + dark).
  *
- * All component layouts, spacing, and radii are unchanged from the previous
- * Apple-leaning iteration; only the *palette* shifts toward the Notion
- * design language (signature purple primary, navy hero band, sober editorial
- * surfaces). Dark mode is opt-in via `data-theme="dark"` on <html>, set by
- * the ThemeProvider in `ThemeContext.jsx`.
+ * Two consumers share this file:
+ *   1. The authenticated dashboard (Admin / Employee) — written in plain
+ *      React + inline styles that read CSS variables (`--tf-*`, `--color-*`,
+ *      `--status-*`). Theme switches via `data-theme="dark"` on <html>.
+ *   2. The marketing landing surfaces under `src/landing/*` — written in
+ *      Tailwind v4 + framer-motion. Theme switches via the `.dark` class
+ *      on <html>, which Tailwind reads through the custom variant below.
  *
- * Tokens that components reference directly (do not rename):
- *   --color-primary, --color-primary-focus, --color-primary-on-dark
- *   --color-ink, --color-ink-muted-80, --color-ink-muted-48
- *   --color-canvas, --color-canvas-parchment, --color-surface-pearl
- *   --color-surface-chip, --color-hairline, --color-divider-soft
- *   --color-nav-black, --color-on-primary, --color-body-on-dark,
- *   --color-body-muted-dark
- *   --tf-page, --tf-panel, --tf-border, --tf-text, --tf-muted,
- *   --tf-subhead, --tf-pearl, --tf-nav
- *   --status-success(-bg), --status-warning(-bg), --status-danger(-bg),
- *   --status-info(-bg)
+ * `ThemeContext.jsx` keeps `data-theme` and `.dark` in sync, so both
+ * surfaces flip together. Component layouts, spacing, and radii in the
+ * dashboard are unchanged.
  */
+
+@import "tailwindcss";
+
+/* Tailwind v4: enable class-based dark variants driven by `.dark` on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Marketing palette (used by the Tailwind landing pages via `bg-brand-primary`
+   etc.). Numeric CSS vars below back the dashboard. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", sans-serif;
+
+  --color-brand-primary: #8B5CF6;
+  --color-brand-accent: #C084FC;
+  --color-brand-navy: #0F172A;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+}
 
 :root {
   color-scheme: light;
@@ -92,10 +105,21 @@
   --card-tint-yellow-bold: #f9e79f;
   --card-tint-cream: #f8f5e8;
 
+  /* Marketing tokens consumed by `src/landing/*` (Tailwind utilities like
+     `bg-[var(--background)]`). Keep names distinct from `--tf-*` so the two
+     surfaces can be tuned independently. */
+  --background: #ffffff;
+  --foreground: #020617;
+  --card: #ffffff;
+  --card-foreground: #020617;
+  --border: #e2e8f0;
+  --muted: #475569;
+  --accent: #f8fafc;
+  --primary-soft: #f5f3ff;
+
   /* Legacy aliases — kept so any rule below still resolves. */
   --bg: var(--tf-page);
   --surface: var(--tf-pearl);
-  --card: var(--tf-panel);
   --raised: var(--color-surface-pearl);
   --line: var(--tf-border);
   --line-2: var(--tf-border-soft);
@@ -125,9 +149,24 @@
   --font-ui: "Inter", "Notion Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* ── Dark theme (Notion-style sober surfaces) ──────────────────────────── */
-:root[data-theme="dark"] {
+/* ── Dark theme (Notion-style sober surfaces) ──────────────────────────── *
+ * Driven by either `data-theme="dark"` (dashboard) or `.dark` class
+ * (Tailwind marketing surfaces). ThemeContext sets both together so this
+ * selector list catches whichever one fires first.
+ */
+:root[data-theme="dark"],
+:root.dark {
   color-scheme: dark;
+
+  /* Marketing palette — dark variant. */
+  --background: #0b0e14;
+  --foreground: #f8fafc;
+  --card: #141820;
+  --card-foreground: #f8fafc;
+  --border: #1f2937;
+  --muted: #94a3b8;
+  --accent: #1e1b4b;
+  --primary-soft: #1e1b4b;
 
   --color-primary: #8b75ff;
   --color-primary-focus: #a89aff;
