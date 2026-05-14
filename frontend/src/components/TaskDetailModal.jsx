@@ -20,6 +20,15 @@ function fmtDue(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** API may return ISO timestamps; `<input type="date">` requires yyyy-mm-dd. */
+function toDateInputValue(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
 function userCanEditTask(record, profileId, isAdmin) {
   if (isAdmin || !profileId || !record) return isAdmin;
   if (record.assignee_id === profileId) return true;
@@ -69,7 +78,7 @@ export default function TaskDetailModal({
           title: data.title || '',
           description: data.description ?? '',
           priority: data.priority || 'medium',
-          due_date: data.due_date || '',
+          due_date: toDateInputValue(data.due_date),
           project_id: data.project_id || '',
           assignee_ids: data.assignee_ids?.length
             ? [...data.assignee_ids]
@@ -85,7 +94,7 @@ export default function TaskDetailModal({
           title: task.title || '',
           description: task.description ?? '',
           priority: task.priority || 'medium',
-          due_date: task.due_date || '',
+          due_date: toDateInputValue(task.due_date),
           project_id: task.project_id || '',
           assignee_ids: task.assignee_ids?.length
             ? [...task.assignee_ids]
@@ -256,8 +265,20 @@ export default function TaskDetailModal({
             )}
 
             {onAddSubtask && (
-              <div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddSubtask(record.id)}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--tf-muted)', lineHeight: 1.45 }}>
+                  Open a task here, then use <strong style={{ fontWeight: 600 }}>Add subtask</strong> to nest smaller steps under it.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={() =>
+                    onAddSubtask(record.id, {
+                      projectId: record.project_id || '',
+                    })
+                  }
+                >
                   + Add subtask
                 </button>
               </div>

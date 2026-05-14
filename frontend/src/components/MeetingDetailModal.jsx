@@ -28,6 +28,23 @@ function fmtTime(t) {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+function toDateInputValue(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+/** `<input type="time">` expects HH:mm in practice (API may send HH:mm:ss). */
+function toTimeInputValue(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (/^\d{2}:\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{2}:\d{2})/);
+  return m ? m[1] : '';
+}
+
 function statusLabel(s) {
   if (!s) return '—';
   return s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -83,8 +100,8 @@ export default function MeetingDetailModal({
           title: data.title || '',
           description: data.description ?? '',
           priority: data.priority || 'medium',
-          meeting_date: data.meeting_date || '',
-          meeting_time: data.meeting_time || '',
+          meeting_date: toDateInputValue(data.meeting_date),
+          meeting_time: toTimeInputValue(data.meeting_time),
           project_id: data.project_id || '',
           assignee_ids: data.assignee_ids?.length
             ? [...data.assignee_ids]
@@ -100,8 +117,8 @@ export default function MeetingDetailModal({
           title: meeting.title || '',
           description: meeting.description ?? '',
           priority: meeting.priority || 'medium',
-          meeting_date: meeting.meeting_date || '',
-          meeting_time: meeting.meeting_time || '',
+          meeting_date: toDateInputValue(meeting.meeting_date),
+          meeting_time: toTimeInputValue(meeting.meeting_time),
           project_id: meeting.project_id || '',
           assignee_ids: meeting.assignee_ids?.length
             ? [...meeting.assignee_ids]
@@ -283,8 +300,20 @@ export default function MeetingDetailModal({
             )}
 
             {onAddSubmeeting && (
-              <div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddSubmeeting(record.id)}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--tf-muted)', lineHeight: 1.45 }}>
+                  Open a meeting here, then use <strong style={{ fontWeight: 600 }}>Add sub-meeting</strong> for follow-ups nested under it.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ alignSelf: 'flex-start' }}
+                  onClick={() =>
+                    onAddSubmeeting(record.id, {
+                      projectId: record.project_id || '',
+                    })
+                  }
+                >
                   + Add sub-meeting
                 </button>
               </div>

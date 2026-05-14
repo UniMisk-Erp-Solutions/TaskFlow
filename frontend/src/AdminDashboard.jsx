@@ -499,6 +499,38 @@ export default function AdminDashboard() {
         </button>
       )}
 
+      {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
+
+      <TaskDetailModal
+        open={!!detailTask}
+        task={detailTask}
+        isAdmin
+        profile={profile}
+        projects={projects}
+        profileById={profileById}
+        updateTask={updateTask}
+        onClose={() => setDetailTask(null)}
+        onNavigateTask={(t) => setDetailTask(t)}
+        onAddSubtask={(parentId, ctx = {}) =>
+          launchTaskForm({ parentTaskId: parentId, projectId: ctx.projectId || '' })
+        }
+      />
+      <MeetingDetailModal
+        open={!!detailMeeting}
+        meeting={detailMeeting}
+        isAdmin
+        profile={profile}
+        projects={projects}
+        profileById={profileById}
+        updateMeeting={updateMeeting}
+        onClose={() => setDetailMeeting(null)}
+        onNavigateMeeting={(m) => setDetailMeeting(m)}
+        onAddSubmeeting={(parentId, ctx = {}) =>
+          launchMeetingForm({ parentMeetingId: parentId, projectId: ctx.projectId || '' })
+        }
+      />
+
+      {/* Create forms after detail modals so nested dialogs stay clickable (same z-index). */}
       {showForm && (
         <TaskForm
           key={taskFormKey}
@@ -527,32 +559,6 @@ export default function AdminDashboard() {
           }}
         />
       )}
-      {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
-
-      <TaskDetailModal
-        open={!!detailTask}
-        task={detailTask}
-        isAdmin
-        profile={profile}
-        projects={projects}
-        profileById={profileById}
-        updateTask={updateTask}
-        onClose={() => setDetailTask(null)}
-        onNavigateTask={(t) => setDetailTask(t)}
-        onAddSubtask={(parentId) => launchTaskForm({ parentTaskId: parentId })}
-      />
-      <MeetingDetailModal
-        open={!!detailMeeting}
-        meeting={detailMeeting}
-        isAdmin
-        profile={profile}
-        projects={projects}
-        profileById={profileById}
-        updateMeeting={updateMeeting}
-        onClose={() => setDetailMeeting(null)}
-        onNavigateMeeting={(m) => setDetailMeeting(m)}
-        onAddSubmeeting={(parentId) => launchMeetingForm({ parentMeetingId: parentId })}
-      />
     </div>
   );
 }
