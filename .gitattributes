@@ -1,0 +1,2 @@
+# Scripts must stay LF-only so Unix/Linux shells honor shebang lines correctly.
+*.sh text eol=lf
