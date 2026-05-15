@@ -200,6 +200,7 @@ export default function MeetingDetailModal({
   const canSubmit = !!submitMeeting && isMyMeeting
     && (status === 'scheduled' || status === 'changes_requested');
   const canReview = isAdmin && !!approveMeeting && !!requestMeetingChanges && status === 'submitted';
+  const canReopen = isAdmin && !!requestMeetingChanges && (status === 'completed' || status === 'changes_requested');
 
   async function handleSave(e) {
     e.preventDefault();
@@ -274,6 +275,23 @@ export default function MeetingDetailModal({
       return;
     }
     setActionBusy('request');
+    setError('');
+    try {
+      const updated = await requestMeetingChanges(meeting.id, note);
+      if (updated) setRecord((prev) => ({ ...(prev || {}), ...updated }));
+      setReviewNote('');
+      loadHistory(meeting.id);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setActionBusy('');
+    }
+  }
+
+  async function handleReopen() {
+    if (!requestMeetingChanges) return;
+    const note = reviewNote.trim() || 'Reopened by admin';
+    setActionBusy('reopen');
     setError('');
     try {
       const updated = await requestMeetingChanges(meeting.id, note);
@@ -382,7 +400,7 @@ export default function MeetingDetailModal({
               </div>
             )}
 
-            {(canSubmit || canReview) && (
+            {(canSubmit || canReview || canReopen) && (
               <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {canSubmit && (
                   <>
@@ -436,6 +454,32 @@ export default function MeetingDetailModal({
                         disabled={actionBusy === 'approve'}
                       >
                         {actionBusy === 'approve' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Approve'}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {!canReview && canReopen && (
+                  <>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">
+                        Reopen note <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
+                      </label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        placeholder="Why is this being reopened? (recorded in the timeline)"
+                        value={reviewNote}
+                        onChange={(e) => setReviewNote(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={handleReopen}
+                        disabled={actionBusy === 'reopen'}
+                      >
+                        {actionBusy === 'reopen' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Reopen meeting'}
                       </button>
                     </div>
                   </>

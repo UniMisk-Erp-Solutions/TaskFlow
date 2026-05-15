@@ -32,11 +32,13 @@ export default function FilterBar({
           <option value="meeting">Meetings</option>
         </select>
       )}
-      <select className="select" style={{ width: 140 }} value={filters.status} onChange={(e) => onChange({ ...filters, status: e.target.value })}>
+      <select className="select" style={{ width: 160 }} value={filters.status} onChange={(e) => onChange({ ...filters, status: e.target.value })}>
         <option value="">All Statuses</option>
         <option value="pending">Pending</option>
         <option value="in_progress">In Progress</option>
+        <option value="submitted">Submitted</option>
         <option value="completed">Completed</option>
+        <option value="changes_requested">Changes Requested</option>
         <option value="blocked">Blocked</option>
         <option value="scheduled">Scheduled</option>
         <option value="cancelled">Cancelled</option>

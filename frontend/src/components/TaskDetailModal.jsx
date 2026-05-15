@@ -203,6 +203,7 @@ export default function TaskDetailModal({
   const canSubmit = !!submitTask && isMyTask
     && (status === 'pending' || status === 'in_progress' || status === 'changes_requested' || status === 'blocked');
   const canReview = isAdmin && !!approveTask && !!requestTaskChanges && status === 'submitted';
+  const canReopen = isAdmin && !!requestTaskChanges && (status === 'completed' || status === 'changes_requested');
 
   async function refetchRecord() {
     try {
@@ -287,6 +288,26 @@ export default function TaskDetailModal({
       return;
     }
     setActionBusy('request');
+    setError('');
+    try {
+      const updated = await requestTaskChanges(task.id, note);
+      if (updated) setRecord((prev) => ({ ...(prev || {}), ...updated }));
+      setReviewNote('');
+      loadHistory(task.id);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setActionBusy('');
+    }
+  }
+
+  // Admin "Reopen" — routes a completed (or changes_requested) task back to
+  // the team. Uses the same request-changes endpoint with the reopen note as
+  // the audit-log entry, so the timeline shows exactly why it was reopened.
+  async function handleReopen() {
+    if (!requestTaskChanges) return;
+    const note = reviewNote.trim() || 'Reopened by admin';
+    setActionBusy('reopen');
     setError('');
     try {
       const updated = await requestTaskChanges(task.id, note);
@@ -391,7 +412,7 @@ export default function TaskDetailModal({
               </div>
             )}
 
-            {(canSubmit || canReview) && (
+            {(canSubmit || canReview || canReopen) && (
               <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {canSubmit && (
                   <>
@@ -445,6 +466,32 @@ export default function TaskDetailModal({
                         disabled={actionBusy === 'approve'}
                       >
                         {actionBusy === 'approve' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Approve'}
+                      </button>
+                    </div>
+                  </>
+                )}
+                {!canReview && canReopen && (
+                  <>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">
+                        Reopen note <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
+                      </label>
+                      <textarea
+                        className="input"
+                        rows={3}
+                        placeholder="Why is this being reopened? (recorded in the timeline)"
+                        value={reviewNote}
+                        onChange={(e) => setReviewNote(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={handleReopen}
+                        disabled={actionBusy === 'reopen'}
+                      >
+                        {actionBusy === 'reopen' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Reopen task'}
                       </button>
                     </div>
                   </>
