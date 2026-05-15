@@ -1,94 +1,72 @@
 import { motion } from "motion/react";
-import { Send, MapPin, Mail, MessageSquare } from "lucide-react";
+import { Send, MapPin, Mail, MessageSquare, Clock } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import { Card } from "../components/ui/Card";
+import { PageShell, Container, PageHeader, Eyebrow } from "../components/ui/Section";
+
+const contacts = [
+  { icon: <Mail size={18} />, label: "Email us", value: "hello@taskflow.app", accent: "brand" },
+  { icon: <MessageSquare size={18} />, label: "Live support", value: "Mon–Fri · 9am – 6pm EST", accent: "emerald" },
+  { icon: <Clock size={18} />, label: "Response time", value: "Under 4 business hours", accent: "amber" },
+  { icon: <MapPin size={18} />, label: "Office", value: "123 Innovation Way, SF, CA 94105", accent: "rose" },
+];
+
+const accentClass = (k: string) =>
+  k === "emerald" ? "bg-emerald-500/[0.10] text-emerald-600"
+  : k === "amber" ? "bg-amber-500/[0.10] text-amber-600"
+  : k === "rose" ? "bg-rose-500/[0.10] text-rose-600"
+  : "bg-brand-primary/[0.10] text-brand-primary";
 
 export default function Contact() {
   return (
-    <div className="pt-32 pb-24 px-6 font-sans">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
-          <div className="space-y-12">
+    <PageShell>
+      <Container>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-16 items-start">
+          {/* Left — copy + contact cards */}
+          <div className="lg:col-span-2 space-y-10">
             <div className="space-y-5">
+              <Eyebrow>Contact</Eyebrow>
               <motion.h1
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
+                initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.03em] leading-[1.05]"
               >
                 Let's talk.
               </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.08 }}
-                className="text-base lg:text-lg text-[var(--muted)] leading-relaxed"
-              >
-                Whether you have a question about features, pricing, or a professional demo,
-                our team is ready to help.
-              </motion.p>
+              <p className="text-base text-[var(--muted)] leading-relaxed">
+                Whether you have a question about features, pricing, or a professional
+                demo, our team is ready to help.
+              </p>
             </div>
 
-            <div className="space-y-6">
-              <div className="flex items-start gap-4">
-                <div className="size-11 bg-brand-primary/[0.10] rounded-xl flex items-center justify-center text-brand-primary shrink-0">
-                  <Mail size={20} />
+            <div className="space-y-3">
+              {contacts.map((c) => (
+                <div
+                  key={c.label}
+                  className="flex items-center gap-4 p-4 rounded-2xl border border-[var(--border)] bg-[var(--card)]"
+                >
+                  <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${accentClass(c.accent)}`}>
+                    {c.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--muted)] tracking-tight">{c.label}</p>
+                    <p className="text-sm font-medium tracking-tight truncate">{c.value}</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-semibold tracking-tight">Email us</h4>
-                  <p className="text-sm text-[var(--muted)] mt-0.5">hello@taskflow.app</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="size-11 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600 shrink-0">
-                  <MessageSquare size={20} />
-                </div>
-                <div>
-                  <h4 className="font-semibold tracking-tight">Live support</h4>
-                  <p className="text-sm text-[var(--muted)] mt-0.5">Mon–Fri, 9am – 6pm EST</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-4">
-                <div className="size-11 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
-                  <MapPin size={20} />
-                </div>
-                <div>
-                  <h4 className="font-semibold tracking-tight">Office</h4>
-                  <p className="text-sm text-[var(--muted)] mt-0.5">123 Innovation Way, San Francisco, CA 94105</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-            <Card className="p-8 lg:p-10 border-[var(--border)]">
+          {/* Right — form */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+            className="lg:col-span-3"
+          >
+            <div className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-8 lg:p-10 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.12)]">
               <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium tracking-tight">First name</label>
-                    <input
-                      type="text"
-                      placeholder="Jane"
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--background)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium tracking-tight">Last name</label>
-                    <input
-                      type="text"
-                      placeholder="Doe"
-                      className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--background)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
-                    />
-                  </div>
+                  <Field label="First name" placeholder="Jane" />
+                  <Field label="Last name" placeholder="Doe" />
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium tracking-tight">Work email</label>
-                  <input
-                    type="email"
-                    placeholder="jane@company.com"
-                    className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--background)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
-                  />
-                </div>
+                <Field label="Work email" placeholder="jane@company.com" type="email" />
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium tracking-tight">Company size</label>
@@ -104,7 +82,7 @@ export default function Contact() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium tracking-tight">Message</label>
                   <textarea
-                    rows={4}
+                    rows={5}
                     placeholder="Tell us about your team's needs…"
                     className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--background)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all resize-none"
                   />
@@ -114,14 +92,28 @@ export default function Contact() {
                   Send message <Send className="ml-2 size-4" />
                 </Button>
                 <p className="text-xs text-[var(--muted)] text-center leading-relaxed">
-                  By submitting, you agree to our <a href="/privacy" className="underline hover:text-brand-primary">Privacy Policy</a> and{" "}
+                  By submitting, you agree to our{" "}
+                  <a href="/privacy" className="underline hover:text-brand-primary">Privacy Policy</a> and{" "}
                   <a href="/terms" className="underline hover:text-brand-primary">Terms</a>.
                 </p>
               </form>
-            </Card>
+            </div>
           </motion.div>
         </div>
-      </div>
+      </Container>
+    </PageShell>
+  );
+}
+
+function Field({ label, placeholder, type = "text" }: { label: string; placeholder: string; type?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium tracking-tight">{label}</label>
+      <input
+        type={type}
+        placeholder={placeholder}
+        className="w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--background)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
+      />
     </div>
   );
 }

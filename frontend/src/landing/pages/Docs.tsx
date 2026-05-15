@@ -1,121 +1,134 @@
 import { motion } from "motion/react";
-import { Search, Users, Layout, Zap, Settings, HelpCircle } from "lucide-react";
+import {
+  Search, Users, Layout, Zap, Settings, HelpCircle, BookOpen,
+  Activity, Calendar, Bot, Shield, ArrowRight,
+} from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { PageShell, Container, Section, PageHeader, SectionHead, CtaPanel } from "../components/ui/Section";
+
+const quickStart = [
+  { title: "Workspace setup", icon: <Settings size={18} />, description: "Configure your team's main workspace in under five minutes." },
+  { title: "Project planning", icon: <Layout size={18} />, description: "Build and manage project workflows that survive scope changes." },
+  { title: "Task management", icon: <Zap size={18} />, description: "Creating, assigning, and tracking work — the right way." },
+  { title: "Team collaboration", icon: <Users size={18} />, description: "Mention teammates and manage discussions in context." },
+];
+
+const categories = [
+  {
+    title: "Getting started",
+    icon: <BookOpen size={18} />,
+    articles: ["Create your workspace", "Invite teammates", "Your first project", "Connect calendars"],
+  },
+  {
+    title: "Tasks & projects",
+    icon: <Layout size={18} />,
+    articles: ["Subtasks and dependencies", "Multiple assignees", "Due dates with time", "Status and priority"],
+  },
+  {
+    title: "Approval workflow",
+    icon: <Activity size={18} />,
+    articles: ["Submit for review", "Approving work", "Requesting changes", "Reading the history timeline"],
+  },
+  {
+    title: "Calendar & timeline",
+    icon: <Calendar size={18} />,
+    articles: ["Switching views", "Rescheduling tasks", "Sharing a public calendar", "Time zones"],
+  },
+  {
+    title: "AI assistant",
+    icon: <Bot size={18} />,
+    articles: ["Asking grounded questions", "Generating status reports", "Smart scheduling", "Privacy boundaries"],
+  },
+  {
+    title: "Admin & security",
+    icon: <Shield size={18} />,
+    articles: ["SSO setup", "Role-based access", "Audit logs", "Data export"],
+  },
+];
 
 export default function Docs() {
-  const productName = "Taskflow";
   const supportEmail = "info@unimisk.com";
 
-  const sections = [
-    { title: "Workspace setup", icon: <Settings size={18} />, description: "Learn how to configure your team's main workspace." },
-    { title: "Project planning", icon: <Layout size={18} />, description: "Detailed guide on building and managing project workflows." },
-    { title: "Task management", icon: <Zap size={18} />, description: "Core concepts of creating, assigning, and tracking tasks." },
-    { title: "Team collaboration", icon: <Users size={18} />, description: "Mention teammates and manage discussions." },
-  ];
-
   return (
-    <div className="pt-32 pb-24 px-6 font-sans">
-      <div className="max-w-5xl mx-auto space-y-16">
-        <div className="text-center space-y-5">
-          <motion.h1
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-display text-4xl lg:text-5xl font-semibold tracking-[-0.025em] leading-[1.05]"
+    <PageShell>
+      <Container>
+        <PageHeader
+          eyebrow="Documentation"
+          title="Taskflow Docs"
+          blurb="Set up your workspace, manage projects, automate workflows, and collaborate with your team."
+        />
+
+        {/* Search */}
+        <div className="max-w-xl mx-auto mb-16 relative group">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)] group-focus-within:text-brand-primary transition-colors" size={18} />
+          <input
+            type="text"
+            placeholder="Search documentation…"
+            className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
+          />
+        </div>
+
+        {/* Quick start */}
+        <Section pad="tight" className="!py-0 mb-20">
+          <SectionHead eyebrow="Quick start" title="Start here." align="left" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {quickStart.map((s, idx) => (
+              <motion.div
+                key={s.title}
+                initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                transition={{ delay: idx * 0.04 }}
+                className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-brand-primary/40 hover:-translate-y-0.5 transition-all cursor-pointer group"
+              >
+                <div className="size-10 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                  {s.icon}
+                </div>
+                <h3 className="font-semibold tracking-tight text-sm mb-1.5">{s.title}</h3>
+                <p className="text-xs text-[var(--muted)] leading-relaxed">{s.description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </Section>
+
+        {/* Category index */}
+        <Section pad="tight" className="!py-0 mb-20">
+          <SectionHead eyebrow="Topics" title="Browse by category." align="left" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {categories.map((cat) => (
+              <div key={cat.title} className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--card)]">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <div className="size-9 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center">
+                    {cat.icon}
+                  </div>
+                  <h3 className="font-semibold tracking-tight">{cat.title}</h3>
+                </div>
+                <ul className="space-y-2.5">
+                  {cat.articles.map((a) => (
+                    <li key={a}>
+                      <a href="#" className="flex items-center gap-2 text-sm text-[var(--muted)] hover:text-brand-primary transition-colors group">
+                        <ArrowRight size={12} className="opacity-50 group-hover:translate-x-0.5 transition-transform" />
+                        {a}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <CtaPanel
+          title={<><HelpCircle className="inline-block mr-3 -mt-1" /> Still need help?</>}
+          blurb="If the docs don't answer your question, contact support with your workspace name and a clear description of the issue."
+        >
+          <Button size="lg" to="/contact">Contact support</Button>
+          <a
+            href={`mailto:${supportEmail}`}
+            className="text-sm text-slate-400 hover:text-white transition-colors"
           >
-            {productName} Docs
-          </motion.h1>
-          <p className="text-base lg:text-lg text-[var(--muted)] max-w-2xl mx-auto leading-relaxed">
-            Learn how to set up your workspace, manage projects, assign tasks, automate workflows, and collaborate with your team.
-          </p>
-
-          <div className="max-w-xl mx-auto relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)] group-focus-within:text-brand-primary transition-colors" size={18} />
-            <input
-              type="text"
-              placeholder="Search documentation…"
-              className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {sections.map((section, idx) => (
-            <div
-              key={idx}
-              className="p-5 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-brand-primary/40 hover:-translate-y-0.5 transition-all cursor-pointer group"
-            >
-              <div className="size-10 rounded-lg bg-[var(--primary-soft)] text-brand-primary flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                {section.icon}
-              </div>
-              <h3 className="font-semibold tracking-tight text-sm mb-1.5">{section.title}</h3>
-              <p className="text-xs text-[var(--muted)] leading-relaxed">{section.description}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="max-w-none space-y-10 text-[var(--foreground)] leading-relaxed">
-          <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight font-display">Introduction</h2>
-            <p>
-              Welcome to the {productName} documentation. These docs help users, teams, administrators, and customers
-              understand how to set up, manage, and get the most value from the platform.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight font-display">Workspaces</h2>
-            <p>
-              A workspace is the main area where your team's projects, tasks, members, files, settings, and activity
-              are managed. Inside a workspace you can create projects, invite members, assign roles, and configure permissions.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight font-display">Projects and tasks</h2>
-            <p>
-              Projects group related tasks around a specific goal. Tasks are the basic building blocks — title,
-              description, assignees, due dates, priorities, and status updates.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight font-display">Views — board, calendar, timeline</h2>
-            <p>
-              Use the Board view for visual tracking through columns. Calendar and Timeline help teams understand
-              deadlines, schedules, and dependencies clearly.
-            </p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-semibold tracking-tight font-display">Automations</h2>
-            <p>
-              Automations reduce repetitive manual work by creating rules that respond to changes — like sending
-              reminders before due dates or moving tasks when checklists complete.
-            </p>
-          </section>
-
-          <div className="pt-8">
-            <div className="max-w-5xl mx-auto bg-slate-950 border border-white/10 rounded-3xl p-12 lg:p-20 text-center space-y-7 shadow-[0_40px_80px_-40px_rgba(15,23,42,0.35)]">
-              <div className="flex items-center justify-center text-brand-primary">
-                <HelpCircle size={40} />
-              </div>
-              <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-[-0.025em] text-white">
-                Still need help?
-              </h2>
-              <p className="text-base lg:text-lg text-slate-400 max-w-xl mx-auto leading-relaxed">
-                If the docs don't answer your question, contact support with your workspace name
-                and a clear description of the issue.
-              </p>
-              <div className="flex justify-center">
-                <Button size="lg" to="/contact">Contact support</Button>
-              </div>
-              <p className="text-xs text-slate-500">
-                Email · <span className="text-slate-300">{supportEmail}</span>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            or email {supportEmail}
+          </a>
+        </CtaPanel>
+      </Container>
+    </PageShell>
   );
 }

@@ -1,77 +1,111 @@
 import { motion } from "motion/react";
-import { ShieldCheck, Lock, Eye, FileText, Server, RefreshCw } from "lucide-react";
-import { Card } from "../components/ui/Card";
+import { ShieldCheck, Lock, Eye, FileText, Server, RefreshCw, KeyRound, ScrollText } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { PageShell, Container, Section, PageHeader, SectionHead, CtaPanel } from "../components/ui/Section";
+
+const pillars = [
+  { icon: <Lock size={22} />, title: "Encryption", desc: "AES-256 at rest, TLS 1.3 in transit. Per-tenant keys in the database." },
+  { icon: <ShieldCheck size={22} />, title: "Compliance", desc: "SOC2 Type II, GDPR, and CCPA. Annual third-party penetration tests." },
+  { icon: <RefreshCw size={22} />, title: "Backups", desc: "Hourly incremental backups across two regions with 30-day PITR." },
+  { icon: <Eye size={22} />, title: "Audit logs", desc: "Append-only, queryable, and exportable. Every admin action is recorded." },
+  { icon: <Server size={22} />, title: "Hosting", desc: "Production runs on secure cloud infra with 24/7 incident monitoring." },
+  { icon: <FileText size={22} />, title: "Data ownership", desc: "You own your data. Export everything in open formats anytime." },
+];
+
+const standards = [
+  { tag: "SOC 2 Type II", body: "Annual independent audit covering security, availability, and confidentiality." },
+  { tag: "GDPR & CCPA", body: "Data-subject rights, deletion, portability, and lawful processing supported." },
+  { tag: "ISO 27001-ready", body: "Controls mapped to ISO 27001; certification in progress for 2026." },
+  { tag: "Pen-tested", body: "Annual third-party penetration test; reports available on request." },
+];
 
 export default function Security() {
-  const productName = "Taskflow";
-
-  const pillars = [
-    { icon: <Lock size={26} />, title: "Encryption", desc: "Your data is encrypted with AES-256 at rest and TLS 1.3 in transit." },
-    { icon: <ShieldCheck size={26} />, title: "Compliance", desc: `${productName} is SOC2 Type II compliant and follows GDPR / CCPA.` },
-    { icon: <RefreshCw size={26} />, title: "Backups", desc: "Automated daily backups with multi-region redundancy for 99.9% durability." },
-    { icon: <Eye size={26} />, title: "Observability", desc: "Complete audit logs and workspace transparency for admin actions." },
-    { icon: <Server size={26} />, title: "Hosting", desc: "Secure cloud infrastructure with 24/7 incident monitoring." },
-    { icon: <FileText size={26} />, title: "Data ownership", desc: "You own your data — export everything in open formats anytime." },
-  ];
-
   return (
-    <div className="pt-32 pb-24 px-6 font-sans">
-      <div className="max-w-7xl mx-auto">
-        <div className="max-w-3xl mb-20 space-y-5">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/[0.10] text-emerald-600 text-xs font-medium border border-emerald-500/15"
-          >
-            <ShieldCheck size={14} />
-            <span>Secure by design</span>
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="font-display text-4xl lg:text-6xl font-semibold tracking-[-0.03em] leading-[1.05]"
-          >
-            Trust is our<br />
-            <span className="text-emerald-600">foundation.</span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="text-base lg:text-lg text-[var(--muted)] leading-relaxed"
-          >
-            Enterprise task management involves sensitive data. {productName} is built
-            with a security-first architecture from day one.
-          </motion.p>
-        </div>
+    <PageShell>
+      <Container>
+        <PageHeader
+          eyebrow="Security"
+          title={<>Trust is our<br /><span className="text-emerald-600">foundation.</span></>}
+          blurb="Enterprise task management involves sensitive data. Taskflow is built with a security-first architecture from day one."
+          align="left"
+        />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-24">
-          {pillars.map((p, i) => (
-            <Card key={i} className="p-8 space-y-4 h-full">
-              <div className="size-12 rounded-xl bg-emerald-500/[0.08] text-emerald-600 flex items-center justify-center">
-                {p.icon}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/[0.10] text-emerald-600 text-xs font-medium border border-emerald-500/15 mb-16"
+        >
+          <ShieldCheck size={14} />
+          <span>Secure by design · Reviewed quarterly</span>
+        </motion.div>
+
+        <Section pad="tight" className="!py-0 mb-20">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {pillars.map((p) => (
+              <div key={p.title} className="p-7 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-emerald-500/30 transition-colors space-y-3">
+                <div className="size-11 rounded-xl bg-emerald-500/[0.10] text-emerald-600 flex items-center justify-center">
+                  {p.icon}
+                </div>
+                <h3 className="font-semibold tracking-tight text-base">{p.title}</h3>
+                <p className="text-sm text-[var(--muted)] leading-relaxed">{p.desc}</p>
               </div>
-              <h3 className="text-lg font-semibold tracking-tight">{p.title}</h3>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">{p.desc}</p>
-            </Card>
-          ))}
-        </div>
-
-        <section className="mb-12">
-          <div className="max-w-5xl mx-auto bg-slate-950 border border-white/10 rounded-3xl p-12 lg:p-20 text-center space-y-7 shadow-[0_40px_80px_-40px_rgba(15,23,42,0.35)]">
-            <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-[-0.025em] text-white">
-              Have security questions?
-            </h2>
-            <p className="text-base lg:text-lg text-slate-400 max-w-xl mx-auto leading-relaxed">
-              Request our full security whitepaper or talk to our compliance team about your requirements.
-            </p>
-            <div className="flex justify-center gap-3">
-              <Button size="lg" to="/contact">Contact security team</Button>
-            </div>
+            ))}
           </div>
-        </section>
-      </div>
-    </div>
+        </Section>
+
+        <Section pad="tight" className="!py-0 mb-20">
+          <SectionHead
+            eyebrow="Standards"
+            title="Certified, audited, and ready for procurement."
+            align="left"
+          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {standards.map((s) => (
+              <div key={s.tag} className="p-7 rounded-2xl border border-[var(--border)] bg-[var(--card)]">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <div className="size-8 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center">
+                    <ScrollText size={16} />
+                  </div>
+                  <span className="text-sm font-semibold tracking-tight">{s.tag}</span>
+                </div>
+                <p className="text-sm text-[var(--muted)] leading-relaxed">{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section pad="tight" className="!py-0 mb-20">
+          <SectionHead
+            eyebrow="How we protect access"
+            title="Zero-trust by default."
+            align="left"
+          />
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)]">
+            {[
+              { i: <KeyRound size={18} />, t: "SSO + SCIM", d: "SAML, OIDC, and SCIM provisioning on the Business plan." },
+              { i: <Lock size={18} />, t: "Role-based access control", d: "Workspace, project, and field-level permissions." },
+              { i: <Eye size={18} />, t: "Row-level security", d: "Postgres RLS enforces org isolation at the database layer." },
+              { i: <ShieldCheck size={18} />, t: "Audit-ready logs", d: "Every admin action is appended to an immutable log." },
+            ].map((row) => (
+              <div key={row.t} className="flex items-start gap-4 p-5">
+                <div className="size-9 rounded-lg bg-emerald-500/[0.08] text-emerald-600 flex items-center justify-center shrink-0">
+                  {row.i}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium tracking-tight">{row.t}</p>
+                  <p className="text-sm text-[var(--muted)] leading-relaxed mt-1">{row.d}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <CtaPanel
+          title="Have security questions?"
+          blurb="Request our security whitepaper or talk to our compliance team about your requirements."
+        >
+          <Button size="lg" to="/contact">Contact security team</Button>
+        </CtaPanel>
+      </Container>
+    </PageShell>
   );
 }
