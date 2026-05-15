@@ -138,27 +138,39 @@ export default function MeetingForm({
             <textarea className="input" placeholder="Optional details..." rows={3} value={form.description} onChange={(e) => set('description', e.target.value)} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div className="form-group">
-              <label className="form-label">Priority</label>
-              <select className="select" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div className="form-group tf-date-field">
-              <label className="form-label">Meeting Date (optional)</label>
-              <input className="input input-date" type="date" value={form.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
-            </div>
+          <div className="form-group">
+            <label className="form-label">Priority</label>
+            <select className="select" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
           </div>
 
-          {form.meeting_date && (
-            <div className="form-group">
-              <label className="form-label">Meeting Time (optional)</label>
-              <ClockTimePicker value={form.meeting_time} onChange={(v) => set('meeting_time', v)} />
-            </div>
-          )}
+          {/* Meeting Date — own full-width row, always visible */}
+          <div className="form-group tf-date-field">
+            <label className="form-label">Meeting Date (optional)</label>
+            <input
+              className="input input-date"
+              type="date"
+              value={form.meeting_date}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((ff) => ({ ...ff, meeting_date: v, meeting_time: v ? ff.meeting_time : '' }));
+              }}
+            />
+          </div>
+
+          {/* Meeting Time — own full-width row, always visible (clock face popover) */}
+          <div className="form-group">
+            <label className="form-label">Meeting Time (optional)</label>
+            <ClockTimePicker
+              value={form.meeting_time}
+              onChange={(v) => set('meeting_time', v)}
+              disabled={!form.meeting_date}
+              placeholder={form.meeting_date ? 'Pick a time' : 'Pick a date first'}
+            />
+          </div>
 
           {conflict && (
             <div
