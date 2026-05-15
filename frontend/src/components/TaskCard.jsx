@@ -39,14 +39,22 @@ function fmt(d) {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export default function TaskCard({ task, onUpdateStatus, onOpenDetail }) {
+export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail }) {
   const [updating, setUpdating] = useState(false);
   const overdue = isOverdue(task.due_date, task.status);
 
   async function handleStatus(e) {
+    const next = e.target.value;
     setUpdating(true);
     try {
-      await onUpdateStatus(task.id, e.target.value);
+      // "submitted" goes through the dedicated /submit endpoint so the
+      // history timeline records a proper "submitted" event and the
+      // employee never trips the admin guard on PATCH /tasks/:id.
+      if (next === 'submitted' && onSubmit) {
+        await onSubmit(task.id, '');
+      } else {
+        await onUpdateStatus(task.id, next);
+      }
     } finally {
       setUpdating(false);
     }

@@ -37,7 +37,7 @@ function Stat({ label, value, color }) {
   );
 }
 
-function Group({ label, tasks, onUpdateStatus, accent, onOpenTaskDetail }) {
+function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskDetail }) {
   const [open, setOpen] = useState(true);
   if (!tasks.length) return null;
   return (
@@ -79,6 +79,7 @@ function Group({ label, tasks, onUpdateStatus, accent, onOpenTaskDetail }) {
               key={t.id}
               task={t}
               onUpdateStatus={onUpdateStatus}
+              onSubmit={onSubmitTask}
               onOpenDetail={onOpenTaskDetail ? () => onOpenTaskDetail(t) : undefined}
             />
           ))}
@@ -247,11 +248,11 @@ export default function EmployeeDashboard() {
             </div>
           ) : (
             <div>
-              <Group label="Overdue" tasks={groups.overdue} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
-              <Group label="Blocked" tasks={groups.blocked} onUpdateStatus={updateStatus} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
-              <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} accent="var(--color-primary)" onOpenTaskDetail={setDetailTask} />
-              <Group label="Pending" tasks={groups.pending} onUpdateStatus={updateStatus} accent="var(--status-warning)" onOpenTaskDetail={setDetailTask} />
-              <Group label="Completed" tasks={groups.completed} onUpdateStatus={updateStatus} accent="var(--status-success)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Overdue" tasks={groups.overdue} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Blocked" tasks={groups.blocked} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--status-danger)" onOpenTaskDetail={setDetailTask} />
+              <Group label="In Progress" tasks={groups.inProgress} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--color-primary)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Pending" tasks={groups.pending} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--status-warning)" onOpenTaskDetail={setDetailTask} />
+              <Group label="Completed" tasks={groups.completed} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--status-success)" onOpenTaskDetail={setDetailTask} />
             </div>
           ))}
 
