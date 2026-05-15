@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Layout, Github, Twitter, Linkedin } from "lucide-react";
+import { tone, display, BRAND } from "../../lib/ui";
 
 const columns = [
   {
@@ -31,36 +32,79 @@ const columns = [
   },
 ];
 
+const socials = [
+  { i: <Twitter size={16} />, l: "Twitter" },
+  { i: <Linkedin size={16} />, l: "LinkedIn" },
+  { i: <Github size={16} />, l: "GitHub" },
+];
+
 export const Footer = () => {
   const year = new Date().getFullYear();
   return (
-    <footer className="border-t border-[var(--border)] bg-[var(--card)]">
-      <div className="max-w-7xl mx-auto px-6 pt-20 pb-10">
+    <footer
+      style={{
+        borderTop: `1px solid ${tone.border}`,
+        background: tone.card,
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "72px 24px 36px",
+        }}
+      >
         {/* Top grid */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-12 mb-16">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 48,
+            marginBottom: 56,
+          }}
+        >
           {/* Brand block */}
-          <div className="md:col-span-5 lg:col-span-4 space-y-5">
-            <Link to="/" className="flex items-center gap-2.5">
-              <div className="size-8 bg-brand-primary rounded-lg flex items-center justify-center text-white shadow-[0_4px_12px_-4px_rgba(139,92,246,0.5)]">
+          <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 280 }}>
+            <Link to="/" style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none", color: tone.fg }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  background: BRAND,
+                  borderRadius: 8,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  boxShadow: `0 4px 12px -4px ${BRAND}80`,
+                }}
+              >
                 <Layout size={17} strokeWidth={2.2} />
               </div>
-              <span className="text-[15px] font-semibold tracking-tight font-display">Taskflow</span>
+              <span style={{ ...display, fontSize: 15, fontWeight: 600, color: tone.fg }}>Taskflow</span>
             </Link>
-            <p className="text-sm text-[var(--muted)] leading-relaxed max-w-xs">
-              The execution workspace for teams that plan, track, and deliver
-              with total clarity.
+            <p style={{ fontSize: 14, color: tone.muted, lineHeight: 1.6, margin: 0 }}>
+              The execution workspace for teams that plan, track, and deliver with total clarity.
             </p>
-            <div className="flex gap-2">
-              {[
-                { i: <Twitter size={16} />, l: "Twitter" },
-                { i: <Linkedin size={16} />, l: "LinkedIn" },
-                { i: <Github size={16} />, l: "GitHub" },
-              ].map((s) => (
+            <div style={{ display: "flex", gap: 8 }}>
+              {socials.map((s) => (
                 <a
                   key={s.l}
                   href="#"
                   aria-label={s.l}
-                  className="size-9 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--muted)] hover:text-brand-primary hover:border-brand-primary/30 transition-colors flex items-center justify-center"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    border: `1px solid ${tone.border}`,
+                    background: tone.bg,
+                    color: tone.muted,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textDecoration: "none",
+                    transition: "all 150ms",
+                  }}
                 >
                   {s.i}
                 </a>
@@ -68,39 +112,57 @@ export const Footer = () => {
             </div>
           </div>
 
-          {/* Link columns */}
-          <div className="md:col-span-7 lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
-            {columns.map((col) => (
-              <div key={col.title}>
-                <h4 className="text-xs font-semibold tracking-[0.12em] uppercase text-[var(--foreground)] mb-5">
-                  {col.title}
-                </h4>
-                <ul className="space-y-3 text-sm">
-                  {col.links.map((l) => (
-                    <li key={l.label}>
-                      <Link
-                        to={l.to}
-                        className="text-[var(--muted)] hover:text-brand-primary transition-colors"
-                      >
-                        {l.label}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
+          {columns.map((col) => (
+            <div key={col.title}>
+              <h4
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: tone.fg,
+                  margin: "0 0 20px",
+                }}
+              >
+                {col.title}
+              </h4>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+                {col.links.map((l) => (
+                  <li key={l.label}>
+                    <Link
+                      to={l.to}
+                      style={{ fontSize: 14, color: tone.muted, textDecoration: "none" }}
+                    >
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
 
         {/* Bottom strip */}
-        <div className="pt-8 border-t border-[var(--border)] flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-[var(--muted)]">
-          <p>© {year} Taskflow. All rights reserved.</p>
-          <div className="flex items-center gap-5">
-            <Link to="/terms" className="hover:text-[var(--foreground)] transition-colors">Terms</Link>
-            <span className="size-1 rounded-full bg-[var(--border)]" />
-            <Link to="/privacy" className="hover:text-[var(--foreground)] transition-colors">Privacy</Link>
-            <span className="size-1 rounded-full bg-[var(--border)]" />
-            <Link to="/security" className="hover:text-[var(--foreground)] transition-colors">Security</Link>
+        <div
+          style={{
+            paddingTop: 28,
+            borderTop: `1px solid ${tone.border}`,
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 16,
+            fontSize: 12,
+            color: tone.muted,
+          }}
+        >
+          <p style={{ margin: 0 }}>© {year} Taskflow. All rights reserved.</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Link to="/terms" style={{ color: tone.muted, textDecoration: "none" }}>Terms</Link>
+            <span style={{ width: 3, height: 3, borderRadius: 999, background: tone.border }} />
+            <Link to="/privacy" style={{ color: tone.muted, textDecoration: "none" }}>Privacy</Link>
+            <span style={{ width: 3, height: 3, borderRadius: 999, background: tone.border }} />
+            <Link to="/security" style={{ color: tone.muted, textDecoration: "none" }}>Security</Link>
           </div>
         </div>
       </div>

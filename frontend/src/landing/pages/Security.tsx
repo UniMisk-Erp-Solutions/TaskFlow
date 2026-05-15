@@ -1,11 +1,16 @@
 import { motion } from "motion/react";
 import { ShieldCheck, Lock, Eye, FileText, Server, RefreshCw, KeyRound, ScrollText } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import { PageShell, Container, Section, PageHeader, SectionHead, CtaPanel } from "../components/ui/Section";
+import {
+  PageShell, Container, Section, PageHeader, SectionHead,
+  Card, Grid, CtaPanel, BRAND, tone, display,
+} from "../lib/ui";
+
+const EMERALD = "#10b981";
 
 const pillars = [
   { icon: <Lock size={22} />, title: "Encryption", desc: "AES-256 at rest, TLS 1.3 in transit. Per-tenant keys in the database." },
-  { icon: <ShieldCheck size={22} />, title: "Compliance", desc: "SOC2 Type II, GDPR, and CCPA. Annual third-party penetration tests." },
+  { icon: <ShieldCheck size={22} />, title: "Compliance", desc: "SOC2 Type II compliant and follows GDPR / CCPA. Annual third-party pen tests." },
   { icon: <RefreshCw size={22} />, title: "Backups", desc: "Hourly incremental backups across two regions with 30-day PITR." },
   { icon: <Eye size={22} />, title: "Audit logs", desc: "Append-only, queryable, and exportable. Every admin action is recorded." },
   { icon: <Server size={22} />, title: "Hosting", desc: "Production runs on secure cloud infra with 24/7 incident monitoring." },
@@ -19,80 +24,144 @@ const standards = [
   { tag: "Pen-tested", body: "Annual third-party penetration test; reports available on request." },
 ];
 
+const accessRows = [
+  { i: <KeyRound size={18} />, t: "SSO + SCIM", d: "SAML, OIDC, and SCIM provisioning on the Business plan." },
+  { i: <Lock size={18} />, t: "Role-based access control", d: "Workspace, project, and field-level permissions." },
+  { i: <Eye size={18} />, t: "Row-level security", d: "Postgres RLS enforces org isolation at the database layer." },
+  { i: <ShieldCheck size={18} />, t: "Audit-ready logs", d: "Every admin action is appended to an immutable log." },
+];
+
 export default function Security() {
   return (
     <PageShell>
       <Container>
         <PageHeader
           eyebrow="Security"
-          title={<>Trust is our<br /><span className="text-emerald-600">foundation.</span></>}
+          title={
+            <>
+              Trust is our
+              <br />
+              <span style={{ color: EMERALD }}>foundation.</span>
+            </>
+          }
           blurb="Enterprise task management involves sensitive data. Taskflow is built with a security-first architecture from day one."
           align="left"
         />
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/[0.10] text-emerald-600 text-xs font-medium border border-emerald-500/15 mb-16"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 14px",
+            borderRadius: 999,
+            background: `${EMERALD}1A`,
+            color: EMERALD,
+            border: `1px solid ${EMERALD}33`,
+            fontSize: 12,
+            fontWeight: 500,
+            marginBottom: 64,
+          }}
         >
           <ShieldCheck size={14} />
-          <span>Secure by design · Reviewed quarterly</span>
+          Secure by design · Reviewed quarterly
         </motion.div>
 
-        <Section pad="tight" className="!py-0 mb-20">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {pillars.map((p) => (
-              <div key={p.title} className="p-7 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-emerald-500/30 transition-colors space-y-3">
-                <div className="size-11 rounded-xl bg-emerald-500/[0.10] text-emerald-600 flex items-center justify-center">
-                  {p.icon}
-                </div>
-                <h3 className="font-semibold tracking-tight text-base">{p.title}</h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">{p.desc}</p>
+        {/* Pillars */}
+        <Grid min={280} gap={20} style={{ marginBottom: 80 }}>
+          {pillars.map((p) => (
+            <Card key={p.title}>
+              <div
+                style={{
+                  width: 44, height: 44, borderRadius: 12,
+                  background: `${EMERALD}1A`, color: EMERALD,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  marginBottom: 16,
+                }}
+              >
+                {p.icon}
               </div>
-            ))}
-          </div>
-        </Section>
+              <h3 style={{ ...display, fontSize: 17, fontWeight: 600, margin: "0 0 8px", color: tone.fg }}>
+                {p.title}
+              </h3>
+              <p style={{ fontSize: 14, lineHeight: 1.6, color: tone.muted, margin: 0 }}>{p.desc}</p>
+            </Card>
+          ))}
+        </Grid>
 
-        <Section pad="tight" className="!py-0 mb-20">
+        {/* Standards */}
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
           <SectionHead
             eyebrow="Standards"
             title="Certified, audited, and ready for procurement."
             align="left"
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <Grid min={300} gap={16}>
             {standards.map((s) => (
-              <div key={s.tag} className="p-7 rounded-2xl border border-[var(--border)] bg-[var(--card)]">
-                <div className="flex items-center gap-2.5 mb-3">
-                  <div className="size-8 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center">
+              <Card key={s.tag}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div
+                    style={{
+                      width: 32, height: 32, borderRadius: 10,
+                      background: `${BRAND}14`, color: BRAND,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
                     <ScrollText size={16} />
                   </div>
-                  <span className="text-sm font-semibold tracking-tight">{s.tag}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.01em", color: tone.fg }}>
+                    {s.tag}
+                  </span>
                 </div>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">{s.body}</p>
-              </div>
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: tone.muted, margin: 0 }}>{s.body}</p>
+              </Card>
             ))}
-          </div>
+          </Grid>
         </Section>
 
-        <Section pad="tight" className="!py-0 mb-20">
+        {/* Access list */}
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
           <SectionHead
             eyebrow="How we protect access"
             title="Zero-trust by default."
             align="left"
           />
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)]">
-            {[
-              { i: <KeyRound size={18} />, t: "SSO + SCIM", d: "SAML, OIDC, and SCIM provisioning on the Business plan." },
-              { i: <Lock size={18} />, t: "Role-based access control", d: "Workspace, project, and field-level permissions." },
-              { i: <Eye size={18} />, t: "Row-level security", d: "Postgres RLS enforces org isolation at the database layer." },
-              { i: <ShieldCheck size={18} />, t: "Audit-ready logs", d: "Every admin action is appended to an immutable log." },
-            ].map((row) => (
-              <div key={row.t} className="flex items-start gap-4 p-5">
-                <div className="size-9 rounded-lg bg-emerald-500/[0.08] text-emerald-600 flex items-center justify-center shrink-0">
+          <div
+            style={{
+              borderRadius: 16,
+              border: `1px solid ${tone.border}`,
+              background: tone.card,
+              overflow: "hidden",
+            }}
+          >
+            {accessRows.map((row, i) => (
+              <div
+                key={row.t}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 16,
+                  padding: 20,
+                  borderTop: i === 0 ? "none" : `1px solid ${tone.border}`,
+                }}
+              >
+                <div
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: `${EMERALD}14`, color: EMERALD,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
                   {row.i}
                 </div>
-                <div className="min-w-0">
-                  <p className="font-medium tracking-tight">{row.t}</p>
-                  <p className="text-sm text-[var(--muted)] leading-relaxed mt-1">{row.d}</p>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em", color: tone.fg, margin: 0 }}>
+                    {row.t}
+                  </p>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: tone.muted, marginTop: 4 }}>{row.d}</p>
                 </div>
               </div>
             ))}

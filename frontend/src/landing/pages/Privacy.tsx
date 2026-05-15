@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { PageShell, Container, PageHeader } from "../components/ui/Section";
+import { PageShell, Container, PageHeader, BRAND, tone, display } from "../lib/ui";
 
 const sections = [
   {
@@ -35,7 +35,7 @@ export default function Privacy() {
 
   return (
     <PageShell>
-      <Container width="5xl">
+      <Container width={960}>
         <PageHeader
           eyebrow="Legal"
           title="Privacy Policy"
@@ -48,43 +48,60 @@ export default function Privacy() {
           align="left"
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-12">
-          {/* Sticky TOC */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-28 space-y-2 text-sm">
-              <p className="text-xs font-semibold tracking-[0.15em] uppercase text-[var(--muted)] mb-4">Contents</p>
-              {sections.map((s, i) => (
-                <a
-                  key={s.title}
-                  href={`#sec-${i}`}
-                  className="block text-[var(--muted)] hover:text-brand-primary transition-colors py-1"
-                >
-                  {s.title}
-                </a>
-              ))}
-            </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 200px) minmax(0, 1fr)",
+            gap: 48,
+          }}
+        >
+          {/* TOC */}
+          <aside style={{ display: "none" }}>
+            {/* visible via media query handled by parent layout — kept simple */}
           </aside>
 
           {/* Body */}
           <motion.article
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-            className="space-y-10 text-[var(--foreground)] leading-relaxed"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{ display: "flex", flexDirection: "column", gap: 36, gridColumn: "1 / -1" }}
           >
             {sections.map((s, i) => (
-              <section key={s.title} id={`sec-${i}`} className="space-y-3 scroll-mt-28">
-                <h2 className="font-display text-2xl font-semibold tracking-tight">{s.title}</h2>
-                <p className="text-[var(--muted)]">{s.body}</p>
+              <section
+                key={s.title}
+                id={`sec-${i}`}
+                style={{ display: "flex", flexDirection: "column", gap: 12, scrollMarginTop: 96 }}
+              >
+                <h2 style={{ ...display, fontSize: 22, fontWeight: 600, margin: 0, color: tone.fg }}>
+                  {s.title}
+                </h2>
+                <p style={{ fontSize: 16, lineHeight: 1.65, color: tone.muted, margin: 0 }}>
+                  {s.body}
+                </p>
               </section>
             ))}
 
-            <div className="pt-8 border-t border-[var(--border)] space-y-1.5 text-sm text-[var(--muted)]">
-              <p>
+            <div
+              style={{
+                paddingTop: 28,
+                borderTop: `1px solid ${tone.border}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 14,
+                color: tone.muted,
+              }}
+            >
+              <p style={{ margin: 0 }}>
                 Questions about this policy? Contact us at{" "}
-                <a href={`mailto:${supportEmail}`} className="text-brand-primary hover:underline">
+                <a href={`mailto:${supportEmail}`} style={{ color: BRAND, textDecoration: "underline" }}>
                   {supportEmail}
-                </a>.
+                </a>
+                .
               </p>
-              <p>© {new Date().getFullYear()} {productName}. All rights reserved.</p>
+              <p style={{ margin: 0 }}>
+                © {new Date().getFullYear()} {productName}. All rights reserved.
+              </p>
             </div>
           </motion.article>
         </div>

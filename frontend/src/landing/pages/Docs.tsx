@@ -4,7 +4,10 @@ import {
   Activity, Calendar, Bot, Shield, ArrowRight,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
-import { PageShell, Container, Section, PageHeader, SectionHead, CtaPanel } from "../components/ui/Section";
+import {
+  PageShell, Container, Section, PageHeader, SectionHead,
+  Card, Grid, CtaPanel, BRAND, tone, display,
+} from "../lib/ui";
 
 const quickStart = [
   { title: "Workspace setup", icon: <Settings size={18} />, description: "Configure your team's main workspace in under five minutes." },
@@ -14,36 +17,12 @@ const quickStart = [
 ];
 
 const categories = [
-  {
-    title: "Getting started",
-    icon: <BookOpen size={18} />,
-    articles: ["Create your workspace", "Invite teammates", "Your first project", "Connect calendars"],
-  },
-  {
-    title: "Tasks & projects",
-    icon: <Layout size={18} />,
-    articles: ["Subtasks and dependencies", "Multiple assignees", "Due dates with time", "Status and priority"],
-  },
-  {
-    title: "Approval workflow",
-    icon: <Activity size={18} />,
-    articles: ["Submit for review", "Approving work", "Requesting changes", "Reading the history timeline"],
-  },
-  {
-    title: "Calendar & timeline",
-    icon: <Calendar size={18} />,
-    articles: ["Switching views", "Rescheduling tasks", "Sharing a public calendar", "Time zones"],
-  },
-  {
-    title: "AI assistant",
-    icon: <Bot size={18} />,
-    articles: ["Asking grounded questions", "Generating status reports", "Smart scheduling", "Privacy boundaries"],
-  },
-  {
-    title: "Admin & security",
-    icon: <Shield size={18} />,
-    articles: ["SSO setup", "Role-based access", "Audit logs", "Data export"],
-  },
+  { title: "Getting started", icon: <BookOpen size={18} />, articles: ["Create your workspace", "Invite teammates", "Your first project", "Connect calendars"] },
+  { title: "Tasks & projects", icon: <Layout size={18} />, articles: ["Subtasks and dependencies", "Multiple assignees", "Due dates with time", "Status and priority"] },
+  { title: "Approval workflow", icon: <Activity size={18} />, articles: ["Submit for review", "Approving work", "Requesting changes", "Reading the history timeline"] },
+  { title: "Calendar & timeline", icon: <Calendar size={18} />, articles: ["Switching views", "Rescheduling tasks", "Sharing a public calendar", "Time zones"] },
+  { title: "AI assistant", icon: <Bot size={18} />, articles: ["Asking grounded questions", "Generating status reports", "Smart scheduling", "Privacy boundaries"] },
+  { title: "Admin & security", icon: <Shield size={18} />, articles: ["SSO setup", "Role-based access", "Audit logs", "Data export"] },
 ];
 
 export default function Docs() {
@@ -59,71 +38,126 @@ export default function Docs() {
         />
 
         {/* Search */}
-        <div className="max-w-xl mx-auto mb-16 relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)] group-focus-within:text-brand-primary transition-colors" size={18} />
+        <div style={{ maxWidth: 560, margin: "0 auto 64px", position: "relative" }}>
+          <Search
+            size={18}
+            style={{
+              position: "absolute",
+              left: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: tone.muted,
+            }}
+          />
           <input
             type="text"
             placeholder="Search documentation…"
-            className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary/40 transition-all"
+            style={{
+              width: "100%",
+              padding: "14px 16px 14px 44px",
+              borderRadius: 16,
+              border: `1px solid ${tone.border}`,
+              background: tone.card,
+              color: tone.fg,
+              fontSize: 14,
+              outline: "none",
+              fontFamily: "inherit",
+            }}
           />
         </div>
 
         {/* Quick start */}
-        <Section pad="tight" className="!py-0 mb-20">
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
           <SectionHead eyebrow="Quick start" title="Start here." align="left" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <Grid min={240} gap={20}>
             {quickStart.map((s, idx) => (
               <motion.div
                 key={s.title}
-                initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                initial={{ opacity: 0, y: 8 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
                 transition={{ delay: idx * 0.04 }}
-                className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-brand-primary/40 hover:-translate-y-0.5 transition-all cursor-pointer group"
               >
-                <div className="size-10 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                  {s.icon}
-                </div>
-                <h3 className="font-semibold tracking-tight text-sm mb-1.5">{s.title}</h3>
-                <p className="text-xs text-[var(--muted)] leading-relaxed">{s.description}</p>
+                <Card>
+                  <div
+                    style={{
+                      width: 40, height: 40, borderRadius: 10,
+                      background: `${BRAND}14`, color: BRAND,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {s.icon}
+                  </div>
+                  <h3 style={{ ...display, fontSize: 15, fontWeight: 600, margin: "0 0 6px", color: tone.fg }}>
+                    {s.title}
+                  </h3>
+                  <p style={{ fontSize: 13, color: tone.muted, lineHeight: 1.55, margin: 0 }}>
+                    {s.description}
+                  </p>
+                </Card>
               </motion.div>
             ))}
-          </div>
+          </Grid>
         </Section>
 
-        {/* Category index */}
-        <Section pad="tight" className="!py-0 mb-20">
+        {/* Categories */}
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
           <SectionHead eyebrow="Topics" title="Browse by category." align="left" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <Grid min={280} gap={20}>
             {categories.map((cat) => (
-              <div key={cat.title} className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--card)]">
-                <div className="flex items-center gap-2.5 mb-4">
-                  <div className="size-9 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center">
+              <Card key={cat.title}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                  <div
+                    style={{
+                      width: 36, height: 36, borderRadius: 10,
+                      background: `${BRAND}14`, color: BRAND,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
                     {cat.icon}
                   </div>
-                  <h3 className="font-semibold tracking-tight">{cat.title}</h3>
+                  <h3 style={{ ...display, fontSize: 16, fontWeight: 600, margin: 0, color: tone.fg }}>
+                    {cat.title}
+                  </h3>
                 </div>
-                <ul className="space-y-2.5">
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10 }}>
                   {cat.articles.map((a) => (
                     <li key={a}>
-                      <a href="#" className="flex items-center gap-2 text-sm text-[var(--muted)] hover:text-brand-primary transition-colors group">
-                        <ArrowRight size={12} className="opacity-50 group-hover:translate-x-0.5 transition-transform" />
+                      <a
+                        href="#"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 14,
+                          color: tone.muted,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <ArrowRight size={12} style={{ opacity: 0.5 }} />
                         {a}
                       </a>
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Card>
             ))}
-          </div>
+          </Grid>
         </Section>
 
         <CtaPanel
-          title={<><HelpCircle className="inline-block mr-3 -mt-1" /> Still need help?</>}
+          title={
+            <>
+              <HelpCircle style={{ display: "inline-block", marginRight: 10, marginTop: -4, verticalAlign: "middle" }} /> Still need help?
+            </>
+          }
           blurb="If the docs don't answer your question, contact support with your workspace name and a clear description of the issue."
         >
           <Button size="lg" to="/contact">Contact support</Button>
           <a
             href={`mailto:${supportEmail}`}
-            className="text-sm text-slate-400 hover:text-white transition-colors"
+            style={{ fontSize: 14, color: "#94a3b8", textDecoration: "none", padding: "0 12px" }}
           >
             or email {supportEmail}
           </a>

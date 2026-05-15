@@ -1,10 +1,14 @@
 import { motion } from "motion/react";
 import { Target, Heart, Eye, Rocket, Zap, Shield, Globe2, Sparkles } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import {
+  PageShell, Container, Section, PageHeader, SectionHead,
+  Card, IconBadge, Grid, BRAND, BRAND_ACCENT, tone, display,
+} from "../lib/ui";
 
 const timeline = [
   { year: "2024", title: "Founded", body: "Three engineers tired of toggling between five different apps just to finish a sprint." },
-  { year: "2025", title: "Beta with 30 teams", body: "We shipped the first private beta and learned what calmer execution actually looks like." },
+  { year: "2025", title: "Beta with 30 teams", body: "Private beta — first lessons on what calmer execution actually looks like." },
   { year: "2025", title: "$4M seed", body: "Raised from operators-turned-investors who use the product daily." },
   { year: "2026", title: "Public launch", body: "Approval workflow, AI assistant, and the timeline you're looking at now." },
 ];
@@ -16,153 +20,286 @@ const values = [
   { icon: <Rocket size={20} />, title: "Growth", desc: "Always learning, iterating, pushing the boundary." },
 ];
 
+const stats = [
+  { v: "40+", l: "Teammates" },
+  { v: "12", l: "Countries" },
+  { v: "50k+", l: "Active teams" },
+  { v: "100%", l: "Remote-first" },
+];
+
 export default function About() {
   return (
-    <div className="pt-32 pb-24 px-6 font-sans">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-24 space-y-5">
-          <motion.p
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="text-xs font-semibold tracking-[0.15em] uppercase text-brand-primary/80"
-          >
-            About
-          </motion.p>
-          <motion.h1
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-            className="font-display text-4xl lg:text-6xl font-semibold tracking-[-0.03em] leading-[1.05]"
-          >
-            On a mission to kill<br />
-            <span className="text-brand-primary">workflow clutter.</span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-            className="text-base lg:text-lg text-[var(--muted)] max-w-2xl mx-auto leading-relaxed"
-          >
-            Teams do their best work when responsibilities are clear, deadlines are visible,
-            and progress is easy to understand.
-          </motion.p>
-        </div>
+    <PageShell>
+      <Container>
+        <PageHeader
+          eyebrow="About"
+          title={
+            <>
+              On a mission to kill
+              <br />
+              <span style={{ color: BRAND }}>workflow clutter.</span>
+            </>
+          }
+          blurb="Teams do their best work when responsibilities are clear, deadlines are visible, and progress is easy to understand."
+        />
 
         {/* Mission / Vision */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-28">
-          <div className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-9 relative overflow-hidden">
-            <div className="absolute -top-24 -right-24 size-56 bg-brand-primary/15 rounded-full blur-3xl" />
-            <div className="relative space-y-4">
-              <div className="size-11 rounded-xl bg-brand-primary/[0.12] text-brand-primary flex items-center justify-center">
+        <Grid min={320} gap={20} style={{ marginBottom: 96 }}>
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 20,
+              border: `1px solid ${tone.border}`,
+              background: tone.card,
+              padding: 36,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -96,
+                right: -96,
+                width: 240,
+                height: 240,
+                background: `${BRAND}26`,
+                borderRadius: 999,
+                filter: "blur(60px)",
+              }}
+            />
+            <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
+              <IconBadge>
                 <Target size={22} />
-              </div>
-              <h3 className="text-xl font-semibold tracking-tight font-display">Our mission</h3>
-              <p className="text-[var(--muted)] leading-relaxed">
+              </IconBadge>
+              <h3 style={{ ...display, fontSize: 22, fontWeight: 600, margin: 0, color: tone.fg }}>
+                Our mission
+              </h3>
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: tone.muted, margin: 0 }}>
                 Empower every organization with a workspace that fosters accountability
                 and execution speed through radical clarity.
               </p>
             </div>
           </div>
-          <div className="rounded-3xl border border-[var(--border)] bg-[var(--card)] p-9 relative overflow-hidden">
-            <div className="absolute -top-24 -left-24 size-56 bg-brand-accent/15 rounded-full blur-3xl" />
-            <div className="relative space-y-4">
-              <div className="size-11 rounded-xl bg-brand-accent/[0.12] text-brand-accent flex items-center justify-center">
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              borderRadius: 20,
+              border: `1px solid ${tone.border}`,
+              background: tone.card,
+              padding: 36,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: -96,
+                left: -96,
+                width: 240,
+                height: 240,
+                background: `${BRAND_ACCENT}26`,
+                borderRadius: 999,
+                filter: "blur(60px)",
+              }}
+            />
+            <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 14 }}>
+              <IconBadge tint={BRAND_ACCENT}>
                 <Eye size={22} />
-              </div>
-              <h3 className="text-xl font-semibold tracking-tight font-display">Our vision</h3>
-              <p className="text-[var(--muted)] leading-relaxed">
+              </IconBadge>
+              <h3 style={{ ...display, fontSize: 22, fontWeight: 600, margin: 0, color: tone.fg }}>
+                Our vision
+              </h3>
+              <p style={{ fontSize: 15, lineHeight: 1.6, color: tone.muted, margin: 0 }}>
                 Build the operating system for modern business — where every decision,
                 file, and milestone is connected to the work it belongs to.
               </p>
             </div>
           </div>
-        </section>
+        </Grid>
 
-        {/* Stats strip */}
-        <section className="mb-28">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 py-10 border-y border-[var(--border)]">
-            {[
-              { v: "40+", k: "Teammates" },
-              { v: "12", k: "Countries" },
-              { v: "50k+", k: "Active teams" },
-              { v: "100%", k: "Remote-first" },
-            ].map((s) => (
-              <div key={s.k} className="text-center space-y-1.5">
-                <p className="font-display text-3xl lg:text-4xl font-semibold tracking-[-0.025em]">{s.v}</p>
-                <p className="text-xs text-[var(--muted)] tracking-wide uppercase">{s.k}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* Stat strip */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 24,
+            borderTop: `1px solid ${tone.border}`,
+            borderBottom: `1px solid ${tone.border}`,
+            padding: "40px 0",
+            marginBottom: 96,
+            textAlign: "center",
+          }}
+        >
+          {stats.map((s) => (
+            <div key={s.l} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <p style={{ ...display, fontSize: 36, fontWeight: 600, margin: 0, color: tone.fg }}>
+                {s.v}
+              </p>
+              <p style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: tone.muted, margin: 0 }}>
+                {s.l}
+              </p>
+            </div>
+          ))}
+        </div>
 
         {/* Timeline */}
-        <section className="mb-28">
-          <div className="text-center mb-12 space-y-3">
-            <p className="text-xs font-semibold tracking-[0.15em] uppercase text-brand-primary/80">Timeline</p>
-            <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-[-0.025em]">
-              The short history.
-            </h2>
-          </div>
-          <ol className="max-w-3xl mx-auto relative space-y-10 pl-12 before:content-[''] before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-px before:bg-[var(--border)]">
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
+          <SectionHead eyebrow="Timeline" title="The short history." />
+          <ol
+            style={{
+              maxWidth: 720,
+              margin: "0 auto",
+              listStyle: "none",
+              padding: 0,
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              gap: 40,
+            }}
+          >
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 19,
+                top: 12,
+                bottom: 12,
+                width: 1,
+                background: tone.border,
+              }}
+            />
             {timeline.map((e) => (
-              <li key={e.year + e.title} className="relative">
-                <span className="absolute -left-12 top-0 size-10 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-[11px] font-semibold text-brand-primary tracking-tight">
+              <li key={e.year + e.title} style={{ position: "relative", paddingLeft: 56 }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: tone.card,
+                    border: `1px solid ${tone.border}`,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: BRAND,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
                   {e.year.slice(-2)}
                 </span>
-                <h3 className="font-semibold tracking-tight">{e.title}</h3>
-                <p className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{e.body}</p>
+                <h3 style={{ ...display, fontSize: 17, fontWeight: 600, margin: 0, color: tone.fg }}>
+                  {e.title}
+                </h3>
+                <p style={{ fontSize: 14, marginTop: 6, color: tone.muted, lineHeight: 1.6 }}>{e.body}</p>
               </li>
             ))}
           </ol>
-        </section>
+        </Section>
 
         {/* Values */}
-        <section className="mb-28">
-          <div className="text-center mb-12 space-y-3">
-            <p className="text-xs font-semibold tracking-[0.15em] uppercase text-brand-primary/80">Values</p>
-            <h2 className="font-display text-3xl lg:text-4xl font-semibold tracking-[-0.025em]">
-              What we believe in.
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
+          <SectionHead eyebrow="Values" title="What we believe in." />
+          <Grid min={220} gap={20}>
             {values.map((v) => (
-              <div key={v.title} className="p-6 rounded-2xl border border-[var(--border)] bg-[var(--card)] hover:border-brand-primary/30 transition-colors">
-                <div className="size-10 rounded-lg bg-brand-primary/[0.08] text-brand-primary flex items-center justify-center mb-4">
-                  {v.icon}
-                </div>
-                <h4 className="font-semibold tracking-tight">{v.title}</h4>
-                <p className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{v.desc}</p>
-              </div>
+              <Card key={v.title}>
+                <IconBadge>{v.icon}</IconBadge>
+                <h4 style={{ ...display, fontSize: 17, fontWeight: 600, margin: 0, color: tone.fg }}>
+                  {v.title}
+                </h4>
+                <p style={{ fontSize: 14, color: tone.muted, marginTop: 6, lineHeight: 1.6 }}>{v.desc}</p>
+              </Card>
             ))}
-          </div>
-        </section>
+          </Grid>
+        </Section>
 
         {/* Careers CTA */}
-        <section>
-          <div className="bg-slate-950 border border-white/10 rounded-3xl p-12 lg:p-20 text-center space-y-7 relative overflow-hidden shadow-[0_40px_80px_-40px_rgba(15,23,42,0.4)]">
-            <div className="absolute -top-24 -right-24 size-96 bg-brand-primary/15 rounded-full blur-3xl" />
-            <div className="absolute -bottom-24 -left-24 size-96 bg-brand-accent/15 rounded-full blur-3xl" />
-            <div className="flex justify-center text-brand-primary relative z-10">
-              <div className="size-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
-                <Sparkles size={22} />
-              </div>
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            background: "#020617",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: 24,
+            padding: "64px 32px",
+            textAlign: "center",
+            boxShadow: "0 40px 80px -40px rgba(15,23,42,0.4)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: -96,
+              right: -96,
+              width: 320,
+              height: 320,
+              background: `${BRAND}26`,
+              borderRadius: 999,
+              filter: "blur(80px)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: -96,
+              left: -96,
+              width: 320,
+              height: 320,
+              background: `${BRAND_ACCENT}26`,
+              borderRadius: 999,
+              filter: "blur(80px)",
+            }}
+          />
+          <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 20, alignItems: "center" }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.10)",
+                color: BRAND,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Sparkles size={22} />
             </div>
-            <h2 className="font-display text-3xl lg:text-5xl font-semibold tracking-[-0.03em] relative z-10 leading-[1.05] text-white">
+            <h2 style={{ ...display, fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 600, lineHeight: 1.1, margin: 0, color: "white" }}>
               Join the journey.
             </h2>
-            <p className="text-base lg:text-lg text-slate-400 max-w-2xl mx-auto relative z-10 leading-relaxed">
-              Remote-first, async by default. We're hiring across engineering, design,
-              and customer success.
+            <p style={{ fontSize: 17, color: "#94a3b8", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
+              Remote-first, async by default. We're hiring across engineering, design, and customer success.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-400 relative z-10">
-              <span className="inline-flex items-center gap-1.5"><Globe2 size={14} /> 12 countries</span>
-              <span className="inline-flex items-center gap-1.5">·</span>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                justifyContent: "center",
+                alignItems: "center",
+                fontSize: 13,
+                color: "#94a3b8",
+              }}
+            >
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Globe2 size={14} /> 12 countries
+              </span>
+              <span>·</span>
               <span>4-day workweek</span>
-              <span className="inline-flex items-center gap-1.5">·</span>
+              <span>·</span>
               <span>$5k learning budget</span>
             </div>
-            <div className="flex justify-center gap-3 relative z-10">
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
               <Button size="lg" to="/contact">Explore careers</Button>
             </div>
           </div>
-        </section>
-      </div>
-    </div>
+        </div>
+      </Container>
+    </PageShell>
   );
 }

@@ -8,22 +8,25 @@ type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-brand-primary text-white shadow-[0_8px_24px_-8px_rgba(139,92,246,0.45)] hover:shadow-[0_12px_28px_-10px_rgba(139,92,246,0.55)] hover:brightness-[1.04]",
+    "bg-brand-primary text-white shadow-[0_10px_28px_-10px_rgba(139,92,246,0.55)] hover:shadow-[0_14px_32px_-12px_rgba(139,92,246,0.65)] hover:brightness-[1.05]",
   secondary:
-    "bg-brand-accent text-white shadow-[0_8px_24px_-8px_rgba(192,132,252,0.45)] hover:shadow-[0_12px_28px_-10px_rgba(192,132,252,0.55)] hover:brightness-[1.04]",
+    "bg-brand-accent text-white shadow-[0_10px_28px_-10px_rgba(192,132,252,0.55)] hover:shadow-[0_14px_32px_-12px_rgba(192,132,252,0.65)] hover:brightness-[1.05]",
   outline:
-    "border border-[var(--border)] bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)]",
+    "border border-[var(--border)] bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)] hover:border-brand-primary/40",
   ghost: "bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)]",
 };
 
+// All sizes intentionally use a minimum height + generous horizontal padding
+// so buttons sit with real presence on the page (and the lg variant matches
+// the visual weight of section headings on the marketing pages).
 const sizes: Record<Size, string> = {
-  sm: "px-5 py-2 text-sm font-medium",
-  md: "px-6 py-3 text-sm font-medium",
-  lg: "px-8 py-3.5 text-base font-semibold",
+  sm: "h-10 px-5 text-sm font-medium",
+  md: "h-12 px-7 text-[15px] font-semibold",
+  lg: "h-14 px-9 text-base font-semibold min-w-[180px]",
 };
 
 const baseClasses =
-  "inline-flex items-center justify-center rounded-full transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer tracking-tight";
+  "inline-flex items-center justify-center gap-2 rounded-full whitespace-nowrap transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer tracking-tight";
 
 interface ButtonAsButtonProps extends HTMLMotionProps<"button"> {
   variant?: Variant;
