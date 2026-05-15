@@ -98,28 +98,29 @@ export default function TaskForm({
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
-            <div className="form-group tf-date-field" style={{ margin: 0 }}>
-              <label className="form-label">Due Date (optional)</label>
-              <input
-                className="input input-date"
-                type="date"
-                value={form.due_date}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setForm((ff) => ({ ...ff, due_date: v, due_time: v ? ff.due_time : '' }));
-                }}
-              />
-            </div>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label">Due Time (optional)</label>
-              <ClockTimePicker
-                value={form.due_time}
-                onChange={(v) => set('due_time', v)}
-                disabled={!form.due_date}
-                placeholder={form.due_date ? 'Pick a time' : 'Pick a date first'}
-              />
-            </div>
+          {/* Due Date — full-width row, always visible */}
+          <div className="form-group tf-date-field">
+            <label className="form-label">Due Date (optional)</label>
+            <input
+              className="input input-date"
+              type="date"
+              value={form.due_date}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((ff) => ({ ...ff, due_date: v, due_time: v ? ff.due_time : '' }));
+              }}
+            />
+          </div>
+
+          {/* Due Time — full-width row, always visible (clock face popover) */}
+          <div className="form-group">
+            <label className="form-label">Due Time (optional)</label>
+            <ClockTimePicker
+              value={form.due_time}
+              onChange={(v) => set('due_time', v)}
+              disabled={!form.due_date}
+              placeholder={form.due_date ? 'Pick a time' : 'Pick a date first'}
+            />
           </div>
 
           <div className="form-group">
