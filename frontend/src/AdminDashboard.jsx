@@ -174,6 +174,53 @@ export default function AdminDashboard() {
   const today = new Date().toISOString().split('T')[0];
   const overdue = tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed');
 
+  // Review queue — anything an admin must act on.
+  const submittedTasks = tasks.filter((t) => t.status === 'submitted');
+  const submittedMeetings = meetings.filter((m) => m.status === 'submitted');
+  const pendingApprovalCount = submittedTasks.length + submittedMeetings.length;
+
+  // Inline review handlers — passed to TaskTable / MeetingTable / OverviewUnified so
+  // an admin can approve / request changes / reopen without opening the detail modal.
+  async function handleApproveTaskInline(t) {
+    try { await approveTask(t.id, ''); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+  async function handleRequestChangesTaskInline(t) {
+    const note = window.prompt(`Request changes on "${t.title}". What needs to change?`, '');
+    if (note === null) return;
+    if (!note.trim()) { window.alert('A note is required when requesting changes.'); return; }
+    try { await requestTaskChanges(t.id, note.trim()); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+  async function handleReopenTaskInline(t) {
+    const note = window.prompt(`Reopen "${t.title}". Reason (optional):`, '');
+    if (note === null) return;
+    try { await requestTaskChanges(t.id, note.trim() || 'Reopened by admin'); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+  async function handleApproveMeetingInline(m) {
+    try { await approveMeeting(m.id, ''); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+  async function handleRequestChangesMeetingInline(m) {
+    const note = window.prompt(`Request changes on "${m.title}". What needs to change?`, '');
+    if (note === null) return;
+    if (!note.trim()) { window.alert('A note is required when requesting changes.'); return; }
+    try { await requestMeetingChanges(m.id, note.trim()); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+  async function handleReopenMeetingInline(m) {
+    const note = window.prompt(`Reopen "${m.title}". Reason (optional):`, '');
+    if (note === null) return;
+    try { await requestMeetingChanges(m.id, note.trim() || 'Reopened by admin'); }
+    catch (err) { window.alert(err.response?.data?.error || err.message); }
+  }
+
+  function openReviewQueue() {
+    setFilters({ ...FILTERS_DEFAULT, status: 'submitted' });
+    setPage('tasks');
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--tf-page)' }}>
       <Sidebar active={page} onNav={setPage} />
@@ -212,6 +259,39 @@ export default function AdminDashboard() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {pendingApprovalCount > 0 && (
+              <button
+                type="button"
+                onClick={openReviewQueue}
+                title={`${pendingApprovalCount} item${pendingApprovalCount !== 1 ? 's' : ''} pending approval`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'var(--status-warning-bg)',
+                  border: '1px solid rgba(221,91,0,0.30)',
+                  color: 'var(--status-warning)',
+                  padding: '5px 10px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  letterSpacing: '0.02em',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 6,
+                    height: 6,
+                    borderRadius: 999,
+                    background: 'var(--status-warning)',
+                    boxShadow: '0 0 0 3px rgba(221,91,0,0.18)',
+                  }}
+                />
+                Review · {pendingApprovalCount}
+              </button>
+            )}
             {sendMsg && page === 'email' && (
               <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
@@ -247,6 +327,7 @@ export default function AdminDashboard() {
                   gap: 10,
                 }}
               >
+                <MiniStat label="Pending approval" value={pendingApprovalCount} />
                 <MiniStat label="Pending tasks" value={overviewStats?.pending_tasks} />
                 <MiniStat label="Pending meetings" value={overviewStats?.pending_meetings} />
                 <MiniStat label="Completed tasks" value={overviewStats?.completed_tasks} />
@@ -255,6 +336,51 @@ export default function AdminDashboard() {
                 <MiniStat label="Overdue meetings" value={overviewStats?.overdue_meetings} />
                 <MiniStat label="Team members" value={overviewStats?.total_users} />
               </div>
+
+              {pendingApprovalCount > 0 && (
+                <div
+                  style={{
+                    background: 'var(--status-warning-bg)',
+                    border: '1px solid rgba(221,91,0,0.25)',
+                    borderRadius: 12,
+                    padding: '12px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: 'var(--status-warning)',
+                        background: 'rgba(221,91,0,0.10)',
+                        padding: '3px 9px',
+                        borderRadius: 999,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Review queue
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--tf-text)' }}>
+                      <strong>{pendingApprovalCount}</strong> item{pendingApprovalCount !== 1 ? 's' : ''} waiting
+                      for your approval
+                      {submittedTasks.length > 0 && submittedMeetings.length > 0
+                        ? ` (${submittedTasks.length} task${submittedTasks.length !== 1 ? 's' : ''}, ${submittedMeetings.length} meeting${submittedMeetings.length !== 1 ? 's' : ''})`
+                        : submittedTasks.length > 0
+                          ? ` (${submittedTasks.length} task${submittedTasks.length !== 1 ? 's' : ''})`
+                          : ` (${submittedMeetings.length} meeting${submittedMeetings.length !== 1 ? 's' : ''})`}
+                    </span>
+                  </div>
+                  <button className="btn btn-primary btn-sm" type="button" onClick={openReviewQueue}>
+                    Open review queue
+                  </button>
+                </div>
+              )}
 
               <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)' }}>
@@ -338,6 +464,12 @@ export default function AdminDashboard() {
                     onUpdateMeetingStatus={updateMeetingStatus}
                     onOpenTaskDetail={setDetailTask}
                     onOpenMeetingDetail={setDetailMeeting}
+                    onApproveTask={handleApproveTaskInline}
+                    onRequestChangesTask={handleRequestChangesTaskInline}
+                    onReopenTask={handleReopenTaskInline}
+                    onApproveMeeting={handleApproveMeetingInline}
+                    onRequestChangesMeeting={handleRequestChangesMeetingInline}
+                    onReopenMeeting={handleReopenMeetingInline}
                     limit={50}
                   />
                 )}
@@ -371,7 +503,16 @@ export default function AdminDashboard() {
                 </div>
                 {loading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <TaskTable tasks={filtered} onDelete={deleteTask} onUpdateStatus={updateStatus} profileById={profileById} onOpenTask={setDetailTask} />
+                  : <TaskTable
+                      tasks={filtered}
+                      onDelete={deleteTask}
+                      onUpdateStatus={updateStatus}
+                      profileById={profileById}
+                      onOpenTask={setDetailTask}
+                      onApprove={handleApproveTaskInline}
+                      onRequestChanges={handleRequestChangesTaskInline}
+                      onReopen={handleReopenTaskInline}
+                    />
                 }
               </div>}
 
@@ -384,7 +525,17 @@ export default function AdminDashboard() {
                 </div>
                 {meetingsLoading
                   ? <div style={{ padding: 40, display: 'flex', justifyContent: 'center' }}><span className="spinner" /></div>
-                  : <MeetingTable meetings={filteredMeetings} onDelete={deleteMeeting} onUpdateStatus={updateMeetingStatus} isAdmin profileById={profileById} onOpenMeeting={setDetailMeeting} />
+                  : <MeetingTable
+                      meetings={filteredMeetings}
+                      onDelete={deleteMeeting}
+                      onUpdateStatus={updateMeetingStatus}
+                      isAdmin
+                      profileById={profileById}
+                      onOpenMeeting={setDetailMeeting}
+                      onApprove={handleApproveMeetingInline}
+                      onRequestChanges={handleRequestChangesMeetingInline}
+                      onReopen={handleReopenMeetingInline}
+                    />
                 }
               </div>}
             </div>

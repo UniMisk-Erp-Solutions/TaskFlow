@@ -1,7 +1,43 @@
 import React, { useState } from 'react';
-import { Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
 import MeetingFilesModal from './MeetingFilesModal';
+
+function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      style={{
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: 6,
+        cursor: disabled ? 'default' : 'pointer',
+        padding: '6px',
+        color: 'var(--tf-muted)',
+        display: 'flex',
+        alignItems: 'center',
+        transition: 'all 100ms ease',
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.color = accent;
+        e.currentTarget.style.borderColor = accent;
+        e.currentTarget.style.background = accentBg;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = 'var(--tf-muted)';
+        e.currentTarget.style.borderColor = 'transparent';
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 function fmt(d) {
   if (!d) return '-';
@@ -44,7 +80,18 @@ function Th({ label, sortKey, sort, onSort }) {
 
 const STATUSES = ['scheduled', 'completed', 'cancelled'];
 
-export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDelete = true, isAdmin = false, profileById, onOpenMeeting }) {
+export default function MeetingTable({
+  meetings,
+  onDelete,
+  onUpdateStatus,
+  canDelete = true,
+  isAdmin = false,
+  profileById,
+  onOpenMeeting,
+  onApprove,
+  onRequestChanges,
+  onReopen,
+}) {
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId] = useState(null);
   const [filesFor, setFilesFor] = useState(null);
@@ -156,33 +203,50 @@ export default function MeetingTable({ meetings, onDelete, onUpdateStatus, canDe
               </td>
 
               <td style={{ padding: '11px 14px' }}>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                  {meeting.status === 'submitted' && onApprove && (
+                    <RowIconBtn
+                      title="Approve"
+                      accent="var(--status-success)"
+                      accentBg="var(--status-success-bg)"
+                      onClick={(e) => { e.stopPropagation(); onApprove(meeting); }}
+                    >
+                      <Check size={14} />
+                    </RowIconBtn>
+                  )}
+                  {meeting.status === 'submitted' && onRequestChanges && (
+                    <RowIconBtn
+                      title="Request changes"
+                      accent="var(--status-warning)"
+                      accentBg="var(--status-warning-bg)"
+                      onClick={(e) => { e.stopPropagation(); onRequestChanges(meeting); }}
+                    >
+                      <XCircle size={14} />
+                    </RowIconBtn>
+                  )}
+                  {(meeting.status === 'completed' || meeting.status === 'changes_requested') && onReopen && (
+                    <RowIconBtn
+                      title="Reopen"
+                      accent="var(--color-primary)"
+                      accentBg="var(--status-info-bg)"
+                      onClick={(e) => { e.stopPropagation(); onReopen(meeting); }}
+                    >
+                      <RotateCcw size={14} />
+                    </RowIconBtn>
+                  )}
                   <button className="btn btn-ghost btn-sm" type="button" onClick={(e) => { e.stopPropagation(); setFilesFor(meeting); }}>
                     Files
                   </button>
                   {canDelete && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(meeting.id); }} disabled={deletingId === meeting.id}
-                      style={{
-                        background: 'none', border: '1px solid transparent', borderRadius: 4,
-                        cursor: 'pointer',
-                        padding: '8px',
-                        color: 'var(--tf-muted)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        transition: 'all 100ms ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.color = 'var(--status-danger)';
-                        e.currentTarget.style.borderColor = 'rgba(196,30,58,0.25)';
-                        e.currentTarget.style.background = 'var(--status-danger-bg)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.color = 'var(--tf-muted)';
-                        e.currentTarget.style.borderColor = 'transparent';
-                        e.currentTarget.style.background = 'none';
-                      }}>
+                    <RowIconBtn
+                      title="Delete"
+                      accent="var(--status-danger)"
+                      accentBg="var(--status-danger-bg)"
+                      disabled={deletingId === meeting.id}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(meeting.id); }}
+                    >
                       {deletingId === meeting.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={13} />}
-                    </button>
+                    </RowIconBtn>
                   )}
                 </div>
               </td>

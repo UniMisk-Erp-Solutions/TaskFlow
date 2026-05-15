@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
 
@@ -34,6 +34,47 @@ function Th({ label, sortKey, sort, onSort }) {
   );
 }
 
+/**
+ * Compact icon button used in row action cells. Defaults to a muted look that
+ * fades into the accent color on hover — keeps the row from feeling busy
+ * until the admin actually wants to act.
+ */
+function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      style={{
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: 6,
+        cursor: disabled ? 'default' : 'pointer',
+        padding: '6px',
+        color: 'var(--tf-muted)',
+        display: 'flex',
+        alignItems: 'center',
+        transition: 'all 100ms ease',
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.color = accent;
+        e.currentTarget.style.borderColor = accent;
+        e.currentTarget.style.background = accentBg;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = 'var(--tf-muted)';
+        e.currentTarget.style.borderColor = 'transparent';
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 const STATUSES = ['pending', 'in_progress', 'submitted', 'completed', 'changes_requested', 'blocked'];
 
 const STATUS_LABELS = {
@@ -45,7 +86,16 @@ const STATUS_LABELS = {
   blocked: 'Blocked',
 };
 
-export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById, onOpenTask }) {
+export default function TaskTable({
+  tasks,
+  onDelete,
+  onUpdateStatus,
+  profileById,
+  onOpenTask,
+  onApprove,
+  onRequestChanges,
+  onReopen,
+}) {
   const [sort, setSort]         = useState({ key: 'created_at', dir: 'desc' });
   const [deletingId, setDelId]  = useState(null);
 
@@ -155,28 +205,47 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                 </td>
 
                 <td style={{ padding: '11px 14px' }}>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} disabled={deletingId === task.id}
-                    style={{
-                      background: 'none', border: '1px solid transparent', borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '8px',
-                      color: 'var(--tf-muted)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      transition: 'all 100ms ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--status-danger)';
-                      e.currentTarget.style.borderColor = 'rgba(196,30,58,0.25)';
-                      e.currentTarget.style.background = 'var(--status-danger-bg)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--tf-muted)';
-                      e.currentTarget.style.borderColor = 'transparent';
-                      e.currentTarget.style.background = 'none';
-                    }}>
-                    {deletingId === task.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={13} />}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                    {task.status === 'submitted' && onApprove && (
+                      <RowIconBtn
+                        title="Approve"
+                        accent="var(--status-success)"
+                        accentBg="var(--status-success-bg)"
+                        onClick={(e) => { e.stopPropagation(); onApprove(task); }}
+                      >
+                        <Check size={14} />
+                      </RowIconBtn>
+                    )}
+                    {task.status === 'submitted' && onRequestChanges && (
+                      <RowIconBtn
+                        title="Request changes"
+                        accent="var(--status-warning)"
+                        accentBg="var(--status-warning-bg)"
+                        onClick={(e) => { e.stopPropagation(); onRequestChanges(task); }}
+                      >
+                        <XCircle size={14} />
+                      </RowIconBtn>
+                    )}
+                    {(task.status === 'completed' || task.status === 'changes_requested') && onReopen && (
+                      <RowIconBtn
+                        title="Reopen"
+                        accent="var(--color-primary)"
+                        accentBg="var(--status-info-bg)"
+                        onClick={(e) => { e.stopPropagation(); onReopen(task); }}
+                      >
+                        <RotateCcw size={14} />
+                      </RowIconBtn>
+                    )}
+                    <RowIconBtn
+                      title="Delete"
+                      accent="var(--status-danger)"
+                      accentBg="var(--status-danger-bg)"
+                      disabled={deletingId === task.id}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }}
+                    >
+                      {deletingId === task.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={13} />}
+                    </RowIconBtn>
+                  </div>
                 </td>
               </tr>
             );

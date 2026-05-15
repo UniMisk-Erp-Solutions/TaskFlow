@@ -1,6 +1,42 @@
 import React, { useMemo, useState } from 'react';
-import { Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
+
+function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      style={{
+        background: 'none',
+        border: '1px solid transparent',
+        borderRadius: 6,
+        cursor: disabled ? 'default' : 'pointer',
+        padding: '6px',
+        color: 'var(--tf-muted)',
+        display: 'flex',
+        alignItems: 'center',
+        transition: 'all 100ms ease',
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.color = accent;
+        e.currentTarget.style.borderColor = accent;
+        e.currentTarget.style.background = accentBg;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = 'var(--tf-muted)';
+        e.currentTarget.style.borderColor = 'transparent';
+        e.currentTarget.style.background = 'none';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 function fmt(d) {
   if (!d) return '—';
@@ -72,6 +108,12 @@ export default function OverviewUnified({
   onUpdateMeetingStatus,
   onOpenTaskDetail,
   onOpenMeetingDetail,
+  onApproveTask,
+  onRequestChangesTask,
+  onReopenTask,
+  onApproveMeeting,
+  onRequestChangesMeeting,
+  onReopenMeeting,
   limit = 40,
   hideDeleteColumn = false,
 }) {
@@ -183,7 +225,7 @@ export default function OverviewUnified({
             <Th label="Priority" sortKey="priority" sort={sort} onSort={handleSort} />
             <Th label="Status" sortKey="status" sort={sort} onSort={handleSort} />
             <Th label="Date" sortKey="sort_date" sort={sort} onSort={handleSort} />
-            {showDelete && <Th label="" sortKey={null} sort={sort} onSort={handleSort} />}
+            <Th label="" sortKey={null} sort={sort} onSort={handleSort} />
           </tr>
         </thead>
         <tbody>
@@ -293,32 +335,73 @@ export default function OverviewUnified({
                   </span>
                 )}
               </td>
-              {showDelete && (
-                <td style={{ padding: '11px 14px' }}>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(row.kind, row.id);
-                    }}
-                    disabled={deletingId === `${row.kind}:${row.id}`}
-                    style={{
-                      background: 'none',
-                      border: '1px solid transparent',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      padding: '8px',
-                      color: 'var(--tf-muted)',
-                    }}
-                  >
-                    {deletingId === `${row.kind}:${row.id}` ? (
-                      <span className="spinner" style={{ width: 12, height: 12 }} />
-                    ) : (
-                      <Trash2 size={13} />
-                    )}
-                  </button>
-                </td>
-              )}
+              <td style={{ padding: '11px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                  {row.status === 'submitted' && (row.kind === 'task' ? onApproveTask : onApproveMeeting) && (
+                    <RowIconBtn
+                      title="Approve"
+                      accent="var(--status-success)"
+                      accentBg="var(--status-success-bg)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const full = row.kind === 'task' ? tasks.find((t) => t.id === row.id) : meetings.find((m) => m.id === row.id);
+                        if (row.kind === 'task') onApproveTask?.(full || row);
+                        else onApproveMeeting?.(full || row);
+                      }}
+                    >
+                      <Check size={14} />
+                    </RowIconBtn>
+                  )}
+                  {row.status === 'submitted' && (row.kind === 'task' ? onRequestChangesTask : onRequestChangesMeeting) && (
+                    <RowIconBtn
+                      title="Request changes"
+                      accent="var(--status-warning)"
+                      accentBg="var(--status-warning-bg)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const full = row.kind === 'task' ? tasks.find((t) => t.id === row.id) : meetings.find((m) => m.id === row.id);
+                        if (row.kind === 'task') onRequestChangesTask?.(full || row);
+                        else onRequestChangesMeeting?.(full || row);
+                      }}
+                    >
+                      <XCircle size={14} />
+                    </RowIconBtn>
+                  )}
+                  {(row.status === 'completed' || row.status === 'changes_requested') && (row.kind === 'task' ? onReopenTask : onReopenMeeting) && (
+                    <RowIconBtn
+                      title="Reopen"
+                      accent="var(--color-primary)"
+                      accentBg="var(--status-info-bg)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const full = row.kind === 'task' ? tasks.find((t) => t.id === row.id) : meetings.find((m) => m.id === row.id);
+                        if (row.kind === 'task') onReopenTask?.(full || row);
+                        else onReopenMeeting?.(full || row);
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                    </RowIconBtn>
+                  )}
+                  {showDelete && (
+                    <RowIconBtn
+                      title="Delete"
+                      accent="var(--status-danger)"
+                      accentBg="var(--status-danger-bg)"
+                      disabled={deletingId === `${row.kind}:${row.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(row.kind, row.id);
+                      }}
+                    >
+                      {deletingId === `${row.kind}:${row.id}` ? (
+                        <span className="spinner" style={{ width: 12, height: 12 }} />
+                      ) : (
+                        <Trash2 size={13} />
+                      )}
+                    </RowIconBtn>
+                  )}
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
