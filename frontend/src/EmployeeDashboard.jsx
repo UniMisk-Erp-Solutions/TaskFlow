@@ -91,8 +91,8 @@ function Group({ label, tasks, onUpdateStatus, accent, onOpenTaskDetail }) {
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const selfAssigneePreset = profile?.id ? [profile.id] : [];
-  const { tasks, loading, refetch, updateStatus, createTask, updateTask } = useTasks();
-  const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus } = useMeetings();
+  const { tasks, loading, refetch, updateStatus, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
+  const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus, submitMeeting, approveMeeting, requestMeetingChanges, getMeetingHistory } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
   const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
@@ -307,6 +307,10 @@ export default function EmployeeDashboard() {
         projects={projects}
         profileById={profileById}
         updateTask={updateTask}
+        submitTask={submitTask}
+        approveTask={approveTask}
+        requestTaskChanges={requestTaskChanges}
+        getTaskHistory={getTaskHistory}
         onClose={() => setDetailTask(null)}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>
@@ -321,6 +325,10 @@ export default function EmployeeDashboard() {
         projects={projects}
         profileById={profileById}
         updateMeeting={updateMeeting}
+        submitMeeting={submitMeeting}
+        approveMeeting={approveMeeting}
+        requestMeetingChanges={requestMeetingChanges}
+        getMeetingHistory={getMeetingHistory}
         onClose={() => setDetailMeeting(null)}
         onNavigateMeeting={(m) => setDetailMeeting(m)}
         onAddSubmeeting={(parentId, ctx = {}) =>

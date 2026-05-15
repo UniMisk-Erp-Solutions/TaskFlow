@@ -64,5 +64,42 @@ export function useMeetings() {
     return data;
   }
 
-  return { meetings, loading, error, refetch: fetch, createMeeting, updateStatus, deleteMeeting, getMeeting, updateMeeting };
+  async function submitMeeting(id, note) {
+    const { data } = await api.post(`/meetings/${id}/submit`, { note: note ?? '' });
+    setMeetings((prev) => prev.map((m) => (m.id === id ? data : m)));
+    return data;
+  }
+
+  async function approveMeeting(id, note) {
+    const { data } = await api.post(`/meetings/${id}/approve`, { note: note ?? '' });
+    setMeetings((prev) => prev.map((m) => (m.id === id ? data : m)));
+    return data;
+  }
+
+  async function requestMeetingChanges(id, note) {
+    const { data } = await api.post(`/meetings/${id}/request-changes`, { note });
+    setMeetings((prev) => prev.map((m) => (m.id === id ? data : m)));
+    return data;
+  }
+
+  async function getMeetingHistory(id) {
+    const { data } = await api.get(`/meetings/${id}/history`);
+    return Array.isArray(data) ? data : [];
+  }
+
+  return {
+    meetings,
+    loading,
+    error,
+    refetch: fetch,
+    createMeeting,
+    updateStatus,
+    deleteMeeting,
+    getMeeting,
+    updateMeeting,
+    submitMeeting,
+    approveMeeting,
+    requestMeetingChanges,
+    getMeetingHistory,
+  };
 }

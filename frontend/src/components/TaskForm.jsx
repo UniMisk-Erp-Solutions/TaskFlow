@@ -9,6 +9,7 @@ const DEFAULT = {
   assignee_ids: [],
   priority: 'medium',
   due_date: '',
+  due_time: '',
   project_id: '',
 };
 
@@ -46,6 +47,8 @@ export default function TaskForm({
       await onSubmit({
         ...form,
         title: form.title.trim(),
+        due_date: form.due_date || null,
+        due_time: form.due_date ? (form.due_time || null) : null,
         project_id: form.project_id || null,
         assignee_ids: form.assignee_ids,
         parent_task_id: parentTaskId || null,
@@ -95,10 +98,17 @@ export default function TaskForm({
               </select>
             </div>
             <div className="form-group tf-date-field">
-              <label className="form-label">Due Date</label>
+              <label className="form-label">Due Date (optional)</label>
               <input className="input input-date" type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
             </div>
           </div>
+
+          {form.due_date && (
+            <div className="form-group tf-date-field">
+              <label className="form-label">Due Time (optional)</label>
+              <input className="input input-date" type="time" value={form.due_time} onChange={(e) => set('due_time', e.target.value)} />
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Project (optional)</label>

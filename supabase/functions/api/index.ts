@@ -412,6 +412,82 @@ function meetingAssigneeIds(m: any): string[] {
   return fromJ.length ? fromJ : (m.assignee_id ? [m.assignee_id] : []);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// History audit log helpers. Writes are fire-and-forget — a logging failure
+// must never break the underlying mutation, so we swallow errors and log them.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type HistoryChanges = Record<string, unknown>;
+
+async function logTaskHistory(
+  taskId: string,
+  actorId: string | null,
+  orgId: string | null,
+  action: string,
+  changes: HistoryChanges,
+  note: string | null,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("task_history").insert([{
+      task_id: taskId,
+      actor_id: actorId,
+      org_id: orgId,
+      action,
+      changes: changes ?? {},
+      note: note ?? null,
+    }]);
+    if (error) console.warn("[history] task_history insert failed:", error.message);
+  } catch (err) {
+    console.warn("[history] task_history insert threw:", (err as Error)?.message);
+  }
+}
+
+async function logMeetingHistory(
+  meetingId: string,
+  actorId: string | null,
+  orgId: string | null,
+  action: string,
+  changes: HistoryChanges,
+  note: string | null,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from("meeting_history").insert([{
+      meeting_id: meetingId,
+      actor_id: actorId,
+      org_id: orgId,
+      action,
+      changes: changes ?? {},
+      note: note ?? null,
+    }]);
+    if (error) console.warn("[history] meeting_history insert failed:", error.message);
+  } catch (err) {
+    console.warn("[history] meeting_history insert threw:", (err as Error)?.message);
+  }
+}
+
+function scheduleAudit(fn: () => Promise<void>): void {
+  queueMicrotask(() => {
+    fn().catch((e) => console.error("[history]", e));
+  });
+}
+
+/** Shallow diff: which keys in `patch` differ from `before`. Skips `updated_at`. */
+function diffForHistory(
+  before: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, { from: unknown; to: unknown }> {
+  const out: Record<string, { from: unknown; to: unknown }> = {};
+  for (const k of Object.keys(patch)) {
+    if (k === "updated_at") continue;
+    const a = before?.[k] ?? null;
+    const b = patch[k] ?? null;
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      out[k] = { from: a, to: b };
+    }
+  }
+  return out;
+}
+
 async function loadOrgRoleByIdForEdge(orgId: string): Promise<Record<string, string>> {
   const { data, error } = await supabase.from("profiles").select("id, role").eq("org_id", orgId);
   if (error) throw error;
@@ -909,7 +985,7 @@ async function handleTasks(req: Request, path: string) {
       const pErr = await validateParentTaskEdge(user, String(parent_task_id));
       if (pErr) return pErr;
     }
-    const { title, description, priority, due_date, project_id } = body as any;
+    const { title, description, priority, due_date, due_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
     if (project_id) {
@@ -925,7 +1001,8 @@ async function handleTasks(req: Request, path: string) {
         assignee_id: primary,
         project_id: project_id || null,
         priority: priority || "medium",
-        due_date,
+        due_date: due_date || null,
+        due_time: due_time || null,
         status: "pending",
         created_by: user.id,
         org_id: user.org_id,
@@ -947,6 +1024,17 @@ async function handleTasks(req: Request, path: string) {
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeTasksWithJoins([full]);
     const out = shaped[0];
+    scheduleAudit(() =>
+      logTaskHistory(out.id, user.id, user.org_id, "created", {
+        title: out.title,
+        priority: out.priority,
+        due_date: out.due_date ?? null,
+        due_time: out.due_time ?? null,
+        project_id: out.project_id ?? null,
+        assignee_ids: out.assignee_ids ?? [],
+        parent_task_id: out.parent_task_id ?? null,
+      }, null)
+    );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
       await notifyUsersEdge(supabase, {
@@ -975,6 +1063,7 @@ async function handleTasks(req: Request, path: string) {
       const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", id).eq("profile_id", user.id).maybeSingle();
       if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
     }
+    const { data: beforeRow } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
     let uq = supabase
       .from("tasks")
       .update({ status, updated_at: new Date().toISOString() })
@@ -987,6 +1076,12 @@ async function handleTasks(req: Request, path: string) {
     if (!data) return json({ error: "Task not found or access denied" }, 404);
     const shaped = await shapeTasksWithJoins([data]);
     const out = shaped[0];
+    const prevStatus = (beforeRow as { status?: string } | null)?.status ?? null;
+    if (prevStatus !== status) {
+      scheduleAudit(() =>
+        logTaskHistory(id, user.id, user.org_id, "status_changed", { status: { from: prevStatus, to: status } }, null)
+      );
+    }
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
       await notifyUsersEdge(supabase, {
@@ -1014,6 +1109,7 @@ async function handleTasks(req: Request, path: string) {
       description,
       priority,
       due_date,
+      due_time,
       project_id,
     } = body as any;
     const parent_task_id_in = (body as any).parent_task_id ?? (body as any).parentTaskId;
@@ -1036,7 +1132,8 @@ async function handleTasks(req: Request, path: string) {
     if (title !== undefined) patch.title = String(title).trim();
     if (description !== undefined) patch.description = description;
     if (priority !== undefined) patch.priority = priority;
-    if (due_date !== undefined) patch.due_date = due_date;
+    if (due_date !== undefined) patch.due_date = due_date || null;
+    if (due_time !== undefined) patch.due_time = due_time || null;
     if (project_id !== undefined) patch.project_id = project_id || null;
     if (parent_task_id_in !== undefined) {
       patch.parent_task_id = parent_task_id_in === null || parent_task_id_in === ""
@@ -1054,7 +1151,7 @@ async function handleTasks(req: Request, path: string) {
       previousAssigneeIds = [...new Set((oldLinks ?? []).map((r: { profile_id: string }) => r.profile_id))];
     }
 
-    const { data: before } = await supabase.from("tasks").select("id").eq("id", id).single();
+    const { data: before } = await supabase.from("tasks").select("*").eq("id", id).single();
     if (!before) return json({ error: "Task not found" }, 404);
 
     let patchQ = supabase.from("tasks").update(patch).eq("id", id);
@@ -1080,9 +1177,16 @@ async function handleTasks(req: Request, path: string) {
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeTasksWithJoins([full]);
     const out = shaped[0];
+    const fieldChanges = diffForHistory(before as Record<string, unknown>, patch);
+    let assigneeDiff: { added: string[]; removed: string[] } | null = null;
     if (assignee_ids !== null) {
       const oldSet = new Set(previousAssigneeIds);
+      const newSet = new Set(out.assignee_ids || []);
       const added = (out.assignee_ids || []).filter((uid: string) => !oldSet.has(uid));
+      const removed = previousAssigneeIds.filter((uid) => !newSet.has(uid));
+      if (added.length || removed.length) {
+        assigneeDiff = { added, removed };
+      }
       if (added.length) {
         scheduleNotify(async () => {
           const who = await getActorDisplayName(supabase, user.id);
@@ -1097,6 +1201,149 @@ async function handleTasks(req: Request, path: string) {
         });
       }
     }
+    const hasFieldChanges = Object.keys(fieldChanges).length > 0;
+    if (hasFieldChanges || assigneeDiff) {
+      const changes: HistoryChanges = { ...fieldChanges };
+      if (assigneeDiff) changes.assignees = assigneeDiff;
+      scheduleAudit(() => logTaskHistory(id, user.id, user.org_id, "updated", changes, null));
+    }
+    return json(out);
+  }
+
+  // GET /tasks/:id/history — list audit log entries for a task
+  const historyMatchT = path.match(/^\/tasks\/([^/]+)\/history$/);
+  if (req.method === "GET" && historyMatchT) {
+    const id = historyMatchT[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const { data, error } = await supabase
+      .from("task_history")
+      .select("id, task_id, actor_id, action, changes, note, created_at")
+      .eq("task_id", id)
+      .order("created_at", { ascending: true });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  // POST /tasks/:id/submit — employee (or admin) submits work for review.
+  const submitMatchT = path.match(/^\/tasks\/([^/]+)\/submit$/);
+  if (req.method === "POST" && submitMatchT) {
+    const id = submitMatchT[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    let uq = supabase
+      .from("tasks")
+      .update({
+        status: "submitted",
+        submission_notes: note || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Task not found or access denied" }, 404);
+    const shaped = await shapeTasksWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logTaskHistory(id, user.id, user.org_id, "submitted", { status: { from: null, to: "submitted" } }, note || null)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "task_update",
+        title: "Task submitted for review",
+        body: `${who} submitted: ${out.title}`,
+        data: { type: "task", taskId: id, url: "/" },
+      });
+    });
+    return json(out);
+  }
+
+  // POST /tasks/:id/approve — admin approves the submission → completed.
+  const approveMatchT = path.match(/^\/tasks\/([^/]+)\/approve$/);
+  if (req.method === "POST" && approveMatchT) {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const id = approveMatchT[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    let uq = supabase
+      .from("tasks")
+      .update({
+        status: "completed",
+        approval_notes: note || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Task not found" }, 404);
+    const shaped = await shapeTasksWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logTaskHistory(id, user.id, user.org_id, "approved", { status: { from: null, to: "completed" } }, note || null)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "task_update",
+        title: "Task approved",
+        body: `${who} approved: ${out.title}`,
+        data: { type: "task", taskId: id, url: "/" },
+      });
+    });
+    return json(out);
+  }
+
+  // POST /tasks/:id/request-changes — admin sends task back for rework.
+  const requestChangesMatchT = path.match(/^\/tasks\/([^/]+)\/request-changes$/);
+  if (req.method === "POST" && requestChangesMatchT) {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const id = requestChangesMatchT[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    if (!note) return json({ error: "Please describe the changes requested" }, 400);
+    let uq = supabase
+      .from("tasks")
+      .update({
+        status: "changes_requested",
+        approval_notes: note,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Task not found" }, 404);
+    const shaped = await shapeTasksWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logTaskHistory(id, user.id, user.org_id, "changes_requested", { status: { from: null, to: "changes_requested" } }, note)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "task_update",
+        title: "Changes requested",
+        body: `${who} requested changes on: ${out.title}`,
+        data: { type: "task", taskId: id, url: "/" },
+      });
+    });
     return json(out);
   }
 
@@ -1171,8 +1418,6 @@ async function handleMeetings(req: Request, path: string) {
     const { title, description, priority, meeting_date, meeting_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
-    if (!meeting_date) return json({ error: "Meeting date is required" }, 400);
-    if (!meeting_time) return json({ error: "Meeting time is required" }, 400);
     if (project_id) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
@@ -1186,8 +1431,8 @@ async function handleMeetings(req: Request, path: string) {
         assignee_id: primary,
         project_id: project_id || null,
         priority: priority || "medium",
-        meeting_date,
-        meeting_time,
+        meeting_date: meeting_date || null,
+        meeting_time: meeting_time || null,
         status: "scheduled",
         created_by: user.id,
         org_id: user.org_id,
@@ -1209,6 +1454,17 @@ async function handleMeetings(req: Request, path: string) {
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeMeetingsWithJoins([full]);
     const out = shaped[0];
+    scheduleAudit(() =>
+      logMeetingHistory(out.id, user.id, user.org_id, "created", {
+        title: out.title,
+        priority: out.priority,
+        meeting_date: out.meeting_date ?? null,
+        meeting_time: out.meeting_time ?? null,
+        project_id: out.project_id ?? null,
+        assignee_ids: out.assignee_ids ?? [],
+        parent_meeting_id: out.parent_meeting_id ?? null,
+      }, null)
+    );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
       await notifyUsersEdge(supabase, {
@@ -1237,6 +1493,7 @@ async function handleMeetings(req: Request, path: string) {
       const { data: inj } = await supabase.from("meeting_assignees").select("meeting_id").eq("meeting_id", id).eq("profile_id", user.id).maybeSingle();
       if (row.assignee_id !== user.id && !inj) return json({ error: "Meeting not found or access denied" }, 403);
     }
+    const { data: beforeMRow } = await supabase.from("meetings").select("status").eq("id", id).maybeSingle();
     let uq = supabase
       .from("meetings")
       .update({ status, updated_at: new Date().toISOString() })
@@ -1249,6 +1506,12 @@ async function handleMeetings(req: Request, path: string) {
     if (!data) return json({ error: "Meeting not found or access denied" }, 404);
     const shaped = await shapeMeetingsWithJoins([data]);
     const out = shaped[0];
+    const prevMStatus = (beforeMRow as { status?: string } | null)?.status ?? null;
+    if (prevMStatus !== status) {
+      scheduleAudit(() =>
+        logMeetingHistory(id, user.id, user.org_id, "status_changed", { status: { from: prevMStatus, to: status } }, null)
+      );
+    }
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
       await notifyUsersEdge(supabase, {
@@ -1281,12 +1544,6 @@ async function handleMeetings(req: Request, path: string) {
     } = body as any;
     const parent_meeting_id_in = (body as any).parent_meeting_id ?? (body as any).parentMeetingId;
     if (title !== undefined && !String(title).trim()) return json({ error: "Title cannot be empty" }, 400);
-    if (meeting_date !== undefined && meeting_date !== null && String(meeting_date).trim() === "") {
-      return json({ error: "Meeting date cannot be empty" }, 400);
-    }
-    if (meeting_time !== undefined && meeting_time !== null && String(meeting_time).trim() === "") {
-      return json({ error: "Meeting time cannot be empty" }, 400);
-    }
     if (project_id) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
@@ -1305,8 +1562,8 @@ async function handleMeetings(req: Request, path: string) {
     if (title !== undefined) patch.title = String(title).trim();
     if (description !== undefined) patch.description = description;
     if (priority !== undefined) patch.priority = priority;
-    if (meeting_date !== undefined) patch.meeting_date = meeting_date;
-    if (meeting_time !== undefined) patch.meeting_time = meeting_time;
+    if (meeting_date !== undefined) patch.meeting_date = meeting_date || null;
+    if (meeting_time !== undefined) patch.meeting_time = meeting_time || null;
     if (project_id !== undefined) patch.project_id = project_id || null;
     if (parent_meeting_id_in !== undefined) {
       patch.parent_meeting_id = parent_meeting_id_in === null || parent_meeting_id_in === ""
@@ -1324,7 +1581,7 @@ async function handleMeetings(req: Request, path: string) {
       previousMeetingAssigneeIds = [...new Set((oldLinks ?? []).map((r: { profile_id: string }) => r.profile_id))];
     }
 
-    const { data: before } = await supabase.from("meetings").select("id").eq("id", id).single();
+    const { data: before } = await supabase.from("meetings").select("*").eq("id", id).single();
     if (!before) return json({ error: "Meeting not found" }, 404);
 
     let patchQ = supabase.from("meetings").update(patch).eq("id", id);
@@ -1350,9 +1607,14 @@ async function handleMeetings(req: Request, path: string) {
     if (fErr) return json({ error: fErr.message }, 400);
     const shaped = await shapeMeetingsWithJoins([full]);
     const out = shaped[0];
+    const fieldChangesM = diffForHistory(before as Record<string, unknown>, patch);
+    let assigneeDiffM: { added: string[]; removed: string[] } | null = null;
     if (assignee_ids !== null) {
       const oldSet = new Set(previousMeetingAssigneeIds);
+      const newSet = new Set(out.assignee_ids || []);
       const added = (out.assignee_ids || []).filter((uid: string) => !oldSet.has(uid));
+      const removed = previousMeetingAssigneeIds.filter((uid) => !newSet.has(uid));
+      if (added.length || removed.length) assigneeDiffM = { added, removed };
       if (added.length) {
         scheduleNotify(async () => {
           const who = await getActorDisplayName(supabase, user.id);
@@ -1367,6 +1629,149 @@ async function handleMeetings(req: Request, path: string) {
         });
       }
     }
+    const hasFieldChangesM = Object.keys(fieldChangesM).length > 0;
+    if (hasFieldChangesM || assigneeDiffM) {
+      const changes: HistoryChanges = { ...fieldChangesM };
+      if (assigneeDiffM) changes.assignees = assigneeDiffM;
+      scheduleAudit(() => logMeetingHistory(id, user.id, user.org_id, "updated", changes, null));
+    }
+    return json(out);
+  }
+
+  // GET /meetings/:id/history
+  const historyMatchM = path.match(/^\/meetings\/([^/]+)\/history$/);
+  if (req.method === "GET" && historyMatchM) {
+    const id = historyMatchM[1];
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const { data, error } = await supabase
+      .from("meeting_history")
+      .select("id, meeting_id, actor_id, action, changes, note, created_at")
+      .eq("meeting_id", id)
+      .order("created_at", { ascending: true });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  // POST /meetings/:id/submit
+  const submitMatchM = path.match(/^\/meetings\/([^/]+)\/submit$/);
+  if (req.method === "POST" && submitMatchM) {
+    const id = submitMatchM[1];
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    let uq = supabase
+      .from("meetings")
+      .update({
+        status: "submitted",
+        submission_notes: note || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Meeting not found or access denied" }, 404);
+    const shaped = await shapeMeetingsWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logMeetingHistory(id, user.id, user.org_id, "submitted", { status: { from: null, to: "submitted" } }, note || null)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "meeting_update",
+        title: "Meeting submitted for review",
+        body: `${who} submitted: ${out.title}`,
+        data: { type: "meeting", meetingId: id, url: "/" },
+      });
+    });
+    return json(out);
+  }
+
+  // POST /meetings/:id/approve
+  const approveMatchM = path.match(/^\/meetings\/([^/]+)\/approve$/);
+  if (req.method === "POST" && approveMatchM) {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const id = approveMatchM[1];
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    let uq = supabase
+      .from("meetings")
+      .update({
+        status: "completed",
+        approval_notes: note || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Meeting not found" }, 404);
+    const shaped = await shapeMeetingsWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logMeetingHistory(id, user.id, user.org_id, "approved", { status: { from: null, to: "completed" } }, note || null)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "meeting_update",
+        title: "Meeting approved",
+        body: `${who} approved: ${out.title}`,
+        data: { type: "meeting", meetingId: id, url: "/" },
+      });
+    });
+    return json(out);
+  }
+
+  // POST /meetings/:id/request-changes
+  const requestChangesMatchM = path.match(/^\/meetings\/([^/]+)\/request-changes$/);
+  if (req.method === "POST" && requestChangesMatchM) {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const id = requestChangesMatchM[1];
+    const deny = await assertMeetingAccess(user, id);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    if (!note) return json({ error: "Please describe the changes requested" }, 400);
+    let uq = supabase
+      .from("meetings")
+      .update({
+        status: "changes_requested",
+        approval_notes: note,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+    if (user.org_id) uq = uq.eq("org_id", user.org_id);
+    const { data, error } = await uq.select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!data) return json({ error: "Meeting not found" }, 404);
+    const shaped = await shapeMeetingsWithJoins([data]);
+    const out = shaped[0];
+    scheduleAudit(() =>
+      logMeetingHistory(id, user.id, user.org_id, "changes_requested", { status: { from: null, to: "changes_requested" } }, note)
+    );
+    scheduleNotify(async () => {
+      const who = await getActorDisplayName(supabase, user.id);
+      await notifyUsersEdge(supabase, {
+        userIds: out.assignee_ids || [],
+        excludeUserId: user.id,
+        category: "meeting_update",
+        title: "Changes requested",
+        body: `${who} requested changes on: ${out.title}`,
+        data: { type: "meeting", meetingId: id, url: "/" },
+      });
+    });
     return json(out);
   }
 

@@ -65,5 +65,42 @@ export function useTasks() {
     return data;
   }
 
-  return { tasks, loading, error, refetch: fetch, createTask, updateStatus, deleteTask, getTask, updateTask };
+  async function submitTask(id, note) {
+    const { data } = await api.post(`/tasks/${id}/submit`, { note: note ?? '' });
+    setTasks((prev) => prev.map((t) => (t.id === id ? data : t)));
+    return data;
+  }
+
+  async function approveTask(id, note) {
+    const { data } = await api.post(`/tasks/${id}/approve`, { note: note ?? '' });
+    setTasks((prev) => prev.map((t) => (t.id === id ? data : t)));
+    return data;
+  }
+
+  async function requestTaskChanges(id, note) {
+    const { data } = await api.post(`/tasks/${id}/request-changes`, { note });
+    setTasks((prev) => prev.map((t) => (t.id === id ? data : t)));
+    return data;
+  }
+
+  async function getTaskHistory(id) {
+    const { data } = await api.get(`/tasks/${id}/history`);
+    return Array.isArray(data) ? data : [];
+  }
+
+  return {
+    tasks,
+    loading,
+    error,
+    refetch: fetch,
+    createTask,
+    updateStatus,
+    deleteTask,
+    getTask,
+    updateTask,
+    submitTask,
+    approveTask,
+    requestTaskChanges,
+    getTaskHistory,
+  };
 }

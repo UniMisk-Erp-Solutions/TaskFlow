@@ -54,7 +54,7 @@ function MiniStat({ label, value }) {
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const { tasks, loading, refetch, createTask, updateStatus, deleteTask, updateTask } = useTasks();
+  const { tasks, loading, refetch, createTask, updateStatus, deleteTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const {
     meetings,
     loading: meetingsLoading,
@@ -63,6 +63,10 @@ export default function AdminDashboard() {
     updateStatus: updateMeetingStatus,
     deleteMeeting,
     updateMeeting,
+    submitMeeting,
+    approveMeeting,
+    requestMeetingChanges,
+    getMeetingHistory,
   } = useMeetings();
 
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
@@ -509,6 +513,10 @@ export default function AdminDashboard() {
         projects={projects}
         profileById={profileById}
         updateTask={updateTask}
+        submitTask={submitTask}
+        approveTask={approveTask}
+        requestTaskChanges={requestTaskChanges}
+        getTaskHistory={getTaskHistory}
         onClose={() => setDetailTask(null)}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>
@@ -523,6 +531,10 @@ export default function AdminDashboard() {
         projects={projects}
         profileById={profileById}
         updateMeeting={updateMeeting}
+        submitMeeting={submitMeeting}
+        approveMeeting={approveMeeting}
+        requestMeetingChanges={requestMeetingChanges}
+        getMeetingHistory={getMeetingHistory}
         onClose={() => setDetailMeeting(null)}
         onNavigateMeeting={(m) => setDetailMeeting(m)}
         onAddSubmeeting={(parentId, ctx = {}) =>

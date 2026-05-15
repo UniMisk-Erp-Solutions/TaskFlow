@@ -37,14 +37,6 @@ export default function MeetingForm({
       setError('Title is required');
       return;
     }
-    if (!form.meeting_date) {
-      setError('Meeting date is required');
-      return;
-    }
-    if (!form.meeting_time) {
-      setError('Meeting time is required');
-      return;
-    }
     if (!form.assignee_ids?.length) {
       setError('Select at least one participant');
       return;
@@ -55,6 +47,8 @@ export default function MeetingForm({
       await onSubmit({
         ...form,
         title: form.title.trim(),
+        meeting_date: form.meeting_date || null,
+        meeting_time: form.meeting_date ? (form.meeting_time || null) : null,
         project_id: form.project_id || null,
         assignee_ids: form.assignee_ids,
         parent_meeting_id: parentMeetingId || null,
@@ -104,15 +98,17 @@ export default function MeetingForm({
               </select>
             </div>
             <div className="form-group tf-date-field">
-              <label className="form-label">Meeting Date</label>
+              <label className="form-label">Meeting Date (optional)</label>
               <input className="input input-date" type="date" value={form.meeting_date} onChange={(e) => set('meeting_date', e.target.value)} />
             </div>
           </div>
 
-          <div className="form-group tf-date-field">
-            <label className="form-label">Meeting Time</label>
-            <input className="input input-time" type="time" value={form.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
-          </div>
+          {form.meeting_date && (
+            <div className="form-group tf-date-field">
+              <label className="form-label">Meeting Time (optional)</label>
+              <input className="input input-time" type="time" value={form.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Project (optional)</label>
