@@ -34,7 +34,16 @@ function Th({ label, sortKey, sort, onSort }) {
   );
 }
 
-const STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
+const STATUSES = ['pending', 'in_progress', 'submitted', 'completed', 'changes_requested', 'blocked'];
+
+const STATUS_LABELS = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  submitted: 'Submitted',
+  completed: 'Completed',
+  changes_requested: 'Changes requested',
+  blocked: 'Blocked',
+};
 
 export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById, onOpenTask }) {
   const [sort, setSort]         = useState({ key: 'created_at', dir: 'desc' });
@@ -130,9 +139,9 @@ export default function TaskTable({ tasks, onDelete, onUpdateStatus, profileById
                     onChange={(e) => onUpdateStatus(task.id, e.target.value)}
                     style={{ width: 140 }}
                   >
-                    {STATUSES.map((s) => (
+                    {(STATUSES.includes(task.status) ? STATUSES : [task.status, ...STATUSES]).map((s) => (
                       <option key={s} value={s}>
-                        {s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        {STATUS_LABELS[s] || s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                       </option>
                     ))}
                   </select>

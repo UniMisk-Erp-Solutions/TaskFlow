@@ -3,7 +3,36 @@ import { Calendar } from 'lucide-react';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
 
-const STATUSES = ['pending', 'in_progress', 'completed', 'blocked'];
+/**
+ * Status sets are intentionally split:
+ *
+ *   • Employees: can move work between pending → in_progress, mark it
+ *     blocked, or push it to admin via "submitted" (i.e. Submit for review).
+ *     They cannot mark `completed` themselves or set `changes_requested`;
+ *     those are admin transitions only.
+ *
+ *   • Admin: full transition set, including completed / changes_requested.
+ *
+ * If the task is already in an admin-only status (e.g. completed) we still
+ * surface that label in the dropdown so the row is not blank — but we lock
+ * the control so an employee cannot move it back unilaterally; the
+ * Detail modal's "Request changes" / "Reopen" flow is the right path.
+ */
+const EMPLOYEE_STATUSES = ['pending', 'in_progress', 'submitted', 'blocked'];
+
+const STATUS_LABELS = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  submitted: 'Submitted for review',
+  blocked: 'Blocked',
+  completed: 'Completed',
+  changes_requested: 'Changes requested',
+};
+
+function labelFor(status) {
+  if (STATUS_LABELS[status]) return STATUS_LABELS[status];
+  return String(status || '').replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 function fmt(d) {
   if (!d) return null;
@@ -86,13 +115,26 @@ export default function TaskCard({ task, onUpdateStatus, onOpenDetail }) {
       </div>
 
       <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14 }}>
-        <select className="tf-select-inline" value={task.status} onChange={handleStatus} disabled={updating} style={{ width: '100%' }}>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-            </option>
-          ))}
-        </select>
+        {(() => {
+          const adminOwnedStatus = task.status === 'completed' || task.status === 'changes_requested';
+          const options = EMPLOYEE_STATUSES.includes(task.status)
+            ? EMPLOYEE_STATUSES
+            : [task.status, ...EMPLOYEE_STATUSES];
+          return (
+            <select
+              className="tf-select-inline"
+              value={task.status}
+              onChange={handleStatus}
+              disabled={updating || adminOwnedStatus}
+              title={adminOwnedStatus ? 'Only an admin can change this status' : undefined}
+              style={{ width: '100%' }}
+            >
+              {options.map((s) => (
+                <option key={s} value={s}>{labelFor(s)}</option>
+              ))}
+            </select>
+          );
+        })()}
       </div>
     </div>
   );

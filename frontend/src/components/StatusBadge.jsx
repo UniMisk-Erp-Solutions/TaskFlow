@@ -1,10 +1,12 @@
 import React from 'react';
 
 const STATUS_MAP = {
-  pending:     { label: 'Pending',     cls: 'badge-muted'   },
-  in_progress: { label: 'In Progress', cls: 'badge-indigo'  },
-  completed:   { label: 'Completed',   cls: 'badge-green'   },
-  blocked:     { label: 'Blocked',     cls: 'badge-red'     },
+  pending:           { label: 'Pending',            cls: 'badge-muted'  },
+  in_progress:       { label: 'In Progress',        cls: 'badge-indigo' },
+  submitted:         { label: 'Submitted',          cls: 'badge-yellow' },
+  completed:         { label: 'Completed',          cls: 'badge-green'  },
+  changes_requested: { label: 'Changes requested',  cls: 'badge-red'    },
+  blocked:           { label: 'Blocked',            cls: 'badge-red'    },
 };
 
 const PRIORITY_MAP = {
