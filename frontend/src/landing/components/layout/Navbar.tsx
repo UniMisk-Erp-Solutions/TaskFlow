@@ -191,8 +191,7 @@ export const Navbar = () => {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
-                font: "inherit",
-                padding: "8px 4px",
+                fontFamily: "inherit",
               }}
             >
               Resources
@@ -331,7 +330,7 @@ export const Navbar = () => {
             >
               Login
             </Link>
-            <Button size="sm" to="/login?mode=signup">Start free</Button>
+            <Button size="sm" to="/login?mode=signup" className="px-7 min-w-[120px]">Start free</Button>
           </div>
 
           {/* Mobile burger */}
