@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
+import ClockTimePicker from './ClockTimePicker';
 
 const DEFAULT = {
   title: '',
@@ -104,9 +105,9 @@ export default function TaskForm({
           </div>
 
           {form.due_date && (
-            <div className="form-group tf-date-field">
+            <div className="form-group">
               <label className="form-label">Due Time (optional)</label>
-              <input className="input input-date" type="time" value={form.due_time} onChange={(e) => set('due_time', e.target.value)} />
+              <ClockTimePicker value={form.due_time} onChange={(v) => set('due_time', v)} />
             </div>
           )}
 

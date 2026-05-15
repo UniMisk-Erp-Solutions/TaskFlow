@@ -1,7 +1,27 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { X, AlertTriangle } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
+import ClockTimePicker from './ClockTimePicker';
+
+/**
+ * Normalise meeting_time values for conflict comparison. Backend may return
+ * "09:00" or "09:00:00"; we compare by HH:MM only.
+ */
+function hhmm(t) {
+  if (!t) return '';
+  const m = String(t).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : '';
+}
+
+function fmtTime12(t) {
+  const v = hhmm(t);
+  if (!v) return '';
+  const [h, m] = v.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = ((h + 11) % 12) + 1;
+  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
 
 const DEFAULT = {
   title: '',
@@ -20,6 +40,7 @@ export default function MeetingForm({
   defaultProjectId = '',
   parentMeetingId = '',
   initialAssigneeIds = [],
+  existingMeetings = [],
 }) {
   const [form, setForm] = useState({
     ...DEFAULT,
@@ -31,6 +52,31 @@ export default function MeetingForm({
 
   const set = (k, v) => setForm((ff) => ({ ...ff, [k]: v }));
 
+  // Detect schedule clash: an already-scheduled meeting on the same date+time
+  // that shares any assignee with the one we're about to create. Ignores
+  // cancelled meetings.
+  const conflict = useMemo(() => {
+    if (!form.meeting_date || !form.meeting_time) return null;
+    const myAssignees = new Set(form.assignee_ids || []);
+    const targetTime = hhmm(form.meeting_time);
+    for (const m of existingMeetings) {
+      if (!m || !m.meeting_date || !m.meeting_time) continue;
+      if (m.status === 'cancelled') continue;
+      if (m.meeting_date !== form.meeting_date) continue;
+      if (hhmm(m.meeting_time) !== targetTime) continue;
+      if (myAssignees.size > 0) {
+        const others = new Set([
+          ...(m.assignee_ids || []),
+          ...(m.assignee_id ? [m.assignee_id] : []),
+        ]);
+        const overlap = [...myAssignees].some((id) => others.has(id));
+        if (!overlap) continue;
+      }
+      return m;
+    }
+    return null;
+  }, [form.meeting_date, form.meeting_time, form.assignee_ids, existingMeetings]);
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim()) {
@@ -39,6 +85,10 @@ export default function MeetingForm({
     }
     if (!form.assignee_ids?.length) {
       setError('Select at least one participant');
+      return;
+    }
+    if (conflict) {
+      setError(`Meeting already booked at this time: “${conflict.title}”. Change the date, time, or participants to continue.`);
       return;
     }
     setLoading(true);
@@ -104,9 +154,35 @@ export default function MeetingForm({
           </div>
 
           {form.meeting_date && (
-            <div className="form-group tf-date-field">
+            <div className="form-group">
               <label className="form-label">Meeting Time (optional)</label>
-              <input className="input input-time" type="time" value={form.meeting_time} onChange={(e) => set('meeting_time', e.target.value)} />
+              <ClockTimePicker value={form.meeting_time} onChange={(v) => set('meeting_time', v)} />
+            </div>
+          )}
+
+          {conflict && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 10,
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid rgba(221,91,0,0.30)',
+                background: 'var(--status-warning-bg)',
+                color: 'var(--status-warning)',
+                fontSize: 13,
+                lineHeight: 1.45,
+              }}
+            >
+              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 600 }}>Meeting already booked</div>
+                <div style={{ color: 'var(--tf-text)', marginTop: 2 }}>
+                  “{conflict.title}” is already scheduled at {fmtTime12(conflict.meeting_time)} on this date with at least one of the selected participants.
+                </div>
+              </div>
             </div>
           )}
 

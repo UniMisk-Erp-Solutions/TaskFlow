@@ -359,6 +359,7 @@ export default function EmployeeDashboard() {
           defaultProjectId={meetingFormCtx.projectId}
           parentMeetingId={meetingFormCtx.parentMeetingId}
           initialAssigneeIds={selfAssigneePreset}
+          existingMeetings={meetings}
           onSubmit={createMeeting}
           onClose={() => {
             setShowMeetingForm(false);

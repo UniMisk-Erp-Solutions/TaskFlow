@@ -715,6 +715,7 @@ export default function AdminDashboard() {
           defaultProjectId={meetingFormCtx.projectId}
           parentMeetingId={meetingFormCtx.parentMeetingId}
           initialAssigneeIds={[]}
+          existingMeetings={meetings}
           onSubmit={createMeeting}
           onClose={() => {
             setShowMeetingForm(false);
