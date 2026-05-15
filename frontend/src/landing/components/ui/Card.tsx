@@ -16,9 +16,9 @@ export const Card = ({ className, children, hover = true, ...props }: CardProps)
       viewport={{ once: true }}
       transition={{ duration: 0.4 }}
       className={cn(
-        "rounded-3xl border border-[var(--border)] bg-[var(--card)] p-6 transition-all duration-500",
-        "shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-none",
-        hover && "hover:-translate-y-1.5 hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)] dark:hover:shadow-none hover:border-brand-primary/20",
+        "rounded-2xl border border-[var(--border)] bg-[var(--card)] p-7 transition-all duration-300",
+        "shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)] dark:shadow-none",
+        hover && "hover:-translate-y-1 hover:shadow-[0_4px_12px_rgba(15,23,42,0.06),0_24px_48px_-20px_rgba(15,23,42,0.16)] dark:hover:shadow-none hover:border-brand-primary/30",
         className
       )}
       {...props}

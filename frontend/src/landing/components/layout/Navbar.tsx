@@ -31,13 +31,13 @@ export const Navbar = () => {
   ];
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--background)]/80 backdrop-blur-xl border-b border-[var(--border)] h-20 flex items-center transition-all duration-300">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--background)]/75 backdrop-blur-xl border-b border-[var(--border)] h-16 flex items-center transition-all duration-300">
       <div className="max-w-7xl mx-auto w-full px-6 flex items-center justify-between relative">
-        <Link to="/" className="flex items-center gap-2 group shrink-0 relative z-50">
-          <div className="size-9 bg-brand-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 group-hover:rotate-6 transition-transform">
-            <Layout size={20} />
+        <Link to="/" className="flex items-center gap-2.5 group shrink-0 relative z-50">
+          <div className="size-8 bg-brand-primary rounded-lg flex items-center justify-center text-white shadow-[0_4px_12px_-4px_rgba(139,92,246,0.5)] group-hover:rotate-3 transition-transform">
+            <Layout size={18} strokeWidth={2.2} />
           </div>
-          <span className="text-xl font-black tracking-tighter uppercase">Taskflow</span>
+          <span className="text-lg font-semibold tracking-tight font-display">Taskflow</span>
         </Link>
 
         {/* Desktop Nav */}
@@ -147,7 +147,7 @@ export const Navbar = () => {
                 to={link.href}
                 onClick={() => setIsOpen(false)}
                 className={cn(
-                  "text-3xl font-black uppercase tracking-tighter",
+                  "text-2xl font-semibold tracking-tight font-display",
                   location.pathname === link.href ? "text-brand-primary" : "text-[var(--foreground)]"
                 )}
               >
@@ -155,7 +155,7 @@ export const Navbar = () => {
               </Link>
             ))}
             <div className="mt-auto flex flex-col gap-4 pb-12">
-              <Link to="/login" onClick={() => setIsOpen(false)} className="text-xl font-bold p-4 bg-[var(--accent)] rounded-2xl text-center">Login</Link>
+              <Link to="/login" onClick={() => setIsOpen(false)} className="text-base font-semibold p-3.5 bg-[var(--accent)] rounded-xl text-center tracking-tight">Login</Link>
               <Button size="lg" to="/login?mode=signup" onClick={() => setIsOpen(false)} className="w-full">Get Started <ArrowRight className="ml-2 size-5" /></Button>
             </div>
           </motion.div>

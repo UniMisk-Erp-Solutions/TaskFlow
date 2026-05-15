@@ -35,9 +35,9 @@ function getInitialTheme() {
   } catch (_err) {
     // ignore (privacy mode etc.)
   }
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
+  // Default to light unless the user has explicitly chosen dark; we no longer
+  // follow `prefers-color-scheme` so the marketing surface always opens on the
+  // light brand by default.
   return 'light';
 }
 
@@ -70,18 +70,9 @@ export function ThemeProvider({ children }) {
     applyTheme(theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (userOverride) return undefined;
-    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e) => setThemeState(e.matches ? 'dark' : 'light');
-    if (mq.addEventListener) mq.addEventListener('change', handler);
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', handler);
-      else mq.removeListener(handler);
-    };
-  }, [userOverride]);
+  // No OS-preference sync: the app defaults to light and only changes when the
+  // user explicitly toggles. This avoids surprise dark flips on systems where
+  // the user has never set their own TaskFlow preference.
 
   const setTheme = useCallback((next) => {
     const value = next === 'dark' ? 'dark' : 'light';

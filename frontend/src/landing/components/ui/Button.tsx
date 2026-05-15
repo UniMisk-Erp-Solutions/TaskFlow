@@ -8,22 +8,22 @@ type Size = "sm" | "md" | "lg";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-brand-primary text-white shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:shadow-brand-primary/30",
+    "bg-brand-primary text-white shadow-[0_8px_24px_-8px_rgba(139,92,246,0.45)] hover:shadow-[0_12px_28px_-10px_rgba(139,92,246,0.55)] hover:brightness-[1.04]",
   secondary:
-    "bg-brand-accent text-white shadow-lg shadow-brand-accent/20 hover:shadow-xl hover:shadow-brand-accent/30",
+    "bg-brand-accent text-white shadow-[0_8px_24px_-8px_rgba(192,132,252,0.45)] hover:shadow-[0_12px_28px_-10px_rgba(192,132,252,0.55)] hover:brightness-[1.04]",
   outline:
-    "border-2 border-[var(--border)] bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)]",
+    "border border-[var(--border)] bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)]",
   ghost: "bg-transparent hover:bg-[var(--accent)] text-[var(--foreground)]",
 };
 
 const sizes: Record<Size, string> = {
-  sm: "px-5 py-2 text-sm",
-  md: "px-7 py-3 text-base",
-  lg: "px-10 py-4 text-lg font-semibold",
+  sm: "px-5 py-2 text-sm font-medium",
+  md: "px-6 py-3 text-sm font-medium",
+  lg: "px-8 py-3.5 text-base font-semibold",
 };
 
 const baseClasses =
-  "inline-flex items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
+  "inline-flex items-center justify-center rounded-full transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer tracking-tight";
 
 interface ButtonAsButtonProps extends HTMLMotionProps<"button"> {
   variant?: Variant;
