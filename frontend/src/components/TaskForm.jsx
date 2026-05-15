@@ -89,27 +89,38 @@ export default function TaskForm({
             <textarea className="input" placeholder="Optional details…" rows={3} value={form.description} onChange={(e) => set('description', e.target.value)} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div className="form-group">
-              <label className="form-label">Priority</label>
-              <select className="select" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div className="form-group tf-date-field">
-              <label className="form-label">Due Date (optional)</label>
-              <input className="input input-date" type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} />
-            </div>
+          <div className="form-group">
+            <label className="form-label">Priority</label>
+            <select className="select" value={form.priority} onChange={(e) => set('priority', e.target.value)}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
           </div>
 
-          {form.due_date && (
-            <div className="form-group">
-              <label className="form-label">Due Time (optional)</label>
-              <ClockTimePicker value={form.due_time} onChange={(v) => set('due_time', v)} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
+            <div className="form-group tf-date-field" style={{ margin: 0 }}>
+              <label className="form-label">Due Date (optional)</label>
+              <input
+                className="input input-date"
+                type="date"
+                value={form.due_date}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setForm((ff) => ({ ...ff, due_date: v, due_time: v ? ff.due_time : '' }));
+                }}
+              />
             </div>
-          )}
+            <div className="form-group" style={{ margin: 0 }}>
+              <label className="form-label">Due Time (optional)</label>
+              <ClockTimePicker
+                value={form.due_time}
+                onChange={(v) => set('due_time', v)}
+                disabled={!form.due_date}
+                placeholder={form.due_date ? 'Pick a time' : 'Pick a date first'}
+              />
+            </div>
+          </div>
 
           <div className="form-group">
             <label className="form-label">Project (optional)</label>

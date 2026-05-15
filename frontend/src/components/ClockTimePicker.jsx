@@ -128,15 +128,16 @@ export default function ClockTimePicker({ value = '', onChange, disabled = false
           alignItems: 'center',
           gap: 10,
           padding: '11px 14px',
-          background: 'var(--tf-panel, #fff)',
+          background: disabled ? 'var(--tf-pearl)' : 'var(--tf-panel, #fff)',
           color: value ? 'var(--tf-text)' : 'var(--tf-muted)',
           border: `1px solid ${open ? 'var(--color-primary)' : 'var(--tf-border)'}`,
           borderRadius: 10,
           fontSize: 14,
-          cursor: disabled ? 'default' : 'pointer',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           textAlign: 'left',
-          transition: 'border-color 120ms',
+          transition: 'border-color 120ms, background 120ms',
           fontFamily: 'inherit',
+          opacity: disabled ? 0.7 : 1,
         }}
       >
         <Clock size={15} style={{ color: 'var(--color-primary)', flexShrink: 0 }} />
