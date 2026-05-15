@@ -6,6 +6,9 @@ import { useTheme } from "@/src/lib/ThemeContext";
 import { Button } from "../ui/Button";
 import { cn } from "@/src/lib/utils";
 
+declare const __TASKFLOW_BUILD__: string;
+const BUILD_STAMP = typeof __TASKFLOW_BUILD__ === "string" ? __TASKFLOW_BUILD__ : "dev";
+
 export const Navbar = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
@@ -49,11 +52,14 @@ export const Navbar = () => {
     >
       <div className="max-w-7xl mx-auto w-full px-6 h-16 flex items-center justify-between relative">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2.5 group shrink-0 relative z-50">
+        <Link to="/" className="flex items-center gap-2.5 group shrink-0 relative z-50" title={`build ${BUILD_STAMP}`}>
           <div className="size-8 bg-brand-primary rounded-lg flex items-center justify-center text-white shadow-[0_4px_12px_-4px_rgba(139,92,246,0.5)] group-hover:rotate-3 transition-transform">
             <Layout size={17} strokeWidth={2.2} />
           </div>
           <span className="text-[15px] font-semibold tracking-tight font-display">Taskflow</span>
+          <span className="hidden sm:inline-block text-[10px] font-mono text-[var(--muted)]/60 px-1.5 py-0.5 rounded border border-[var(--border)] bg-[var(--card)]" title={`build ${BUILD_STAMP}`}>
+            {BUILD_STAMP.slice(2, 10)}
+          </span>
         </Link>
 
         {/* Desktop */}
