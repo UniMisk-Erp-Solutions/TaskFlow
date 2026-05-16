@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
+import { formatDate, formatTime12 } from '../lib/dateFormat';
+import StatusSelect from './StatusSelect';
 
 function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   return (
@@ -38,18 +40,8 @@ function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   );
 }
 
-function fmt(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function fmtTime(t) {
-  if (!t) return '';
-  const [h, m] = t.split(':');
-  const date = new Date();
-  date.setHours(Number(h || 0), Number(m || 0), 0, 0);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
+const fmt = formatDate;
+const fmtTime = (t) => formatTime12(t);
 
 function assigneeLabel(item, profileById) {
   const ids = item.assignee_ids?.length
@@ -286,35 +278,19 @@ export default function OverviewUnified({
               </td>
               <td style={{ padding: '11px 14px' }}>
                 {row.kind === 'task' ? (
-                  <select
-                    className="tf-select-inline"
+                  <StatusSelect
+                    kind="task"
                     value={row.status}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onUpdateTaskStatus?.(row.id, e.target.value)}
+                    onChange={(s) => onUpdateTaskStatus?.(row.id, s)}
                     disabled={!onUpdateTaskStatus}
-                    style={{ width: 132 }}
-                  >
-                    {['pending', 'in_progress', 'completed', 'blocked'].map((s) => (
-                      <option key={s} value={s}>
-                        {s.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 ) : (
-                  <select
-                    className="tf-select-inline"
+                  <StatusSelect
+                    kind="meeting"
                     value={row.status}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onUpdateMeetingStatus?.(row.id, e.target.value)}
+                    onChange={(s) => onUpdateMeetingStatus?.(row.id, s)}
                     disabled={!onUpdateMeetingStatus}
-                    style={{ width: 132 }}
-                  >
-                    {['scheduled', 'completed', 'cancelled'].map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 )}
               </td>
               <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>

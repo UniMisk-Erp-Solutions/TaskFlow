@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
+import { formatDate } from '../lib/dateFormat';
+import StatusSelect from './StatusSelect';
 
 /**
  * Status sets are intentionally split:
@@ -36,7 +38,7 @@ function labelFor(status) {
 
 function fmt(d) {
   if (!d) return null;
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatDate(d);
 }
 
 export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail }) {
@@ -122,25 +124,18 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14 }}>
+      <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', justifyContent: 'flex-start' }}>
         {(() => {
           const adminOwnedStatus = task.status === 'completed' || task.status === 'changes_requested';
-          const options = EMPLOYEE_STATUSES.includes(task.status)
-            ? EMPLOYEE_STATUSES
-            : [task.status, ...EMPLOYEE_STATUSES];
           return (
-            <select
-              className="tf-select-inline"
+            <StatusSelect
+              kind="task"
               value={task.status}
-              onChange={handleStatus}
+              onChange={(s) => handleStatus({ target: { value: s } })}
               disabled={updating || adminOwnedStatus}
-              title={adminOwnedStatus ? 'Only an admin can change this status' : undefined}
-              style={{ width: '100%' }}
-            >
-              {options.map((s) => (
-                <option key={s} value={s}>{labelFor(s)}</option>
-              ))}
-            </select>
+              allowedOptions={EMPLOYEE_STATUSES}
+              width={180}
+            />
           );
         })()}
       </div>

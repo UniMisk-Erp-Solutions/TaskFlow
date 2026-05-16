@@ -2,11 +2,8 @@ import React, { useState } from 'react';
 import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
-
-function fmt(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+import { formatDate as fmt } from '../lib/dateFormat';
+import StatusSelect from './StatusSelect';
 
 function formatAssignees(task, profileById) {
   if (!profileById) return null;
@@ -182,19 +179,11 @@ export default function TaskTable({
                 </td>
 
                 <td style={{ padding: '11px 14px' }}>
-                  <select
-                    className="tf-select-inline"
+                  <StatusSelect
+                    kind="task"
                     value={task.status}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => onUpdateStatus(task.id, e.target.value)}
-                    style={{ width: 140 }}
-                  >
-                    {(STATUSES.includes(task.status) ? STATUSES : [task.status, ...STATUSES]).map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABELS[s] || s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(s) => onUpdateStatus(task.id, s)}
+                  />
                 </td>
 
                 <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>

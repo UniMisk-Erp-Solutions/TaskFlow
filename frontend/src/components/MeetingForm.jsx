@@ -3,6 +3,7 @@ import { X, AlertTriangle } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import ClockTimePicker from './ClockTimePicker';
+import { EOD_TIME } from '../lib/dateFormat';
 
 /**
  * Normalise meeting_time values for conflict comparison. Backend may return
@@ -156,7 +157,12 @@ export default function MeetingForm({
               value={form.meeting_date}
               onChange={(e) => {
                 const v = e.target.value;
-                setForm((ff) => ({ ...ff, meeting_date: v, meeting_time: v ? ff.meeting_time : '' }));
+                setForm((ff) => ({
+                  ...ff,
+                  meeting_date: v,
+                  // Pick a date → if no time yet, default to end-of-day (6:00 PM).
+                  meeting_time: v ? (ff.meeting_time || EOD_TIME) : '',
+                }));
               }}
             />
           </div>

@@ -151,9 +151,17 @@ export default function AdminDashboard() {
     }
   }
 
+  // Search matches across title, description, AND project name so admins can
+  // pull up everything tied to a project without having to know exact titles.
+  function matchesQuery(row, q) {
+    if (!q) return true;
+    const hay = `${row.title || ''} ${row.description || ''} ${row.project_name || ''}`.toLowerCase();
+    return hay.includes(q);
+  }
+
   const filtered = tasks.filter((t) => {
     const q = filters.search.toLowerCase();
-    if (q && !t.title.toLowerCase().includes(q) && !(t.description || '').toLowerCase().includes(q)) return false;
+    if (!matchesQuery(t, q)) return false;
     if (filters.status   && t.status   !== filters.status)   return false;
     if (filters.priority && t.priority !== filters.priority) return false;
     if (filters.assignee_id && !matchesAssigneeFilter(t, filters.assignee_id)) return false;
@@ -161,12 +169,18 @@ export default function AdminDashboard() {
   });
   const filteredMeetings = meetings.filter((m) => {
     const q = filters.search.toLowerCase();
-    if (q && !m.title.toLowerCase().includes(q) && !(m.description || '').toLowerCase().includes(q)) return false;
+    if (!matchesQuery(m, q)) return false;
     if (filters.status && m.status !== filters.status) return false;
     if (filters.priority && m.priority !== filters.priority) return false;
     if (filters.assignee_id && !matchesAssigneeFilter(m, filters.assignee_id)) return false;
     return true;
   });
+
+  // Overview-only view: hide completed items so the panel highlights what's
+  // still active. The dedicated Tasks page (page === 'tasks') keeps the full
+  // list including completed.
+  const overviewTasks = filtered.filter((t) => t.status !== 'completed');
+  const overviewMeetings = filteredMeetings.filter((m) => m.status !== 'completed');
 
   const showTaskLists = filters.type !== 'meeting';
   const showMeetingLists = filters.type !== 'task';
@@ -453,8 +467,8 @@ export default function AdminDashboard() {
                   </div>
                 ) : (
                   <OverviewUnified
-                    tasks={showTaskLists ? filtered : []}
-                    meetings={showMeetingLists ? filteredMeetings : []}
+                    tasks={showTaskLists ? overviewTasks : []}
+                    meetings={showMeetingLists ? overviewMeetings : []}
                     loading={(showTaskLists && loading) || (showMeetingLists && meetingsLoading)}
                     meetingsLoading={false}
                     profileById={profileById}

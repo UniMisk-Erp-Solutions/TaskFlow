@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw } from 'lucide-react';
 import api from '../api';
+import { formatDate } from '../lib/dateFormat';
 
 function UsersTable({ users }) {
   if (!users.length) {
@@ -35,13 +36,7 @@ function UsersTable({ users }) {
                 {u.role}
               </td>
               <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
-                {u.created_at
-                  ? new Date(u.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
-                  : '—'}
+                {formatDate(u.created_at)}
               </td>
             </tr>
           ))}

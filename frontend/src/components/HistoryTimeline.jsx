@@ -1,12 +1,10 @@
 import React from 'react';
+import { formatDateTime } from '../lib/dateFormat';
 
 function formatTimestamp(ts) {
   if (!ts) return '';
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return String(ts);
-  }
+  const out = formatDateTime(ts);
+  return out === '—' ? '' : out;
 }
 
 function actionLabel(action) {

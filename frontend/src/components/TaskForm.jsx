@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import ClockTimePicker from './ClockTimePicker';
+import { EOD_TIME } from '../lib/dateFormat';
 
 const DEFAULT = {
   title: '',
@@ -107,7 +108,12 @@ export default function TaskForm({
               value={form.due_date}
               onChange={(e) => {
                 const v = e.target.value;
-                setForm((ff) => ({ ...ff, due_date: v, due_time: v ? ff.due_time : '' }));
+                setForm((ff) => ({
+                  ...ff,
+                  due_date: v,
+                  // Pick a date → if no time yet, default to end-of-day (6:00 PM).
+                  due_time: v ? (ff.due_time || EOD_TIME) : '',
+                }));
               }}
             />
           </div>

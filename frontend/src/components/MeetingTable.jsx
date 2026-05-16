@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
 import MeetingFilesModal from './MeetingFilesModal';
+import { formatDate as fmt, formatTime12 } from '../lib/dateFormat';
+import StatusSelect from './StatusSelect';
 
 function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   return (
@@ -39,17 +41,8 @@ function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   );
 }
 
-function fmt(d) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 function fmtTime(t) {
-  if (!t) return '-';
-  const [h, m] = t.split(':');
-  const date = new Date();
-  date.setHours(Number(h || 0), Number(m || 0), 0, 0);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return formatTime12(t) || '-';
 }
 
 function formatAssignees(meeting, profileById) {
@@ -178,19 +171,11 @@ export default function MeetingTable({
               </td>
 
               <td style={{ padding: '11px 14px' }}>
-                <select
-                  className="tf-select-inline"
+                <StatusSelect
+                  kind="meeting"
                   value={meeting.status}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => onUpdateStatus(meeting.id, e.target.value)}
-                  style={{ width: 140 }}
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(s) => onUpdateStatus(meeting.id, s)}
+                />
               </td>
 
               <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>

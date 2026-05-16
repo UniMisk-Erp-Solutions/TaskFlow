@@ -6,6 +6,7 @@ import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import HistoryTimeline from './HistoryTimeline';
+import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 function assigneeNames(task, profileById) {
   const ids = task.assignee_ids?.length
@@ -19,7 +20,8 @@ function assigneeNames(task, profileById) {
 
 function fmtDate(d) {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const out = formatDate(d);
+  return out === '—' ? '' : out;
 }
 
 function fmtTime(t) {
@@ -35,12 +37,7 @@ function fmtTime(t) {
 }
 
 function fmtCreatedAt(ts) {
-  if (!ts) return '—';
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return String(ts);
-  }
+  return formatDateTime(ts);
 }
 
 function dueLabel(d, t) {
