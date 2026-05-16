@@ -1,9 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle, Calendar as CalendarIcon } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import ClockTimePicker from './ClockTimePicker';
 import { EOD_TIME } from '../lib/dateFormat';
+import { useAuth } from '../AuthContext';
+import {
+  isConnected as gcalIsConnected,
+  isConfigured as gcalConfigured,
+  createEvent as gcalCreateEvent,
+  buildEventWindow,
+} from '../lib/googleCalendar';
 
 /**
  * Normalise meeting_time values for conflict comparison. Backend may return
@@ -51,6 +58,13 @@ export default function MeetingForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const { profile } = useAuth();
+  const userId = profile?.id || 'anon';
+  const gcalReady = gcalConfigured() && gcalIsConnected(userId);
+  // Default the toggle ON if the user has already connected — assume they
+  // want everything in their personal calendar by default.
+  const [syncToGoogle, setSyncToGoogle] = useState(gcalReady);
+
   const set = (k, v) => setForm((ff) => ({ ...ff, [k]: v }));
 
   // Detect schedule clash: an already-scheduled meeting on the same date+time
@@ -95,7 +109,7 @@ export default function MeetingForm({
     setLoading(true);
     setError('');
     try {
-      await onSubmit({
+      const created = await onSubmit({
         ...form,
         title: form.title.trim(),
         meeting_date: form.meeting_date || null,
@@ -104,9 +118,34 @@ export default function MeetingForm({
         assignee_ids: form.assignee_ids,
         parent_meeting_id: parentMeetingId || null,
       });
+
+      // Optional Google Calendar push. Runs *after* the meeting is created in
+      // TaskFlow so a Google API failure never blocks the primary submission;
+      // any error is shown inline but the modal still closes.
+      if (syncToGoogle && gcalReady && form.meeting_date && form.meeting_time) {
+        const win = buildEventWindow(form.meeting_date, form.meeting_time, 60);
+        if (win) {
+          try {
+            await gcalCreateEvent({
+              userId,
+              summary: form.title.trim(),
+              description: form.description || '',
+              startISO: win.startISO,
+              endISO: win.endISO,
+            });
+          } catch (gerr) {
+            // Don't block the close; surface the failure briefly via console
+            // (and the parent dashboard will still show the meeting itself).
+            console.warn('[gcal] event push failed:', gerr?.message || gerr);
+            window.alert(`Meeting saved, but Google Calendar push failed: ${gerr.message || 'unknown error'}`);
+          }
+        }
+      }
       onClose();
+      return created;
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      return undefined;
     } finally {
       setLoading(false);
     }
@@ -213,6 +252,74 @@ export default function MeetingForm({
             <label className="form-label">Participants</label>
             <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
           </div>
+
+          {gcalConfigured() && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 12px',
+                border: '1px solid var(--tf-border)',
+                borderRadius: 12,
+                background: 'var(--tf-pearl)',
+                cursor: gcalReady ? 'pointer' : 'default',
+                opacity: gcalReady ? 1 : 0.7,
+              }}
+              title={gcalReady ? '' : 'Connect Google Calendar from the Calendar page first.'}
+            >
+              <span
+                style={{
+                  width: 32, height: 32, borderRadius: 10,
+                  background: 'rgba(86,69,212,0.10)', color: 'var(--color-primary)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <CalendarIcon size={16} />
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--tf-text)' }}>
+                  Also add to my Google Calendar
+                </span>
+                <span style={{ display: 'block', fontSize: 12, color: 'var(--tf-muted)', marginTop: 2 }}>
+                  {gcalReady
+                    ? 'Creates a Calendar event on the meeting date + time.'
+                    : 'Connect Google Calendar on the Calendar page first to enable this.'}
+                </span>
+              </span>
+              {/* Custom toggle switch */}
+              <span
+                role="switch"
+                aria-checked={syncToGoogle}
+                aria-disabled={!gcalReady}
+                onClick={() => { if (gcalReady) setSyncToGoogle((v) => !v); }}
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  width: 36, height: 20,
+                  borderRadius: 999,
+                  background: syncToGoogle && gcalReady ? 'var(--color-primary)' : 'var(--tf-border)',
+                  transition: 'background 150ms',
+                  cursor: gcalReady ? 'pointer' : 'not-allowed',
+                  flexShrink: 0,
+                }}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: syncToGoogle && gcalReady ? 18 : 2,
+                    width: 16, height: 16,
+                    borderRadius: 999,
+                    background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    transition: 'left 150ms',
+                  }}
+                />
+              </span>
+            </label>
+          )}
 
           {error && <div className="form-error">{error}</div>}
 
