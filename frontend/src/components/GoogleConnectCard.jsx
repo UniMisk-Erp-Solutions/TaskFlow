@@ -10,6 +10,18 @@ import {
 } from '../lib/googleCalendar';
 
 /**
+ * Build-time diagnostic — the OAuth Web client id is public (it ships in the
+ * compiled JS anyway and is visible in network requests), so it's safe to
+ * reflect it back to the user. Truncated for readability.
+ */
+function detectedClientId() {
+  const v = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  if (!v) return null;
+  if (v.length <= 16) return v;
+  return `${v.slice(0, 8)}…${v.slice(-12)}`;
+}
+
+/**
  * Reusable Google account connection card.
  *
  * One click for the end user:
@@ -205,11 +217,26 @@ export default function GoogleConnectCard({ variant = 'card' }) {
           <strong style={{ color: 'var(--tf-text)' }}>Google sync isn't enabled in this build.</strong>
           <div style={{ marginTop: 6 }}>
             Whoever deploys TaskFlow needs to set <code style={codeChip}>VITE_GOOGLE_CLIENT_ID</code> in
-            the build environment (Render / Vercel / Coolify env vars) and redeploy.
+            the production build environment and redeploy.
+            <br />
+            <strong>Vite reads <code style={codeChip}>.env.production</code> on build, not <code style={codeChip}>.env</code></strong> —
+            if both files exist, <code style={codeChip}>.env.production</code> wins. Make sure the var
+            is set there (or in Render / Vercel / Coolify env settings), then trigger a rebuild.
             <br />
             Once that's done, every user — <strong>admin and employee alike</strong> — can connect
             their own Gmail in one click; nobody else's permission is required.
           </div>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--tf-border)', fontSize: 11 }}>
+            Detected at build:&nbsp;
+            <code style={codeChip}>VITE_GOOGLE_CLIENT_ID = (empty)</code>
+          </div>
+        </div>
+      )}
+
+      {configured && (
+        <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: -4 }}>
+          Detected client id:&nbsp;
+          <code style={codeChip}>{detectedClientId()}</code>
         </div>
       )}
 
