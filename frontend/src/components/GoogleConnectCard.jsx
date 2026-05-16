@@ -125,7 +125,12 @@ export default function GoogleConnectCard({ variant = 'card' }) {
   if (variant === 'inline') {
     if (!configured) {
       return (
-        <span style={inlineMutedChip}>Google Calendar not configured by admin</span>
+        <span
+          style={inlineMutedChip}
+          title="Set VITE_GOOGLE_CLIENT_ID in your build env (Render / Vercel / Coolify) and redeploy. After that, every user — admin or employee — can connect their own Gmail in one click."
+        >
+          Google sync not enabled in this build
+        </span>
       );
     }
     if (connected) {
@@ -197,9 +202,14 @@ export default function GoogleConnectCard({ variant = 'card' }) {
 
       {!configured && (
         <div style={infoBox}>
-          Your workspace admin hasn't enabled Google Calendar sync yet. Once a
-          Google OAuth client ID is set in the environment, this card will
-          show a "Sign in with Google" button to every user.
+          <strong style={{ color: 'var(--tf-text)' }}>Google sync isn't enabled in this build.</strong>
+          <div style={{ marginTop: 6 }}>
+            Whoever deploys TaskFlow needs to set <code style={codeChip}>VITE_GOOGLE_CLIENT_ID</code> in
+            the build environment (Render / Vercel / Coolify env vars) and redeploy.
+            <br />
+            Once that's done, every user — <strong>admin and employee alike</strong> — can connect
+            their own Gmail in one click; nobody else's permission is required.
+          </div>
         </div>
       )}
 
@@ -291,9 +301,20 @@ const errorBox = {
 const infoBox = {
   fontSize: 12,
   color: 'var(--tf-muted)',
-  padding: '10px 12px',
-  borderRadius: 8,
+  padding: '12px 14px',
+  borderRadius: 10,
   background: 'var(--tf-pearl)',
   border: '1px solid var(--tf-border)',
   lineHeight: 1.55,
+};
+
+const codeChip = {
+  display: 'inline-block',
+  padding: '1px 6px',
+  borderRadius: 4,
+  background: 'var(--tf-panel)',
+  border: '1px solid var(--tf-border)',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 11,
+  color: 'var(--tf-text)',
 };
