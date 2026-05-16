@@ -1,118 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Link2, Unlink, CheckCircle2 } from 'lucide-react';
-import { useAuth } from '../AuthContext';
-import {
-  connect as gcalConnect,
-  disconnect as gcalDisconnect,
-  isConnected as gcalIsConnected,
-  getConnectedEmail as gcalEmail,
-  isConfigured as gcalConfigured,
-} from '../lib/googleCalendar';
-
-function GoogleCalendarPill() {
-  const { profile } = useAuth();
-  const uid = profile?.id || 'anon';
-  const [tick, setTick] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const connected = gcalIsConnected(uid);
-  const email = connected ? gcalEmail(uid) : null;
-  const configured = gcalConfigured();
-
-  // Re-render when localStorage changes in another tab (user disconnects there)
-  useEffect(() => {
-    const fn = () => setTick((x) => x + 1);
-    window.addEventListener('storage', fn);
-    return () => window.removeEventListener('storage', fn);
-  }, []);
-
-  async function handleConnect() {
-    setErr('');
-    setBusy(true);
-    try {
-      await gcalConnect({ userId: uid });
-      setTick((x) => x + 1);
-    } catch (e) {
-      setErr(e.message || 'Could not connect Google Calendar.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDisconnect() {
-    setBusy(true);
-    try {
-      await gcalDisconnect({ userId: uid });
-      setTick((x) => x + 1);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!configured) {
-    return (
-      <span
-        title="Set VITE_GOOGLE_CLIENT_ID in frontend/.env to enable Google Calendar sync"
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '6px 10px', borderRadius: 999,
-          background: 'var(--tf-pearl)', color: 'var(--tf-muted)',
-          fontSize: 12, fontWeight: 500, border: '1px dashed var(--tf-border)',
-        }}
-      >
-        <Link2 size={13} /> Google Calendar (not configured)
-      </span>
-    );
-  }
-
-  if (connected) {
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <span
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '6px 10px', borderRadius: 999,
-            background: 'rgba(26,174,57,0.10)',
-            color: '#1aae39',
-            border: '1px solid rgba(26,174,57,0.30)',
-            fontSize: 12, fontWeight: 600,
-          }}
-          title={`Connected as ${email || 'Google account'}`}
-        >
-          <CheckCircle2 size={13} />
-          Google Calendar
-          {email ? <span style={{ color: '#1aae39cc', fontWeight: 500 }}>· {email}</span> : null}
-        </span>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={handleDisconnect}
-          disabled={busy}
-          title="Disconnect Google Calendar"
-        >
-          <Unlink size={13} /> Disconnect
-        </button>
-      </span>
-    );
-  }
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <button
-        type="button"
-        className="btn btn-primary btn-sm"
-        onClick={handleConnect}
-        disabled={busy}
-        title="Sync your tasks and meetings to Google Calendar"
-      >
-        {busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Link2 size={13} />}
-        Connect Google Calendar
-      </button>
-      {err && <span style={{ fontSize: 11, color: 'var(--status-danger)' }}>{err}</span>}
-    </span>
-  );
-}
+import React, { useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import GoogleConnectCard from './GoogleConnectCard';
 
 function ymd(date) {
   return date.toISOString().split('T')[0];
@@ -235,7 +123,7 @@ export default function CalenderView({
             Connect your Gmail to auto-push new meetings to your Google calendar.
           </span>
         </div>
-        <GoogleCalendarPill />
+        <GoogleConnectCard variant="inline" />
       </div>
 
       <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', overflow: 'hidden' }}>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, Loader2 } from 'lucide-react';
 import api from '../api';
+import GoogleConnectCard from './GoogleConnectCard';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -133,14 +134,26 @@ export default function NotificationSettings() {
   }
 
   return (
-    <div style={{ maxWidth: 640 }}>
-      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, marginBottom: 8 }}>
-        Notifications
-      </h2>
-      <p style={{ fontSize: 14, color: 'var(--tf-muted)', marginBottom: 28, lineHeight: 1.5 }}>
-        Get alerts on this device when you are assigned tasks or meetings, or when their status changes. Works in
-        supported desktop and mobile browsers (HTTPS or localhost).
-      </p>
+    <div style={{ maxWidth: 640, display: 'flex', flexDirection: 'column', gap: 32 }}>
+      <section>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, marginBottom: 8 }}>
+          Integrations
+        </h2>
+        <p style={{ fontSize: 14, color: 'var(--tf-muted)', marginBottom: 20, lineHeight: 1.5 }}>
+          Connect external accounts. Each user signs in for themselves — admin
+          never sees the credentials.
+        </p>
+        <GoogleConnectCard variant="card" />
+      </section>
+
+      <section>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 600, marginBottom: 8 }}>
+          Notifications
+        </h2>
+        <p style={{ fontSize: 14, color: 'var(--tf-muted)', marginBottom: 28, lineHeight: 1.5 }}>
+          Get alerts on this device when you are assigned tasks or meetings, or when their status changes. Works in
+          supported desktop and mobile browsers (HTTPS or localhost).
+        </p>
 
       {err && (
         <div
@@ -224,6 +237,7 @@ export default function NotificationSettings() {
       <p style={{ fontSize: 12, color: 'var(--tf-muted)', marginTop: 28, lineHeight: 1.55 }}>
         Turning off a category stops those notifications. Disable on this device removes the browser subscription only.
       </p>
+      </section>
     </div>
   );
 }
