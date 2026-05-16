@@ -1,20 +1,21 @@
 /**
- * Google Calendar OAuth client (browser-only, no server changes required).
+ * Google Calendar OAuth client (browser-only).
  *
- * Flow used: **GIS Token Client** (Google Identity Services). The user clicks
- * "Connect Google Calendar" → a Google consent popup appears → we receive a
- * short-lived access_token (~1 hour) which is cached in localStorage. The
- * token is automatically refreshed on demand via a silent re-prompt as long
- * as the user remains signed into Google in this browser.
+ * Key implementation detail: the GIS token client is **pre-initialised** the
+ * moment `accounts.google.com/gsi/client` finishes loading. That way the
+ * "Sign in with Google" button can call `requestAccessToken()` synchronously
+ * from inside the click handler — browsers (Safari especially) will only
+ * open the OAuth popup if it comes from a direct user gesture, not after
+ * an `await`. The previous lazy-init flow occasionally got blocked.
  *
- *   • No client secret is shipped (this is a public Web app OAuth client).
- *   • Tokens never go through TaskFlow's backend.
- *   • Each TaskFlow profile gets its own cache key so two people sharing a
- *     device don't accidentally inherit each other's calendar.
- *
- * Setup (see SETUP.md in the repo root for the exact Google Cloud Console
- * steps): set VITE_GOOGLE_CLIENT_ID in frontend/.env to a Web-app OAuth
- * client whose authorized JavaScript origin is your frontend URL.
+ * Public API:
+ *   isConfigured()            → boolean (VITE_GOOGLE_CLIENT_ID is set)
+ *   isConnected(userId)       → boolean (cached token still valid)
+ *   getConnectedEmail(userId) → string | null
+ *   connect({ userId, prompt }) → Promise<token>
+ *   disconnect({ userId })    → Promise<void>
+ *   createEvent({ ... })      → Promise<Google event JSON>
+ *   buildEventWindow(date, time, mins) → { startISO, endISO } | null
  */
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar.events';
@@ -70,47 +71,96 @@ export function isConnected(userId) {
   return !!readToken(userId);
 }
 
-/**
- * Wait until window.google.accounts.oauth2 is available. The script is
- * loaded asynchronously from a <script> tag in index.html; we poll briefly
- * so this works on first paint without ordering assumptions.
- */
-function waitForGis(timeout = 6000) {
-  return new Promise((resolve, reject) => {
+// ─── Pre-init the GIS token client as soon as the script loads ────────
+// We keep ONE token client per session and reuse it. The `callback` is
+// rebound on each requestAccessToken so each connect call gets its own
+// resolve/reject.
+
+let gisReadyPromise = null;
+let _tokenClient = null;
+let _pendingCallback = null;
+
+function loadGis() {
+  if (gisReadyPromise) return gisReadyPromise;
+  gisReadyPromise = new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') return reject(new Error('No window'));
+    if (window.google?.accounts?.oauth2) return resolve(window.google);
+
     const start = Date.now();
-    function tick() {
+    const TIMEOUT = 10_000;
+
+    (function tick() {
       if (window.google?.accounts?.oauth2) return resolve(window.google);
-      if (Date.now() - start > timeout) return reject(new Error('Google Identity Services failed to load. Check your network or VITE_GOOGLE_CLIENT_ID.'));
+      if (Date.now() - start > TIMEOUT) {
+        return reject(new Error(
+          'Google sign-in could not load. Check your network connection (a script on accounts.google.com is blocked) and reload the page.',
+        ));
+      }
       setTimeout(tick, 100);
-    }
-    tick();
+    })();
   });
+  return gisReadyPromise;
+}
+
+function ensureTokenClient() {
+  if (_tokenClient) return _tokenClient;
+  if (!window.google?.accounts?.oauth2) return null;
+  if (!clientId()) return null;
+
+  _tokenClient = window.google.accounts.oauth2.initTokenClient({
+    client_id: clientId(),
+    scope: SCOPES,
+    callback: (resp) => {
+      // Re-dispatched per call via _pendingCallback.
+      if (_pendingCallback) {
+        const cb = _pendingCallback;
+        _pendingCallback = null;
+        cb(resp);
+      }
+    },
+    error_callback: (err) => {
+      if (_pendingCallback) {
+        const cb = _pendingCallback;
+        _pendingCallback = null;
+        cb({ error: err?.type || 'error', error_description: err?.message || 'Google sign-in was cancelled.' });
+      }
+    },
+  });
+  return _tokenClient;
+}
+
+// Best-effort pre-initialise on module load. If GIS isn't there yet, retry
+// once it loads. We swallow errors here — the click handler will surface
+// them via the same loadGis()/ensureTokenClient() pair.
+if (typeof window !== 'undefined' && clientId()) {
+  loadGis().then(() => { try { ensureTokenClient(); } catch { /* */ } }).catch(() => { /* */ });
 }
 
 /**
- * Trigger the consent popup and return a token bundle on success.
- * @param {{ userId: string, prompt?: 'consent' | '' }} opts
+ * Connect. Must be called **synchronously** from a user gesture (button
+ * onClick handler). If GIS isn't loaded yet, we still try; the popup may
+ * be blocked on first load — the user can click again.
  */
-export async function connect({ userId, prompt = 'consent' } = {}) {
-  if (!clientId()) {
-    throw new Error('VITE_GOOGLE_CLIENT_ID is not set. Add it to frontend/.env.');
-  }
-  const google = await waitForGis();
-
+export function connect({ userId, prompt = 'consent' } = {}) {
   return new Promise((resolve, reject) => {
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId(),
-      scope: SCOPES,
-      prompt,
-      callback: async (resp) => {
-        if (resp.error) return reject(new Error(resp.error_description || resp.error));
+    if (!clientId()) {
+      return reject(new Error('VITE_GOOGLE_CLIENT_ID is not set. Add it to frontend/.env and rebuild.'));
+    }
+    const start = () => {
+      const tc = ensureTokenClient();
+      if (!tc) {
+        return reject(new Error('Google sign-in is still loading. Please click again in a moment.'));
+      }
+      _pendingCallback = async (resp) => {
+        if (resp.error) {
+          return reject(new Error(resp.error_description || resp.error));
+        }
         const token = {
           access_token: resp.access_token,
           expires_at: Date.now() + (Number(resp.expires_in) || 3600) * 1000,
           scope: resp.scope,
           email: null,
         };
-        // Fetch the connected Gmail address for display purposes.
         try {
           const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: `Bearer ${token.access_token}` },
@@ -119,54 +169,48 @@ export async function connect({ userId, prompt = 'consent' } = {}) {
             const u = await r.json();
             token.email = u.email || null;
           }
-        } catch {
-          /* not critical */
-        }
+        } catch { /* non-critical */ }
         writeToken(userId, token);
         resolve(token);
-      },
-      error_callback: (err) => reject(new Error(err?.message || 'Google sign-in was cancelled.')),
-    });
-    tokenClient.requestAccessToken({ prompt });
+      };
+      try {
+        tc.requestAccessToken({ prompt });
+      } catch (e) {
+        _pendingCallback = null;
+        reject(e);
+      }
+    };
+
+    // If GIS already loaded, fire synchronously (keeps popup unblocked).
+    // Otherwise wait briefly then fire — popup may be blocked once but
+    // the second click will succeed because GIS is now in memory.
+    if (window.google?.accounts?.oauth2) {
+      start();
+    } else {
+      loadGis().then(start).catch(reject);
+    }
   });
 }
 
-/** Disconnect: revoke the cached token (so the user can pick a different account). */
+/** Disconnect — revoke + clear local cache. */
 export async function disconnect({ userId } = {}) {
   const tok = readToken(userId);
   clearToken(userId);
   if (!tok?.access_token || !window.google?.accounts?.oauth2) return;
   try {
     window.google.accounts.oauth2.revoke(tok.access_token, () => {});
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
 }
 
-/**
- * Ensure we have a valid token; if expired, transparently re-prompt the user
- * (no consent screen if they're still signed into Google).
- */
+/** Internal: ensure a valid token, prompt user if needed. */
 async function getValidToken(userId) {
   const cached = readToken(userId);
   if (cached) return cached;
+  // No popup-allowed click context here — try silent refresh with prompt: ''.
   return connect({ userId, prompt: '' });
 }
 
-/**
- * Create a Google Calendar event on the user's primary calendar.
- *
- * @param {{
- *   userId: string,
- *   summary: string,
- *   description?: string,
- *   startISO: string,
- *   endISO: string,
- *   attendees?: string[], // email addresses
- *   location?: string,
- * }} input
- * @returns {Promise<{ id: string, htmlLink: string }>}
- */
+/** Create an event on the user's primary Google Calendar. */
 export async function createEvent(input) {
   const { userId, summary, description, startISO, endISO, attendees, location } = input;
   const token = await getValidToken(userId);
@@ -204,10 +248,7 @@ export async function createEvent(input) {
   return r.json();
 }
 
-/**
- * Combine a yyyy-mm-dd date + HH:MM[:SS] time into an ISO timestamp at local
- * time. Returns { startISO, endISO } where endISO is +1 hour by default.
- */
+/** Combine yyyy-mm-dd + HH:MM into an ISO timestamp pair (1 hour default). */
 export function buildEventWindow(dateStr, timeStr, durationMinutes = 60) {
   if (!dateStr) return null;
   const [y, m, d] = dateStr.split('-').map(Number);

@@ -130,7 +130,7 @@ export default function GoogleConnectCard({ variant = 'card' }) {
     }
     if (connected) {
       return (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={connectedPill} title={`Connected as ${email || ''}`}>
             <CheckCircle2 size={13} />
             Connected{email ? ` · ${email}` : ''}
@@ -142,7 +142,10 @@ export default function GoogleConnectCard({ variant = 'card' }) {
       );
     }
     return (
-      <SignInWithGoogleButton onClick={() => doConnect('consent')} busy={busy} />
+      <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+        <SignInWithGoogleButton onClick={() => doConnect('consent')} busy={busy} />
+        {err && <span style={{ ...errorBox, maxWidth: 320 }}>{err}</span>}
+      </span>
     );
   }
 

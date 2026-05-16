@@ -488,10 +488,20 @@ textarea.input {
   z-index: 100;
   background: transparent;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 5vh 20px;
+  /* Allow the page background to scroll on very short viewports while the
+   * modal panel itself also scrolls internally. */
+  overflow-y: auto;
   animation: fadeIn var(--t);
+}
+
+@media (max-width: 640px) {
+  .overlay {
+    padding: 12px;
+    align-items: stretch;
+  }
 }
 
 /* Blur/dim live on a sibling layer, not on an ancestor of `.modal`. Chromium
@@ -517,9 +527,33 @@ textarea.input {
   border: 1px solid var(--tf-border);
   border-radius: var(--r-xl);
   width: 100%;
-  max-width: 460px;
+  max-width: 520px;
+  /* Keep the modal short enough to fit on every laptop screen, and make it
+   * scroll internally when the content is taller (clock picker, long forms,
+   * Google sync card, etc.). */
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 24px;
   animation: modalIn 180ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Tablet — slightly tighter padding so more form is visible. */
+@media (max-width: 900px) {
+  .modal {
+    max-width: 540px;
+    padding: 20px;
+  }
+}
+
+/* Mobile — full-bleed sheet with safe-area aware padding. */
+@media (max-width: 640px) {
+  .modal {
+    max-width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: 16px;
+    padding: 18px;
+  }
 }
 
 /* Native date/time pickers — adapt to active theme so the calendar icon
