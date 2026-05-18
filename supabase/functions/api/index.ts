@@ -978,10 +978,10 @@ async function handleTasks(req: Request, path: string) {
     const body = await parseBody(req);
     const parent_task_id =
       (body as any).parent_task_id ?? (body as any).parentTaskId ?? null;
-    if (!parent_task_id) {
-      const adminErr = requireAdmin(user);
-      if (adminErr) return adminErr;
-    } else {
+    // Anyone in the org may create a top-level task; subtasks still require
+    // the parent's assignee check so an employee can't graft a child onto
+    // a task they have no access to.
+    if (parent_task_id) {
       const pErr = await validateParentTaskEdge(user, String(parent_task_id));
       if (pErr) return pErr;
     }
@@ -1408,10 +1408,10 @@ async function handleMeetings(req: Request, path: string) {
     const body = await parseBody(req);
     const parent_meeting_id =
       (body as any).parent_meeting_id ?? (body as any).parentMeetingId ?? null;
-    if (!parent_meeting_id) {
-      const adminErr = requireAdmin(user);
-      if (adminErr) return adminErr;
-    } else {
+    // Anyone in the org may create a top-level meeting. Sub-meetings still
+    // need to validate the parent so an employee can't nest under a meeting
+    // they aren't part of.
+    if (parent_meeting_id) {
       const pErr = await validateParentMeetingEdge(user, String(parent_meeting_id));
       if (pErr) return pErr;
     }
