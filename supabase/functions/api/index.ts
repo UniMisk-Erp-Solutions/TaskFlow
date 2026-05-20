@@ -488,6 +488,190 @@ function diffForHistory(
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV-import helpers. Used by POST /tasks/import + POST /meetings/import.
+// Goal: be forgiving of column-name variations, date formats, and assignee
+// reference styles (email OR full name) so an admin can paste a CSV that
+// someone else exported from any tool and get sensible imports.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** lowercase, strip non-alphanum so "Due Date" / "due_date" / "duedate" match */
+function normKey(s: string): string {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** Header synonym groups → canonical field name */
+const HEADER_SYNONYMS: Record<string, string[]> = {
+  title:        ["title", "name", "task", "meeting", "subject", "summary"],
+  description:  ["description", "desc", "details", "notes", "info", "message", "body"],
+  priority:     ["priority", "pri", "importance", "urgency"],
+  status:       ["status", "state"],
+  due_date:     ["duedate", "due", "deadline", "targetdate", "date"],
+  due_time:     ["duetime", "time", "hour"],
+  meeting_date: ["meetingdate", "scheduleddate", "date", "when"],
+  meeting_time: ["meetingtime", "time", "hour", "at"],
+  assignees:    ["assignees", "assignee", "assignedto", "owner", "owners", "members", "people", "who", "emails", "email"],
+  project:      ["project", "projectname"],
+};
+
+/** Build a canonical-row → original-key map for a row of strings */
+function canonicalize(row: Record<string, unknown>, kind: "task" | "meeting"): Record<string, string> {
+  const out: Record<string, string> = {};
+  const keys = Object.keys(row);
+  const want = kind === "task"
+    ? ["title", "description", "priority", "status", "due_date", "due_time", "assignees", "project"]
+    : ["title", "description", "priority", "status", "meeting_date", "meeting_time", "assignees", "project"];
+
+  for (const canonical of want) {
+    const synonyms = HEADER_SYNONYMS[canonical] || [canonical];
+    let value = "";
+    for (const k of keys) {
+      const nk = normKey(k);
+      if (synonyms.includes(nk)) {
+        value = String(row[k] ?? "").trim();
+        if (value) break;
+      }
+    }
+    out[canonical] = value;
+  }
+  return out;
+}
+
+/** Try multiple date formats. Returns yyyy-mm-dd or "" on failure. */
+function parseFlexDate(input: string): string {
+  const s = String(input || "").trim();
+  if (!s) return "";
+
+  // ISO: yyyy-mm-dd
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+
+  // dd/mm/yyyy or dd-mm-yyyy (our app default)
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) {
+    const dd = Number(m[1]), mm = Number(m[2]), yyyy = m[3];
+    // Disambiguate: if dd > 12, must be dd/mm/yyyy. If mm > 12, must be mm/dd/yyyy.
+    if (mm > 12 && dd <= 12) return `${yyyy}-${String(dd).padStart(2, "0")}-${String(mm).padStart(2, "0")}`;
+    return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  }
+
+  // "20 May 2026" or "May 20 2026" or "20-May-2026"
+  const months: Record<string, string> = {
+    jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+    jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+  };
+  const lower = s.toLowerCase();
+  m = lower.match(/^(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})$/) ||
+      lower.match(/^(\d{1,2})-([a-z]{3,9})-(\d{4})$/);
+  if (m) {
+    const dd = m[1].padStart(2, "0");
+    const mon = months[m[2].slice(0, 3)];
+    if (mon) return `${m[3]}-${mon}-${dd}`;
+  }
+  m = lower.match(/^([a-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const mon = months[m[1].slice(0, 3)];
+    if (mon) return `${m[3]}-${mon}-${m[2].padStart(2, "0")}`;
+  }
+
+  // Last resort: let JS try
+  const d = new Date(s);
+  if (Number.isFinite(d.getTime())) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+/** Returns HH:MM (24-hour) or "" on failure. Supports "6:00 PM", "18:00", "6pm" */
+function parseFlexTime(input: string): string {
+  const s = String(input || "").trim().toLowerCase();
+  if (!s) return "";
+
+  // 24-hour HH:MM[:SS]
+  let m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (m) {
+    const h = Number(m[1]), mm = Number(m[2]);
+    if (h >= 0 && h < 24 && mm >= 0 && mm < 60) {
+      return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+  }
+
+  // 12-hour with am/pm — "6:00 pm", "6 pm", "12:30am"
+  m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+  if (m) {
+    let h = Number(m[1]);
+    const mm = Number(m[2] || "0");
+    const period = m[3];
+    if (h < 1 || h > 12 || mm < 0 || mm > 59) return "";
+    if (period === "pm" && h !== 12) h += 12;
+    if (period === "am" && h === 12) h = 0;
+    return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+const VALID_PRIORITIES = new Set(["low", "medium", "high"]);
+function parsePriority(s: string): string {
+  const v = String(s || "").toLowerCase().trim();
+  if (VALID_PRIORITIES.has(v)) return v;
+  if (v === "med" || v === "m" || v === "normal" || v === "") return "medium";
+  if (v === "h" || v === "urgent" || v === "important") return "high";
+  if (v === "l" || v === "minor") return "low";
+  return "medium";
+}
+
+/**
+ * Resolve assignee references in the org. Accepts a comma- or
+ * semicolon-separated list of emails OR full names. Returns matched profile IDs,
+ * the original tokens that couldn't be resolved, and a count.
+ */
+async function resolveAssignees(orgId: string, raw: string): Promise<{ ids: string[]; unresolved: string[] }> {
+  const tokens = String(raw || "")
+    .split(/[,;]/g)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (!tokens.length) return { ids: [], unresolved: [] };
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, email, full_name")
+    .eq("org_id", orgId);
+
+  const ids: string[] = [];
+  const unresolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    const match = (profiles || []).find(
+      (p: { id: string; email: string | null; full_name: string | null }) =>
+        (p.email && p.email.toLowerCase() === lower) ||
+        (p.full_name && p.full_name.toLowerCase() === lower),
+    );
+    if (match && !seen.has(match.id)) {
+      ids.push(match.id);
+      seen.add(match.id);
+    } else if (!match) {
+      unresolved.push(token);
+    }
+  }
+  return { ids, unresolved };
+}
+
+/** Resolve project name (case-insensitive) to a project id within the org. */
+async function resolveProject(orgId: string, name: string): Promise<string | null> {
+  const v = String(name || "").trim();
+  if (!v) return null;
+  const { data } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("org_id", orgId)
+    .ilike("name", v)
+    .maybeSingle();
+  return (data as { id?: string } | null)?.id || null;
+}
+
 async function loadOrgRoleByIdForEdge(orgId: string): Promise<Record<string, string>> {
   const { data, error } = await supabase.from("profiles").select("id, role").eq("org_id", orgId);
   if (error) throw error;
@@ -1049,6 +1233,132 @@ async function handleTasks(req: Request, path: string) {
     return json(out, 201);
   }
 
+  // POST /tasks/import — admin-only bulk CSV import.
+  //   body: { filename?: string, rows: Array<Record<string, string>> }
+  // Each row is one parsed CSV record (column header → cell). Returns a
+  // per-row report so the UI can show "5 created, 2 skipped because …".
+  if (req.method === "POST" && path === "/tasks/import") {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+
+    const body = (await parseBody(req)) as { filename?: string; rows?: Record<string, string>[] };
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rows.length) return json({ error: "No rows in payload." }, 400);
+    if (rows.length > 1000) return json({ error: "Too many rows (limit 1000 per import)." }, 400);
+
+    const created: { id: string; title: string; row: number }[] = [];
+    const skipped: { row: number; reason: string; title?: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2; // human-readable: header is row 1
+      const c = canonicalize(rows[i] || {}, "task");
+
+      if (!c.title) {
+        skipped.push({ row: rowNum, reason: "Missing title" });
+        continue;
+      }
+      const due_date = c.due_date ? parseFlexDate(c.due_date) : "";
+      if (c.due_date && !due_date) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Unrecognised due_date: "${c.due_date}"` });
+        continue;
+      }
+      const due_time = c.due_time ? parseFlexTime(c.due_time) : "";
+      if (c.due_time && !due_time) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Unrecognised due_time: "${c.due_time}"` });
+        continue;
+      }
+
+      const assigneesRes = await resolveAssignees(user.org_id, c.assignees);
+      if (!assigneesRes.ids.length) {
+        skipped.push({ row: rowNum, title: c.title, reason: assigneesRes.unresolved.length
+          ? `No matching assignee for: ${assigneesRes.unresolved.join(", ")}`
+          : "At least one assignee is required" });
+        continue;
+      }
+
+      const project_id = c.project ? await resolveProject(user.org_id, c.project) : null;
+      if (c.project && !project_id) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Project "${c.project}" not found in this workspace` });
+        continue;
+      }
+
+      const priority = parsePriority(c.priority);
+      const primary = assigneesRes.ids[0];
+
+      const { data: task, error } = await supabase
+        .from("tasks")
+        .insert([{
+          title: c.title,
+          description: c.description || null,
+          assignee_id: primary,
+          project_id,
+          priority,
+          due_date: due_date || null,
+          due_time: due_time || null,
+          status: "pending",
+          created_by: user.id,
+          org_id: user.org_id,
+        }])
+        .select("id")
+        .single();
+
+      if (error || !task) {
+        skipped.push({ row: rowNum, title: c.title, reason: error?.message || "Insert failed" });
+        continue;
+      }
+
+      if (assigneesRes.ids.length > 0) {
+        const { error: aErr } = await supabase.from("task_assignees").insert(
+          assigneesRes.ids.map((profile_id) => ({ task_id: task.id, profile_id })),
+        );
+        if (aErr) {
+          await supabase.from("tasks").delete().eq("id", task.id);
+          skipped.push({ row: rowNum, title: c.title, reason: `Assignee link failed: ${aErr.message}` });
+          continue;
+        }
+      }
+
+      created.push({ id: task.id, title: c.title, row: rowNum });
+      scheduleAudit(() =>
+        logTaskHistory(task.id, user.id, user.org_id, "created", {
+          via: "csv_import",
+          title: c.title,
+          priority,
+          due_date: due_date || null,
+          due_time: due_time || null,
+          project_id,
+          assignee_ids: assigneesRes.ids,
+        }, null)
+      );
+    }
+
+    // Persist audit row (best-effort).
+    try {
+      await supabase.from("import_logs").insert([{
+        org_id: user.org_id,
+        actor_id: user.id,
+        kind: "task",
+        filename: body.filename || null,
+        total_rows: rows.length,
+        created_count: created.length,
+        skipped_count: skipped.length,
+        errors: skipped,
+        created_ids: created.map((c) => c.id),
+      }]);
+    } catch (e) {
+      console.warn("[import_logs] insert failed:", (e as Error)?.message);
+    }
+
+    return json({
+      total: rows.length,
+      created: created.length,
+      skipped: skipped.length,
+      errors: skipped,
+      created_items: created,
+    });
+  }
+
   const statusMatch = path.match(/^\/tasks\/([^/]+)\/status$/);
   if (req.method === "PATCH" && statusMatch) {
     const id = statusMatch[1];
@@ -1477,6 +1787,128 @@ async function handleMeetings(req: Request, path: string) {
       });
     });
     return json(out, 201);
+  }
+
+  // POST /meetings/import — admin-only bulk CSV import.
+  if (req.method === "POST" && path === "/meetings/import") {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+
+    const body = (await parseBody(req)) as { filename?: string; rows?: Record<string, string>[] };
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rows.length) return json({ error: "No rows in payload." }, 400);
+    if (rows.length > 1000) return json({ error: "Too many rows (limit 1000 per import)." }, 400);
+
+    const created: { id: string; title: string; row: number }[] = [];
+    const skipped: { row: number; reason: string; title?: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const rowNum = i + 2;
+      const c = canonicalize(rows[i] || {}, "meeting");
+
+      if (!c.title) {
+        skipped.push({ row: rowNum, reason: "Missing title" });
+        continue;
+      }
+      const meeting_date = c.meeting_date ? parseFlexDate(c.meeting_date) : "";
+      if (c.meeting_date && !meeting_date) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Unrecognised meeting_date: "${c.meeting_date}"` });
+        continue;
+      }
+      const meeting_time = c.meeting_time ? parseFlexTime(c.meeting_time) : "";
+      if (c.meeting_time && !meeting_time) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Unrecognised meeting_time: "${c.meeting_time}"` });
+        continue;
+      }
+
+      const assigneesRes = await resolveAssignees(user.org_id, c.assignees);
+      if (!assigneesRes.ids.length) {
+        skipped.push({ row: rowNum, title: c.title, reason: assigneesRes.unresolved.length
+          ? `No matching participant for: ${assigneesRes.unresolved.join(", ")}`
+          : "At least one participant is required" });
+        continue;
+      }
+
+      const project_id = c.project ? await resolveProject(user.org_id, c.project) : null;
+      if (c.project && !project_id) {
+        skipped.push({ row: rowNum, title: c.title, reason: `Project "${c.project}" not found in this workspace` });
+        continue;
+      }
+
+      const priority = parsePriority(c.priority);
+      const primary = assigneesRes.ids[0];
+
+      const { data: meeting, error } = await supabase
+        .from("meetings")
+        .insert([{
+          title: c.title,
+          description: c.description || null,
+          assignee_id: primary,
+          project_id,
+          priority,
+          meeting_date: meeting_date || null,
+          meeting_time: meeting_time || null,
+          status: "scheduled",
+          created_by: user.id,
+          org_id: user.org_id,
+        }])
+        .select("id")
+        .single();
+
+      if (error || !meeting) {
+        skipped.push({ row: rowNum, title: c.title, reason: error?.message || "Insert failed" });
+        continue;
+      }
+
+      if (assigneesRes.ids.length > 0) {
+        const { error: aErr } = await supabase.from("meeting_assignees").insert(
+          assigneesRes.ids.map((profile_id) => ({ meeting_id: meeting.id, profile_id })),
+        );
+        if (aErr) {
+          await supabase.from("meetings").delete().eq("id", meeting.id);
+          skipped.push({ row: rowNum, title: c.title, reason: `Participant link failed: ${aErr.message}` });
+          continue;
+        }
+      }
+
+      created.push({ id: meeting.id, title: c.title, row: rowNum });
+      scheduleAudit(() =>
+        logMeetingHistory(meeting.id, user.id, user.org_id, "created", {
+          via: "csv_import",
+          title: c.title,
+          priority,
+          meeting_date: meeting_date || null,
+          meeting_time: meeting_time || null,
+          project_id,
+          assignee_ids: assigneesRes.ids,
+        }, null)
+      );
+    }
+
+    try {
+      await supabase.from("import_logs").insert([{
+        org_id: user.org_id,
+        actor_id: user.id,
+        kind: "meeting",
+        filename: body.filename || null,
+        total_rows: rows.length,
+        created_count: created.length,
+        skipped_count: skipped.length,
+        errors: skipped,
+        created_ids: created.map((c) => c.id),
+      }]);
+    } catch (e) {
+      console.warn("[import_logs] insert failed:", (e as Error)?.message);
+    }
+
+    return json({
+      total: rows.length,
+      created: created.length,
+      skipped: skipped.length,
+      errors: skipped,
+      created_items: created,
+    });
   }
 
   const statusMatch = path.match(/^\/meetings\/([^/]+)\/status$/);

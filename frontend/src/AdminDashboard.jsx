@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Sparkles, Send, RefreshCw } from 'lucide-react';
+import { Plus, Sparkles, Send, RefreshCw, Upload } from 'lucide-react';
+import CsvImportModal from './components/CsvImportModal';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
@@ -79,6 +80,7 @@ export default function AdminDashboard() {
   const [taskFormCtx, setTaskFormCtx] = useState({ projectId: '', parentTaskId: '' });
   const [meetingFormCtx, setMeetingFormCtx] = useState({ projectId: '', parentMeetingId: '' });
   const [showAI,   setShowAI]   = useState(false);
+  const [importKind, setImportKind] = useState(null); // 'task' | 'meeting' | null
   const [filters,  setFilters]  = useState(FILTERS_DEFAULT);
   const [allProfiles, setAllProfiles] = useState([]);
   const [overviewStats, setOverviewStats] = useState(null);
@@ -317,6 +319,22 @@ export default function AdminDashboard() {
                 </button>
                 <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowAI(true)} title="AI Assistant">
                   <Sparkles size={13} />
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  title="Bulk import tasks from a CSV"
+                  onClick={() => setImportKind('task')}
+                >
+                  <Upload size={13} /> Import tasks
+                </button>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  type="button"
+                  title="Bulk import meetings from a CSV"
+                  onClick={() => setImportKind('meeting')}
+                >
+                  <Upload size={13} /> Import meetings
                 </button>
                 <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
                   <Plus size={13} /> New Task
@@ -722,6 +740,13 @@ export default function AdminDashboard() {
           }}
         />
       )}
+      <CsvImportModal
+        kind={importKind || 'task'}
+        open={!!importKind}
+        onClose={() => setImportKind(null)}
+        onImported={() => { refetch(); refetchMeetings(); }}
+      />
+
       {showMeetingForm && (
         <MeetingForm
           key={meetingFormKey}
