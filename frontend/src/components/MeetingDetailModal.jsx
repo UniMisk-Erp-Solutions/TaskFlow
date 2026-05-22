@@ -6,6 +6,7 @@ import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import { PriorityBadge } from './StatusBadge';
 import HistoryTimeline from './HistoryTimeline';
+import AttachmentsSection from './AttachmentsSection';
 import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 function assigneeNames(meeting, profileById) {
@@ -489,6 +490,8 @@ export default function MeetingDetailModal({
             )}
 
             {error && <div className="form-error">{error}</div>}
+
+            <AttachmentsSection kind="meeting" itemId={record.id} canEdit={isAdmin || isMyMeeting} />
 
             <HistoryTimeline entries={history} profileById={profileById} />
           </div>

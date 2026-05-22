@@ -6,6 +6,7 @@ import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import HistoryTimeline from './HistoryTimeline';
+import AttachmentsSection from './AttachmentsSection';
 import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 function assigneeNames(task, profileById) {
@@ -497,6 +498,8 @@ export default function TaskDetailModal({
             )}
 
             {error && <div className="form-error">{error}</div>}
+
+            <AttachmentsSection kind="task" itemId={record.id} canEdit={isAdmin || isMyTask} />
 
             <HistoryTimeline entries={history} profileById={profileById} />
           </div>

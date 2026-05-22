@@ -1657,6 +1657,79 @@ async function handleTasks(req: Request, path: string) {
     return json(out);
   }
 
+  // ── Task attachments (audio / document / other) ──────────────────────
+  const taskAttMatch = path.match(/^\/tasks\/([^/]+)\/attachments$/);
+  if (req.method === "GET" && taskAttMatch) {
+    const id = taskAttMatch[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    const { data, error } = await supabase
+      .from("task_attachments")
+      .select("id, type, original_name, content_type, size_bytes, created_at")
+      .eq("task_id", id)
+      .order("created_at", { ascending: false });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  // Upload — anyone with access to the task (admin or assignee) may attach.
+  if (req.method === "POST" && taskAttMatch) {
+    const id = taskAttMatch[1];
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    if (!user.org_id) return json({ error: "Your profile has no organization; cannot upload files." }, 400);
+
+    const form = await req.formData();
+    const type = String(form.get("type") || "other");
+    const file = form.get("file");
+    if (!(file instanceof File)) return json({ error: "File is required" }, 400);
+
+    const safeName = file.name.replace(/[^\w.\-() ]+/g, "_");
+    const pathKey = `${user.org_id}/${id}/${Date.now()}-${crypto.randomUUID()}-${safeName}`;
+    const fileBuf = new Uint8Array(await file.arrayBuffer());
+
+    const { error: upErr } = await supabase.storage
+      .from("task-assets")
+      .upload(pathKey, fileBuf, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (upErr) return json({ error: upErr.message }, 400);
+
+    const { data: row, error: insErr } = await supabase
+      .from("task_attachments")
+      .insert([{
+        org_id: user.org_id,
+        task_id: id,
+        assignee_id: user.id,
+        type,
+        bucket: "task-assets",
+        path: pathKey,
+        original_name: file.name,
+        content_type: file.type,
+        size_bytes: file.size,
+        created_by: user.id,
+      }])
+      .select("id, type, original_name, content_type, size_bytes, created_at")
+      .single();
+    if (insErr) return json({ error: insErr.message }, 400);
+    return json(row, 201);
+  }
+
+  const taskDownMatch = path.match(/^\/tasks\/attachments\/([^/]+)\/download$/);
+  if (req.method === "GET" && taskDownMatch) {
+    const attId = taskDownMatch[1];
+    const { data: att, error } = await supabase
+      .from("task_attachments")
+      .select("id, task_id, org_id, bucket, path")
+      .eq("id", attId)
+      .maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!att) return json({ error: "Attachment not found" }, 404);
+    const deny = await assertTaskAccess(user, att.task_id);
+    if (deny) return deny;
+    const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
+    if (sErr) return json({ error: sErr.message }, 400);
+    return Response.redirect(signed.signedUrl, 302);
+  }
+
   const delMatch = path.match(/^\/tasks\/([^/]+)$/);
   if (req.method === "DELETE" && delMatch) {
     const adminErr = requireAdmin(user);
@@ -2235,10 +2308,9 @@ async function handleMeetings(req: Request, path: string) {
     return json(data ?? []);
   }
 
-  // Attachment upload
+  // Attachment upload — anyone with access to the meeting (admin or
+  // participant) may attach files.
   if (req.method === "POST" && listMatch) {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
     const id = listMatch[1];
     const meeting = await fetchMeetingWithAssignees(id, user.org_id);
     if (!meeting || !meetingCanBeAccessedBy(user, meeting)) return json({ error: "Meeting not found or access denied" }, 404);

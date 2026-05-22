@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
 import ProjectSelect from './ProjectSelect';
 import ClockTimePicker from './ClockTimePicker';
+import AttachmentPicker, { uploadStagedAttachments } from './AttachmentPicker';
 import { EOD_TIME } from '../lib/dateFormat';
 
 const DEFAULT = {
@@ -30,6 +31,7 @@ export default function TaskForm({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [files, setFiles] = useState([]);
 
   const set = (k, v) => setForm((ff) => ({ ...ff, [k]: v }));
 
@@ -46,7 +48,7 @@ export default function TaskForm({
     setLoading(true);
     setError('');
     try {
-      await onSubmit({
+      const created = await onSubmit({
         ...form,
         title: form.title.trim(),
         due_date: form.due_date || null,
@@ -55,9 +57,19 @@ export default function TaskForm({
         assignee_ids: form.assignee_ids,
         parent_task_id: parentTaskId || null,
       });
+      // Upload staged files to the new task (needs its id).
+      if (files.length && created?.id) {
+        const res = await uploadStagedAttachments('task', created.id, files);
+        if (res.failed.length) {
+          window.alert(`Task created. ${res.uploaded} file(s) uploaded, ${res.failed.length} failed:\n` +
+            res.failed.map((f) => `• ${f.name}: ${f.reason}`).join('\n'));
+        }
+      }
       onClose();
+      return created;
     } catch (err) {
       setError(err.response?.data?.error || err.message);
+      return undefined;
     } finally {
       setLoading(false);
     }
@@ -138,6 +150,9 @@ export default function TaskForm({
             <label className="form-label">Assign to</label>
             <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
           </div>
+
+          {/* Files: staged now, uploaded right after the task is created. */}
+          <AttachmentPicker files={files} onChange={setFiles} />
 
           {error && <div className="form-error">{error}</div>}
 

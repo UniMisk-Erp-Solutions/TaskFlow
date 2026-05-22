@@ -210,16 +210,45 @@ async function getValidToken(userId) {
   return connect({ userId, prompt: '' });
 }
 
+/**
+ * Public: ensure a valid token, CALLED FROM A USER GESTURE (button click).
+ * If the cached token is still valid it returns immediately; otherwise it
+ * opens the Google popup (silent if the user is still signed in). Use this at
+ * the very start of a submit handler so the popup isn't blocked.
+ */
+export async function ensureToken(userId) {
+  const cached = readToken(userId);
+  if (cached) return cached;
+  // Try silent first; if that throws (no active session / consent), fall back
+  // to an interactive popup which is allowed because we're in a click gesture.
+  try {
+    return await connect({ userId, prompt: '' });
+  } catch {
+    return connect({ userId, prompt: 'consent' });
+  }
+}
+
 /** Create an event on the user's primary Google Calendar. */
 export async function createEvent(input) {
-  const { userId, summary, description, startISO, endISO, attendees, location } = input;
+  const { userId, summary, description, startISO, endISO, allDayDate, attendees, location } = input;
   const token = await getValidToken(userId);
+
+  // All-day event when only a date (no time) is available; otherwise a timed
+  // event. Google requires the all-day `end.date` to be the day AFTER.
+  let timing;
+  if (allDayDate) {
+    const [y, m, d] = allDayDate.split('-').map(Number);
+    const next = new Date(y, m - 1, d + 1);
+    const nextStr = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+    timing = { start: { date: allDayDate }, end: { date: nextStr } };
+  } else {
+    timing = { start: { dateTime: startISO }, end: { dateTime: endISO } };
+  }
 
   const body = {
     summary: summary || 'Untitled meeting',
     description: description || '',
-    start: { dateTime: startISO },
-    end: { dateTime: endISO },
+    ...timing,
     ...(location ? { location } : {}),
     ...(attendees?.length
       ? { attendees: attendees.filter(Boolean).map((email) => ({ email })) }

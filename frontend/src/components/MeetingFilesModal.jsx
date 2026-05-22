@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api';
+import { formatDateTime } from '../lib/dateFormat';
 
 function fmtSize(bytes) {
   if (!bytes && bytes !== 0) return '—';
@@ -11,8 +12,7 @@ function fmtSize(bytes) {
 }
 
 function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return formatDateTime(ts);
 }
 
 export default function MeetingFilesModal({ open, meeting, isAdmin, onClose }) {
