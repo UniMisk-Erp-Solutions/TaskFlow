@@ -318,7 +318,7 @@ function createAuthClient() {
 const OPENWA_API_URL = (Deno.env.get("OPENWA_API_URL") || "https://whatsapp-api.unimisk.com").replace(/\/+$/, "");
 const OPENWA_SESSION_NAME = Deno.env.get("OPENWA_SESSION_NAME") || "taskflow-assistant";
 const OPENWA_SESSION_ID_DEFAULT = Deno.env.get("OPENWA_SESSION_ID") || "12ace9c9-c0c8-4cf9-a1ed-c4f6fbaf55f3";
-const OPENWA_API_KEY = Deno.env.get("OPENWA_API_KEY") || "owa_k1_743f6f9cff062afab073aaec17abe40d7b277f2560c8e864b043cf2e5c00bc64";
+const OPENWA_API_KEY = Deno.env.get("OPENWA_API_KEY") || ""; // set as an env var on the edge container; blank => WhatsApp notify disabled
 const OPENWA_DEFAULT_CC = Deno.env.get("OPENWA_DEFAULT_CC") || "91"; // default country code (India)
 
 let _openwaSessionId: string | null = null;
@@ -397,6 +397,7 @@ async function whatsappNotifyAssignees(
   assignerName: string,
   excludeUserId: string,
 ): Promise<void> {
+  if (!OPENWA_API_KEY) return; // WhatsApp notify not configured
   const ids: string[] = (row.assignee_ids || []).filter((id: string) => id && id !== excludeUserId);
   if (!ids.length) return;
   const { data: profs } = await supabase.from("profiles").select("id, full_name, phone").in("id", ids);
