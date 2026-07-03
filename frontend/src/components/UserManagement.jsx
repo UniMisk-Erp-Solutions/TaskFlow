@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, KeyRound } from 'lucide-react';
 import api from '../api';
 import { formatDate } from '../lib/dateFormat';
 
-function UsersTable({ users }) {
+function UsersTable({ users, onDelete, onChangePassword, busyId }) {
   if (!users.length) {
     return (
       <div className="empty">
@@ -19,8 +19,10 @@ function UsersTable({ users }) {
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Name</th>
             <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Email</th>
+            <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Phone</th>
             <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Role</th>
             <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Created</th>
+            <th style={{ padding: '9px 14px', textAlign: 'right', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -32,11 +34,36 @@ function UsersTable({ users }) {
               <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
                 {u.email}
               </td>
+              <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
+                {u.phone || '—'}
+              </td>
               <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)', textTransform: 'capitalize' }}>
                 {u.role}
               </td>
               <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--tf-muted)' }}>
                 {formatDate(u.created_at)}
+              </td>
+              <td style={{ padding: '9px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-icon"
+                  title="Change password"
+                  disabled={busyId === u.id}
+                  onClick={() => onChangePassword(u)}
+                  style={{ marginRight: 6 }}
+                >
+                  <KeyRound size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-icon"
+                  title="Delete user"
+                  disabled={busyId === u.id}
+                  onClick={() => onDelete(u)}
+                  style={{ color: 'var(--status-danger)' }}
+                >
+                  {busyId === u.id ? <span className="spinner" /> : <Trash2 size={13} />}
+                </button>
               </td>
             </tr>
           ))}
@@ -49,6 +76,7 @@ function UsersTable({ users }) {
 function AddUserModal({ open, onClose, onCreated }) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [inviteRole, setInviteRole] = useState('employee');
   const [loading, setLoading] = useState(false);
@@ -58,6 +86,7 @@ function AddUserModal({ open, onClose, onCreated }) {
     if (open) {
       setEmail('');
       setFullName('');
+      setPhone('');
       setPassword('');
       setInviteRole('employee');
       setError('');
@@ -81,6 +110,7 @@ function AddUserModal({ open, onClose, onCreated }) {
         password,
         fullName,
         role: inviteRole,
+        phone: phone.trim(),
       });
       await new Promise((r) => setTimeout(r, 120));
       if (onCreated) await onCreated();
@@ -138,6 +168,23 @@ function AddUserModal({ open, onClose, onCreated }) {
           </div>
 
           <div className="form-group">
+            <label className="form-label">
+              Mobile Number{' '}
+              <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              className="input"
+              type="tel"
+              placeholder="+91 98765 43210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
+              For WhatsApp/SMS notifications. Optional — works for both employees and admins.
+            </div>
+          </div>
+
+          <div className="form-group">
             <label className="form-label">Password</label>
             <input
               className="input"
@@ -184,11 +231,87 @@ function AddUserModal({ open, onClose, onCreated }) {
   );
 }
 
+function ChangePasswordModal({ user, onClose, onDone }) {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user) { setPassword(''); setError(''); }
+  }, [user]);
+
+  if (!user) return null;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.post(`/admin/users/${user.id}/password`, { password });
+      if (onDone) await onDone();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to change password');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="overlay" role="presentation">
+      <div className="modal">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 16 }}>Change Password</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', fontSize: 20, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--tf-muted)', marginBottom: 12 }}>
+          Set a new password for <strong>{user.full_name || user.email}</strong>. Share it with them securely.
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">New Password</label>
+            <input
+              className="input"
+              type="text"
+              placeholder="At least 6 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoFocus
+            />
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
+              {loading ? <span className="spinner" /> : 'Update Password'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [pwUser, setPwUser] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
   async function loadWithRetry(attempts = 6) {
     setLoading(true);
@@ -215,6 +338,23 @@ export default function UserManagement() {
   useEffect(() => {
     loadWithRetry();
   }, []);
+
+  async function handleDelete(u) {
+    const label = u.full_name || u.email;
+    if (!window.confirm(`Delete "${label}"?\n\nThis removes their login and unassigns them from any tasks/meetings. This cannot be undone.`)) {
+      return;
+    }
+    setBusyId(u.id);
+    setError('');
+    try {
+      await api.delete(`/admin/users/${u.id}`);
+      await loadWithRetry();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to delete user');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div style={{ border: '1px solid var(--tf-border)', borderRadius: 6, overflow: 'hidden', background: 'var(--tf-panel)' }}>
@@ -271,11 +411,17 @@ export default function UserManagement() {
         </div>
       ) : (
         <div style={{ padding: '10px 16px 16px' }}>
-          <UsersTable users={users} />
+          <UsersTable
+            users={users}
+            onDelete={handleDelete}
+            onChangePassword={setPwUser}
+            busyId={busyId}
+          />
         </div>
       )}
 
       <AddUserModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={loadWithRetry} />
+      <ChangePasswordModal user={pwUser} onClose={() => setPwUser(null)} onDone={loadWithRetry} />
     </div>
   );
 }

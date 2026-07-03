@@ -2525,7 +2525,7 @@ async function handleAdmin(req: Request, path: string) {
   if (req.method === "GET" && path === "/admin/users") {
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, email, full_name, role, created_at")
+      .select("id, email, full_name, role, phone, created_at")
       .eq("org_id", user.org_id)
       .order("created_at", { ascending: true });
     if (error) return json({ error: error.message }, 500);
@@ -2535,6 +2535,7 @@ async function handleAdmin(req: Request, path: string) {
   if (req.method === "POST" && path === "/admin/users") {
     const body = await parseBody(req);
     const { email, password, fullName, role: rawRole = "employee" } = body as any;
+    const phone = typeof (body as any).phone === "string" ? (body as any).phone.trim() : "";
     if (!email || !password || !fullName) return json({ error: "Email, password and full name are required" }, 400);
     if (!user.org_id) {
       return json({ error: "Your profile has no organization; cannot create users." }, 400);
@@ -2549,6 +2550,7 @@ async function handleAdmin(req: Request, path: string) {
         full_name: fullName,
         role,
         org_id: String(user.org_id),
+        phone: phone || null,
       },
     });
     if (error) return json({ error: error.message }, error.status || 400);
@@ -2556,7 +2558,7 @@ async function handleAdmin(req: Request, path: string) {
     const userId = created.user?.id;
     if (userId) {
       const { error: upErr } = await supabase.from("profiles").upsert(
-        { id: userId, email, full_name: fullName, role, org_id: user.org_id },
+        { id: userId, email, full_name: fullName, role, org_id: user.org_id, phone: phone || null },
         { onConflict: "id" },
       );
       if (upErr) {
@@ -2576,7 +2578,58 @@ async function handleAdmin(req: Request, path: string) {
       email,
       full_name: fullName,
       role,
+      phone: phone || null,
     }, 201);
+  }
+
+  // Admin: change a user's password
+  const pwMatch = path.match(/^\/admin\/users\/([^/]+)\/password$/);
+  if (req.method === "POST" && pwMatch) {
+    const targetId = pwMatch[1];
+    const body = await parseBody(req);
+    const newPassword = typeof (body as any).password === "string" ? (body as any).password : "";
+    if (!newPassword || newPassword.length < 6) {
+      return json({ error: "Password must be at least 6 characters." }, 400);
+    }
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+    const { data: target } = await supabase
+      .from("profiles").select("id, org_id, email").eq("id", targetId).maybeSingle();
+    if (!target || target.org_id !== user.org_id) {
+      return json({ error: "User not found in your organization." }, 404);
+    }
+    const { error } = await supabase.auth.admin.updateUserById(targetId, { password: newPassword });
+    if (error) return json({ error: error.message }, (error as any).status || 400);
+    return json({ message: "Password updated", user_id: targetId, email: target.email });
+  }
+
+  // Admin: delete a user (unassigns their tasks/meetings, then removes profile + auth user)
+  const delUserMatch = path.match(/^\/admin\/users\/([^/]+)$/);
+  if (req.method === "DELETE" && delUserMatch) {
+    const targetId = delUserMatch[1];
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+    if (targetId === user.id) return json({ error: "You cannot delete your own account." }, 400);
+    const { data: target } = await supabase
+      .from("profiles").select("id, org_id").eq("id", targetId).maybeSingle();
+    if (!target || target.org_id !== user.org_id) {
+      return json({ error: "User not found in your organization." }, 404);
+    }
+    // Detach references so FK constraints don't block deletion (keep the records, just unlink the user).
+    await supabase.from("tasks").update({ assignee_id: null }).eq("assignee_id", targetId);
+    await supabase.from("tasks").update({ created_by: null }).eq("created_by", targetId);
+    await supabase.from("meetings").update({ assignee_id: null }).eq("assignee_id", targetId);
+    await supabase.from("meetings").update({ created_by: null }).eq("created_by", targetId);
+    await supabase.from("meeting_attachments").update({ assignee_id: null }).eq("assignee_id", targetId);
+    await supabase.from("meeting_attachments").update({ created_by: null }).eq("created_by", targetId);
+    await supabase.from("task_attachments").update({ assignee_id: null }).eq("assignee_id", targetId);
+    await supabase.from("task_attachments").update({ created_by: null }).eq("created_by", targetId);
+    await supabase.from("projects").update({ created_by: null }).eq("created_by", targetId);
+    // Delete profile (cascades task_assignees/meeting_assignees/prefs/subscriptions; history actor -> null).
+    const { error: pErr } = await supabase.from("profiles").delete().eq("id", targetId);
+    if (pErr) return json({ error: "Failed to delete user profile", detail: pErr.message }, 500);
+    // Delete the auth user.
+    const { error: aErr } = await supabase.auth.admin.deleteUser(targetId);
+    if (aErr) return json({ error: "Profile removed but auth user delete failed", detail: aErr.message }, 500);
+    return json({ message: "User deleted", user_id: targetId });
   }
 
   if (req.method === "POST" && path === "/admin/send-reminders") {

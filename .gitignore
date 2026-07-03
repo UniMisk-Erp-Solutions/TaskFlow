@@ -17,3 +17,11 @@ Thumbs.db
 
 # Supabase SQL editor “Untitled query” exports (local scratch, not for the repo)
 supabase/snippets/Untitled*.sql
+
+# Local DB dumps / cluster backups — large and may contain real user data + password
+# hashes. NEVER commit these to the repo.
+full_cluster.sql
+full_backup.sql
+full_backup.dump
+local_before_restore.dump
+supabase/taskflow_full_setup.sql
