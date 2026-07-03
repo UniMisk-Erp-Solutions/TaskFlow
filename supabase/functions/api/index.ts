@@ -309,6 +309,108 @@ function createAuthClient() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// OpenWA (self-hosted WhatsApp) — auto-notify the ASSIGNEE(S) on task/meeting
+// creation. One message per assigned user who has a phone number, sent once at
+// create time, ONLY to that user's number (never a broadcast). No inbound
+// webhook/auto-reply is configured, so nobody messaging the bot gets a reply.
+// ─────────────────────────────────────────────────────────────────────────────
+const OPENWA_API_URL = (Deno.env.get("OPENWA_API_URL") || "https://whatsapp-api.unimisk.com").replace(/\/+$/, "");
+const OPENWA_SESSION_NAME = Deno.env.get("OPENWA_SESSION_NAME") || "taskflow-assistant";
+const OPENWA_SESSION_ID_DEFAULT = Deno.env.get("OPENWA_SESSION_ID") || "12ace9c9-c0c8-4cf9-a1ed-c4f6fbaf55f3";
+const OPENWA_API_KEY = Deno.env.get("OPENWA_API_KEY") || "owa_k1_743f6f9cff062afab073aaec17abe40d7b277f2560c8e864b043cf2e5c00bc64";
+const OPENWA_DEFAULT_CC = Deno.env.get("OPENWA_DEFAULT_CC") || "91"; // default country code (India)
+
+let _openwaSessionId: string | null = null;
+async function openwaSessionId(): Promise<string | null> {
+  if (_openwaSessionId) return _openwaSessionId;
+  // Resolve by session NAME so a re-created "taskflow-assistant" still works; fall back to the configured id.
+  try {
+    const r = await fetch(`${OPENWA_API_URL}/api/sessions`, { headers: { "X-API-Key": OPENWA_API_KEY } });
+    if (r.ok) {
+      const list = await r.json();
+      const found = (Array.isArray(list) ? list : []).find((s: any) => s?.name === OPENWA_SESSION_NAME);
+      _openwaSessionId = found?.id || OPENWA_SESSION_ID_DEFAULT || null;
+      return _openwaSessionId;
+    }
+  } catch { /* ignore — fall through to default */ }
+  _openwaSessionId = OPENWA_SESSION_ID_DEFAULT || null;
+  return _openwaSessionId;
+}
+
+// "+91 98765-43210" / "9876543210" / "919876543210" -> "919876543210@c.us"
+function openwaChatId(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  let d = String(phone).replace(/\D+/g, "");
+  if (!d) return null;
+  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);   // drop leading trunk zero
+  if (d.length === 10) d = OPENWA_DEFAULT_CC + d;             // bare local number -> prepend country code
+  if (d.length < 11) return null;                             // implausibly short, skip
+  return `${d}@c.us`;
+}
+
+async function openwaSendText(chatId: string, text: string): Promise<void> {
+  const sessionId = await openwaSessionId();
+  if (!sessionId) return;
+  try {
+    const r = await fetch(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
+      method: "POST",
+      headers: { "X-API-Key": OPENWA_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId, text: String(text).slice(0, 4096) }),
+    });
+    if (!r.ok) console.warn(`[whatsapp] send to ${chatId} -> HTTP ${r.status}`);
+  } catch (e) {
+    console.warn("[whatsapp] send error:", (e as Error)?.message);
+  }
+}
+
+function capWord(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function buildTaskWhatsApp(t: any, assigner: string, name?: string): string {
+  const L: string[] = ["📋 *New Task Assigned*", ""];
+  if (name) L.push(`Hi ${name},`, "");
+  L.push(`*Title:* ${t.title || "Untitled"}`);
+  L.push(`*Priority:* ${capWord(String(t.priority || "medium"))}`);
+  if (t.due_date) L.push(`*Due:* ${t.due_date}${t.due_time ? " at " + String(t.due_time).slice(0, 5) : ""}`);
+  if (t.project_name) L.push(`*Project:* ${t.project_name}`);
+  if (t.description && String(t.description).trim()) L.push(`*Description:* ${String(t.description).trim()}`);
+  L.push("", `Assigned by ${assigner} · TaskFlow`);
+  return L.join("\n");
+}
+
+function buildMeetingWhatsApp(m: any, assigner: string, name?: string): string {
+  const L: string[] = ["📅 *New Meeting Assigned*", ""];
+  if (name) L.push(`Hi ${name},`, "");
+  L.push(`*Title:* ${m.title || "Untitled"}`);
+  L.push(`*Priority:* ${capWord(String(m.priority || "medium"))}`);
+  if (m.meeting_date) L.push(`*When:* ${m.meeting_date}${m.meeting_time ? " at " + String(m.meeting_time).slice(0, 5) : ""}`);
+  if (m.project_name) L.push(`*Project:* ${m.project_name}`);
+  if (m.description && String(m.description).trim()) L.push(`*Description:* ${String(m.description).trim()}`);
+  L.push("", `Assigned by ${assigner} · TaskFlow`);
+  return L.join("\n");
+}
+
+// Notify each assigned user who has a phone (excluding the creator). One message each, targeted.
+async function whatsappNotifyAssignees(
+  kind: "task" | "meeting",
+  row: any,
+  assignerName: string,
+  excludeUserId: string,
+): Promise<void> {
+  const ids: string[] = (row.assignee_ids || []).filter((id: string) => id && id !== excludeUserId);
+  if (!ids.length) return;
+  const { data: profs } = await supabase.from("profiles").select("id, full_name, phone").in("id", ids);
+  const targets = (profs || []).filter((p: any) => p.phone && String(p.phone).trim());
+  for (const p of targets) {
+    const chatId = openwaChatId(p.phone);
+    if (!chatId) continue;
+    const text = kind === "task"
+      ? buildTaskWhatsApp(row, assignerName, p.full_name)
+      : buildMeetingWhatsApp(row, assignerName, p.full_name);
+    await openwaSendText(chatId, text);
+  }
+}
+
 type AppUser = {
   id: string;
   email?: string;
@@ -1229,6 +1331,7 @@ async function handleTasks(req: Request, path: string) {
         body: `${who} assigned you: ${out.title}`,
         data: { type: "task", taskId: String(out.id), url: "/" },
       });
+      await whatsappNotifyAssignees("task", out, who, user.id);
     });
     return json(out, 201);
   }
@@ -1858,6 +1961,7 @@ async function handleMeetings(req: Request, path: string) {
         body: `${who} added you: ${out.title}`,
         data: { type: "meeting", meetingId: String(out.id), url: "/" },
       });
+      await whatsappNotifyAssignees("meeting", out, who, user.id);
     });
     return json(out, 201);
   }
