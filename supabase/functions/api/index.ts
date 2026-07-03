@@ -2602,6 +2602,32 @@ async function handleAdmin(req: Request, path: string) {
     return json({ message: "Password updated", user_id: targetId, email: target.email });
   }
 
+  // Admin: edit an existing user's profile (mobile number, full name)
+  const editUserMatch = path.match(/^\/admin\/users\/([^/]+)$/);
+  if (req.method === "PATCH" && editUserMatch) {
+    const targetId = editUserMatch[1];
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+    const { data: target } = await supabase
+      .from("profiles").select("id, org_id").eq("id", targetId).maybeSingle();
+    if (!target || target.org_id !== user.org_id) {
+      return json({ error: "User not found in your organization." }, 404);
+    }
+    const body = await parseBody(req);
+    const updates: Record<string, unknown> = {};
+    if (typeof (body as any).phone === "string") {
+      updates.phone = (body as any).phone.trim() || null;
+    }
+    if (typeof (body as any).fullName === "string" && (body as any).fullName.trim()) {
+      updates.full_name = (body as any).fullName.trim();
+    }
+    if (Object.keys(updates).length === 0) return json({ error: "Nothing to update." }, 400);
+    const { error: upErr } = await supabase.from("profiles").update(updates).eq("id", targetId);
+    if (upErr) return json({ error: upErr.message }, 500);
+    const { data: updated } = await supabase
+      .from("profiles").select("id, email, full_name, role, phone, created_at").eq("id", targetId).maybeSingle();
+    return json({ message: "User updated", user: updated });
+  }
+
   // Admin: delete a user (unassigns their tasks/meetings, then removes profile + auth user)
   const delUserMatch = path.match(/^\/admin\/users\/([^/]+)$/);
   if (req.method === "DELETE" && delUserMatch) {

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, KeyRound } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, KeyRound, Pencil } from 'lucide-react';
 import api from '../api';
 import { formatDate } from '../lib/dateFormat';
 
-function UsersTable({ users, onDelete, onChangePassword, busyId }) {
+function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
   if (!users.length) {
     return (
       <div className="empty">
@@ -44,6 +44,16 @@ function UsersTable({ users, onDelete, onChangePassword, busyId }) {
                 {formatDate(u.created_at)}
               </td>
               <td style={{ padding: '9px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm btn-icon"
+                  title="Edit name / mobile number"
+                  disabled={busyId === u.id}
+                  onClick={() => onEdit(u)}
+                  style={{ marginRight: 6 }}
+                >
+                  <Pencil size={13} />
+                </button>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm btn-icon"
@@ -231,6 +241,100 @@ function AddUserModal({ open, onClose, onCreated }) {
   );
 }
 
+function EditUserModal({ user, onClose, onDone }) {
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || '');
+      setPhone(user.phone || '');
+      setError('');
+    }
+  }, [user]);
+
+  if (!user) return null;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    if (!fullName.trim()) {
+      setError('Full name is required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.patch(`/admin/users/${user.id}`, { fullName: fullName.trim(), phone: phone.trim() });
+      if (onDone) await onDone();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to update user');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="overlay" role="presentation">
+      <div className="modal">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h2 style={{ fontSize: 16 }}>Edit User</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', fontSize: 20, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--tf-muted)', marginBottom: 12 }}>
+          {user.email} · <span style={{ textTransform: 'capitalize' }}>{user.role}</span>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="form-group">
+            <label className="form-label">Full Name</label>
+            <input
+              className="input"
+              type="text"
+              placeholder="Jane Doe"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">
+              Mobile Number{' '}
+              <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <input
+              className="input"
+              type="tel"
+              placeholder="+91 98765 43210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
+              Leave blank to remove the number. Works for both employees and admins.
+            </div>
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={loading}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
+              {loading ? <span className="spinner" /> : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ChangePasswordModal({ user, onClose, onDone }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -311,6 +415,7 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [pwUser, setPwUser] = useState(null);
+  const [editUser, setEditUser] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   async function loadWithRetry(attempts = 6) {
@@ -413,6 +518,7 @@ export default function UserManagement() {
         <div style={{ padding: '10px 16px 16px' }}>
           <UsersTable
             users={users}
+            onEdit={setEditUser}
             onDelete={handleDelete}
             onChangePassword={setPwUser}
             busyId={busyId}
@@ -421,6 +527,7 @@ export default function UserManagement() {
       )}
 
       <AddUserModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={loadWithRetry} />
+      <EditUserModal user={editUser} onClose={() => setEditUser(null)} onDone={loadWithRetry} />
       <ChangePasswordModal user={pwUser} onClose={() => setPwUser(null)} onDone={loadWithRetry} />
     </div>
   );
