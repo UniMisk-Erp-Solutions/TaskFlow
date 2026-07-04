@@ -433,6 +433,136 @@ async function whatsappNotifyAssignees(
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Inbound WhatsApp bot: a KNOWN user (number saved on their TaskFlow profile)
+// DMs "/taskflow" and is walked through a chat form to create a task/meeting
+// that lands in the app. Numbers not mapping to a profile are IGNORED (no reply);
+// the bot only ever talks to the sender it's in a flow with. WhatsApp personal
+// accounts can't render button/list forms, so the "form" is a guided Q&A.
+// ─────────────────────────────────────────────────────────────────────────────
+async function waWebhookSecret(): Promise<string> {
+  return Deno.env.get("WA_WEBHOOK_SECRET") || (await getAppSetting("wa_webhook_secret"));
+}
+
+function waDigits(jid: string | null | undefined): string {
+  if (!jid) return "";
+  return String(jid).split("@")[0].split(":")[0].replace(/\D+/g, "");
+}
+
+async function waFindProfileByPhone(digits: string): Promise<any | null> {
+  if (!digits || digits.length < 10) return null;
+  const last10 = digits.slice(-10);
+  const { data } = await supabase.from("profiles").select("id, full_name, email, org_id, phone").not("phone", "is", null);
+  for (const p of (data || []) as any[]) {
+    const pd = String(p.phone || "").replace(/\D+/g, "");
+    if (pd.length >= 10 && pd.slice(-10) === last10) return p;
+  }
+  return null;
+}
+
+async function waCreateItem(draft: any, creator: any, assigneeId: string): Promise<{ error?: string; id?: string }> {
+  const isMeeting = draft.kind === "meeting";
+  const base: any = {
+    title: draft.title, description: draft.description || null, assignee_id: assigneeId,
+    priority: draft.priority || "medium", created_by: creator.id, org_id: creator.org_id,
+  };
+  if (isMeeting) { base.status = "scheduled"; base.meeting_date = draft.date || null; }
+  else { base.status = "pending"; base.due_date = draft.date || null; }
+  const table = isMeeting ? "meetings" : "tasks";
+  const jn = isMeeting ? "meeting_assignees" : "task_assignees";
+  const fk = isMeeting ? "meeting_id" : "task_id";
+  const { data: row, error } = await supabase.from(table).insert([base]).select("id").single();
+  if (error) return { error: error.message };
+  if (row?.id) { try { await supabase.from(jn).insert([{ [fk]: row.id, profile_id: assigneeId }]); } catch { /* */ } }
+  try {
+    const shaped = { assignee_ids: [assigneeId], title: draft.title, description: draft.description || "", priority: draft.priority || "medium", due_date: draft.date || null, due_time: null, meeting_date: draft.date || null, meeting_time: null, project_name: null };
+    await whatsappNotifyAssignees(isMeeting ? "meeting" : "task", shaped, creator.full_name || "A colleague", creator.id);
+  } catch { /* notify is best-effort */ }
+  return { id: row?.id };
+}
+
+async function handleWhatsAppWebhook(req: Request): Promise<Response> {
+  const secret = await waWebhookSecret();
+  if (secret && (req.headers.get("x-taskflow-secret") || "") !== secret) return new Response("forbidden", { status: 403 });
+  let body: any = {};
+  try { body = await req.json(); } catch { return new Response("ok"); }
+  const msg = body?.data?.message ?? body?.message ?? body?.data ?? body;
+  if (msg?.fromMe === true || msg?.direction === "outgoing" || msg?.direction === "outbound") return new Response("ok");
+  const text = String(msg?.body ?? msg?.text ?? msg?.content ?? "").trim();
+  const senderDigits = waDigits(msg?.from ?? msg?.chatId ?? msg?.author ?? "");
+  if (!senderDigits || !text) return new Response("ok");
+
+  const profile = await waFindProfileByPhone(senderDigits);
+  if (!profile || !profile.org_id) return new Response("ok"); // unknown number -> silent ignore
+
+  const replyTo = `${senderDigits}@c.us`;
+  const reply = (t: string) => openwaSendText(replyTo, t);
+  const { data: convRow } = await supabase.from("wa_conversations").select("state, draft").eq("phone", senderDigits).maybeSingle();
+  const state = convRow?.state || "idle";
+  const draft: any = convRow?.draft || {};
+  const save = (s: string, d: any) => supabase.from("wa_conversations").upsert({ phone: senderDigits, profile_id: profile.id, state: s, draft: d, updated_at: new Date().toISOString() }, { onConflict: "phone" });
+  const clear = () => supabase.from("wa_conversations").delete().eq("phone", senderDigits);
+  const low = text.toLowerCase();
+
+  if (low === "/cancel" || low === "cancel") { await clear(); await reply("❌ Cancelled. Send */taskflow* to start again."); return new Response("ok"); }
+  const isTrigger = low === "/taskflow" || low === "/task" || low === "/meeting" || low === "/start";
+  if (state === "idle" && !isTrigger) { await reply(`👋 Hi ${profile.full_name || "there"}! Send *"/taskflow"* to create a task or meeting.`); return new Response("ok"); }
+  if (isTrigger) {
+    if (low === "/task") { await save("title", { kind: "task" }); await reply("👋 New *Task*.\n\n📝 What's the *title*?\n_(send /cancel anytime)_"); return new Response("ok"); }
+    if (low === "/meeting") { await save("title", { kind: "meeting" }); await reply("👋 New *Meeting*.\n\n📝 What's the *title*?\n_(send /cancel anytime)_"); return new Response("ok"); }
+    await save("kind", {}); await reply(`👋 Hi ${profile.full_name || "there"}! What do you want to create?\n\n1️⃣  Task\n2️⃣  Meeting\n\nReply *1* or *2*.  _(send /cancel anytime)_`); return new Response("ok");
+  }
+  if (state === "kind") {
+    const kind = /^1/.test(text) ? "task" : /^2/.test(text) ? "meeting" : null;
+    if (!kind) { await reply("Please reply *1* for Task or *2* for Meeting."); return new Response("ok"); }
+    draft.kind = kind; await save("title", draft); await reply(`📝 What's the *title* of the ${kind}?`); return new Response("ok");
+  }
+  if (state === "title") {
+    draft.title = text.slice(0, 200); await save("desc", draft); await reply("🗒️ Add a *description*? Send it, or reply *skip*."); return new Response("ok");
+  }
+  if (state === "desc") {
+    draft.description = low === "skip" ? "" : text.slice(0, 1000); await save("priority", draft);
+    await reply("🚦 *Priority*?\n\n1  Low\n2  Medium\n3  High\n\nReply 1 / 2 / 3."); return new Response("ok");
+  }
+  if (state === "priority") {
+    draft.priority = /^1/.test(text) ? "low" : /^3/.test(text) ? "high" : "medium"; await save("date", draft);
+    const label = draft.kind === "meeting" ? "meeting date" : "due date";
+    await reply(`📅 What's the *${label}*? Send *YYYY-MM-DD* (e.g. 2026-07-20), or reply *skip*.`); return new Response("ok");
+  }
+  if (state === "date") {
+    let date: string | null = null;
+    if (low !== "skip") {
+      const m = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (!m) { await reply("Please use *YYYY-MM-DD* (e.g. 2026-07-20), or reply *skip*."); return new Response("ok"); }
+      date = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    }
+    draft.date = date;
+    const { data: users } = await supabase.from("profiles").select("id, full_name, email").eq("org_id", profile.org_id).order("full_name");
+    draft._users = (users || []).map((u: any) => ({ id: u.id, name: u.full_name || u.email }));
+    await save("assignee", draft);
+    const listTxt = (draft._users as any[]).map((u, i) => `${i + 1}.  ${u.name}`).join("\n");
+    await reply(`👤 *Assign to* whom?\n\n0.  Myself\n${listTxt}\n\nReply with the number.`); return new Response("ok");
+  }
+  if (state === "assignee") {
+    const users: any[] = draft._users || [];
+    let assigneeId: string | null = null;
+    if (text.trim() === "0") assigneeId = profile.id;
+    else {
+      const idx = parseInt(text, 10) - 1;
+      if (Number.isNaN(idx) || idx < 0 || idx >= users.length) { await reply("Please reply with a valid number from the list."); return new Response("ok"); }
+      assigneeId = users[idx].id;
+    }
+    const res = await waCreateItem(draft, profile, assigneeId);
+    await clear();
+    if (res.error) { await reply(`⚠️ Sorry, couldn't create it: ${res.error}`); return new Response("ok"); }
+    const asgName = assigneeId === profile.id ? "yourself" : (users.find((u) => u.id === assigneeId)?.name || "the assignee");
+    const kindLabel = draft.kind === "meeting" ? "Meeting" : "Task";
+    await reply(`✅ *${kindLabel} created!*\n\n*${draft.title}*\n• Priority: ${draft.priority}\n${draft.date ? `• ${draft.kind === "meeting" ? "Date" : "Due"}: ${draft.date}\n` : ""}• Assigned to: ${asgName}\n\nIt's now live in TaskFlow. 🎉`);
+    return new Response("ok");
+  }
+  return new Response("ok");
+}
+
 type AppUser = {
   id: string;
   email?: string;
@@ -2798,6 +2928,9 @@ Deno.serve(async (req): Promise<Response> => {
     const path = stripApiPrefix(new URL(req.url).pathname);
 
     if (req.method === "GET" && path === "/") return json({ ok: true, service: "edge-api" });
+
+    // Inbound WhatsApp bot webhook (public; validated by shared secret header)
+    if (req.method === "POST" && path === "/whatsapp/webhook") return await handleWhatsAppWebhook(req);
 
     // Auth routes
     if (req.method === "POST" && path === "/auth/signup") return await handleAuthSignup(req);
