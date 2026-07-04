@@ -318,15 +318,34 @@ function createAuthClient() {
 const OPENWA_API_URL = (Deno.env.get("OPENWA_API_URL") || "https://whatsapp-api.unimisk.com").replace(/\/+$/, "");
 const OPENWA_SESSION_NAME = Deno.env.get("OPENWA_SESSION_NAME") || "taskflow-assistant";
 const OPENWA_SESSION_ID_DEFAULT = Deno.env.get("OPENWA_SESSION_ID") || "12ace9c9-c0c8-4cf9-a1ed-c4f6fbaf55f3";
-const OPENWA_API_KEY = Deno.env.get("OPENWA_API_KEY") || ""; // set as an env var on the edge container; blank => WhatsApp notify disabled
 const OPENWA_DEFAULT_CC = Deno.env.get("OPENWA_DEFAULT_CC") || "91"; // default country code (India)
+
+// API key comes from env OR the public.app_settings table (key 'openwa_api_key'),
+// so it can be set/rotated purely via SQL — no redeploy needed. Cached ~60s.
+const _settingsCache: { at: number; map: Record<string, string> } = { at: 0, map: {} };
+async function getAppSetting(key: string): Promise<string> {
+  const now = Date.now();
+  if (now - _settingsCache.at > 60_000) {
+    try {
+      const { data } = await supabase.from("app_settings").select("key, value");
+      const m: Record<string, string> = {};
+      for (const r of (data || []) as any[]) m[r.key] = r.value ?? "";
+      _settingsCache.map = m;
+      _settingsCache.at = now;
+    } catch { /* table may not exist yet / transient — keep previous cache */ }
+  }
+  return _settingsCache.map[key] ?? "";
+}
+async function openwaApiKey(): Promise<string> {
+  return Deno.env.get("OPENWA_API_KEY") || (await getAppSetting("openwa_api_key"));
+}
 
 let _openwaSessionId: string | null = null;
 async function openwaSessionId(): Promise<string | null> {
   if (_openwaSessionId) return _openwaSessionId;
   // Resolve by session NAME so a re-created "taskflow-assistant" still works; fall back to the configured id.
   try {
-    const r = await fetch(`${OPENWA_API_URL}/api/sessions`, { headers: { "X-API-Key": OPENWA_API_KEY } });
+    const r = await fetch(`${OPENWA_API_URL}/api/sessions`, { headers: { "X-API-Key": await openwaApiKey() } });
     if (r.ok) {
       const list = await r.json();
       const found = (Array.isArray(list) ? list : []).find((s: any) => s?.name === OPENWA_SESSION_NAME);
@@ -350,12 +369,14 @@ function openwaChatId(phone: string | null | undefined): string | null {
 }
 
 async function openwaSendText(chatId: string, text: string): Promise<void> {
+  const apiKey = await openwaApiKey();
+  if (!apiKey) return;
   const sessionId = await openwaSessionId();
   if (!sessionId) return;
   try {
     const r = await fetch(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
       method: "POST",
-      headers: { "X-API-Key": OPENWA_API_KEY, "Content-Type": "application/json" },
+      headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ chatId, text: String(text).slice(0, 4096) }),
     });
     if (!r.ok) console.warn(`[whatsapp] send to ${chatId} -> HTTP ${r.status}`);
@@ -397,7 +418,7 @@ async function whatsappNotifyAssignees(
   assignerName: string,
   excludeUserId: string,
 ): Promise<void> {
-  if (!OPENWA_API_KEY) return; // WhatsApp notify not configured
+  if (!(await openwaApiKey())) return; // WhatsApp notify not configured
   const ids: string[] = (row.assignee_ids || []).filter((id: string) => id && id !== excludeUserId);
   if (!ids.length) return;
   const { data: profs } = await supabase.from("profiles").select("id, full_name, phone").in("id", ids);
