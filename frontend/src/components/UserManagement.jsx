@@ -3,6 +3,69 @@ import { Plus, RefreshCw, Trash2, KeyRound, Pencil } from 'lucide-react';
 import api from '../api';
 import { formatDate } from '../lib/dateFormat';
 
+// Country dial codes for the mobile-number picker (India first / default).
+const COUNTRY_CODES = [
+  { c: '91', n: 'India' }, { c: '1', n: 'USA / Canada' }, { c: '44', n: 'United Kingdom' },
+  { c: '971', n: 'UAE' }, { c: '966', n: 'Saudi Arabia' }, { c: '974', n: 'Qatar' },
+  { c: '965', n: 'Kuwait' }, { c: '968', n: 'Oman' }, { c: '973', n: 'Bahrain' },
+  { c: '61', n: 'Australia' }, { c: '64', n: 'New Zealand' }, { c: '65', n: 'Singapore' },
+  { c: '60', n: 'Malaysia' }, { c: '62', n: 'Indonesia' }, { c: '63', n: 'Philippines' },
+  { c: '66', n: 'Thailand' }, { c: '92', n: 'Pakistan' }, { c: '880', n: 'Bangladesh' },
+  { c: '94', n: 'Sri Lanka' }, { c: '977', n: 'Nepal' }, { c: '49', n: 'Germany' },
+  { c: '33', n: 'France' }, { c: '39', n: 'Italy' }, { c: '34', n: 'Spain' },
+  { c: '31', n: 'Netherlands' }, { c: '41', n: 'Switzerland' }, { c: '46', n: 'Sweden' },
+  { c: '353', n: 'Ireland' }, { c: '351', n: 'Portugal' }, { c: '7', n: 'Russia' },
+  { c: '90', n: 'Turkey' }, { c: '27', n: 'South Africa' }, { c: '234', n: 'Nigeria' },
+  { c: '254', n: 'Kenya' }, { c: '20', n: 'Egypt' }, { c: '55', n: 'Brazil' },
+  { c: '52', n: 'Mexico' }, { c: '86', n: 'China' }, { c: '81', n: 'Japan' },
+  { c: '82', n: 'South Korea' }, { c: '84', n: 'Vietnam' },
+];
+
+// Combine picker + digits into a stored E.164 number, e.g. ('91','9876543210') -> '+919876543210'.
+function combinePhone(code, number) {
+  const n = String(number || '').replace(/\D+/g, '');
+  if (!n) return '';
+  return '+' + String(code).replace(/\D+/g, '') + n;
+}
+
+// Split a stored number back into { code, number } for the Edit form (longest dial-code prefix wins).
+function splitPhone(stored) {
+  const d = String(stored || '').replace(/\D+/g, '');
+  if (!d) return { code: '91', number: '' };
+  const codes = COUNTRY_CODES.map((x) => x.c).sort((a, b) => b.length - a.length);
+  for (const c of codes) {
+    if (d.startsWith(c) && d.length - c.length >= 6) return { code: c, number: d.slice(c.length) };
+  }
+  if (d.length > 10) return { code: d.slice(0, d.length - 10), number: d.slice(-10) };
+  return { code: '91', number: d };
+}
+
+function PhoneInput({ code, setCode, number, setNumber }) {
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <select
+        className="input select"
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        style={{ flex: '0 0 auto', maxWidth: 160 }}
+      >
+        {COUNTRY_CODES.map((x) => (
+          <option key={x.c} value={x.c}>{x.n} +{x.c}</option>
+        ))}
+      </select>
+      <input
+        className="input"
+        type="tel"
+        inputMode="numeric"
+        placeholder="10-digit number"
+        value={number}
+        onChange={(e) => setNumber(e.target.value.replace(/\D+/g, '').slice(0, 15))}
+        style={{ flex: 1, minWidth: 0 }}
+      />
+    </div>
+  );
+}
+
 function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
   if (!users.length) {
     return (
@@ -86,7 +149,8 @@ function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
 function AddUserModal({ open, onClose, onCreated }) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneCode, setPhoneCode] = useState('91');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [inviteRole, setInviteRole] = useState('employee');
   const [loading, setLoading] = useState(false);
@@ -96,7 +160,8 @@ function AddUserModal({ open, onClose, onCreated }) {
     if (open) {
       setEmail('');
       setFullName('');
-      setPhone('');
+      setPhoneCode('91');
+      setPhoneNumber('');
       setPassword('');
       setInviteRole('employee');
       setError('');
@@ -120,7 +185,7 @@ function AddUserModal({ open, onClose, onCreated }) {
         password,
         fullName,
         role: inviteRole,
-        phone: phone.trim(),
+        phone: combinePhone(phoneCode, phoneNumber),
       });
       await new Promise((r) => setTimeout(r, 120));
       if (onCreated) await onCreated();
@@ -182,13 +247,7 @@ function AddUserModal({ open, onClose, onCreated }) {
               Mobile Number{' '}
               <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
             </label>
-            <input
-              className="input"
-              type="tel"
-              placeholder="+91 98765 43210"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            <PhoneInput code={phoneCode} setCode={setPhoneCode} number={phoneNumber} setNumber={setPhoneNumber} />
             <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
               For WhatsApp/SMS notifications. Optional — works for both employees and admins.
             </div>
@@ -243,14 +302,17 @@ function AddUserModal({ open, onClose, onCreated }) {
 
 function EditUserModal({ user, onClose, onDone }) {
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneCode, setPhoneCode] = useState('91');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (user) {
       setFullName(user.full_name || '');
-      setPhone(user.phone || '');
+      const sp = splitPhone(user.phone);
+      setPhoneCode(sp.code);
+      setPhoneNumber(sp.number);
       setError('');
     }
   }, [user]);
@@ -266,7 +328,7 @@ function EditUserModal({ user, onClose, onDone }) {
     }
     setLoading(true);
     try {
-      await api.patch(`/admin/users/${user.id}`, { fullName: fullName.trim(), phone: phone.trim() });
+      await api.patch(`/admin/users/${user.id}`, { fullName: fullName.trim(), phone: combinePhone(phoneCode, phoneNumber) });
       if (onDone) await onDone();
       onClose();
     } catch (err) {
@@ -309,13 +371,7 @@ function EditUserModal({ user, onClose, onDone }) {
               Mobile Number{' '}
               <span style={{ color: 'var(--tf-muted)', fontWeight: 400 }}>(optional)</span>
             </label>
-            <input
-              className="input"
-              type="tel"
-              placeholder="+91 98765 43210"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+            <PhoneInput code={phoneCode} setCode={setPhoneCode} number={phoneNumber} setNumber={setPhoneNumber} />
             <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
               Leave blank to remove the number. Works for both employees and admins.
             </div>
