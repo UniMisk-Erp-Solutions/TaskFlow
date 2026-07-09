@@ -5,6 +5,8 @@ import { ThemeProvider } from './ThemeContext';
 import Login from './Login';
 import AdminDashboard from './AdminDashboard';
 import EmployeeDashboard from './EmployeeDashboard';
+import Onboarding from './Onboarding';
+import PendingApproval from './PendingApproval';
 
 // Marketing (public) surfaces — ported from the standalone "quest" landing
 // page. They are Tailwind v4 + framer-motion and live entirely under
@@ -82,11 +84,27 @@ function ProfileLoadError() {
   );
 }
 
+/**
+ * Accounts without an organization (fresh email/password signup, or a first-time
+ * Google sign-in) must finish onboarding: verify phone -> create org OR join by code.
+ * Returns a screen to render, or null when the user is fully set up.
+ * Older profiles have no `status` field — treat those as active so nothing regresses.
+ */
+function onboardingScreen(profile) {
+  const status = profile?.status ?? 'active';
+  if (status === 'needs_onboarding') return <Onboarding />;
+  if (status === 'pending_approval' || status === 'rejected') return <PendingApproval />;
+  return null;
+}
+
 function RoleRouter() {
   const { user, profile, loading } = useAuth();
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
+
+  const gate = onboardingScreen(profile);
+  if (gate) return gate;
 
   const userRole = profile?.role;
   if (userRole === 'admin') return <Navigate to="/admin" replace />;
@@ -98,6 +116,7 @@ function ProtectedAdmin({ children }) {
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
+  if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
 
   const userRole = profile?.role;
   if (userRole !== 'admin') return <Navigate to="/dashboard" replace />;
@@ -109,6 +128,7 @@ function ProtectedEmployee({ children }) {
   if (loading) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
+  if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
   return children;
 }
 

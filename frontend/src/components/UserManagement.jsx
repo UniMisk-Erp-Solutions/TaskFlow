@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw, Trash2, KeyRound, Pencil } from 'lucide-react';
 import api from '../api';
 import { formatDate } from '../lib/dateFormat';
+import JoinRequests from './JoinRequests';
 
 // Country dial codes for the mobile-number picker (India first / default).
 const COUNTRY_CODES = [
@@ -518,6 +519,8 @@ export default function UserManagement() {
   }
 
   return (
+    <>
+    <JoinRequests />
     <div style={{ border: '1px solid var(--tf-border)', borderRadius: 6, overflow: 'hidden', background: 'var(--tf-panel)' }}>
       <div
         style={{
@@ -586,6 +589,7 @@ export default function UserManagement() {
       <EditUserModal user={editUser} onClose={() => setEditUser(null)} onDone={loadWithRetry} />
       <ChangePasswordModal user={pwUser} onClose={() => setPwUser(null)} onDone={loadWithRetry} />
     </div>
+    </>
   );
 }
 

@@ -152,6 +152,25 @@ function scheduleNotify(fn: () => Promise<void>): void {
   });
 }
 
+// Run a promise to completion in the background and return control to the caller now.
+// Uses the Supabase edge runtime's waitUntil (keeps the isolate alive until the promise
+// settles) when available — important because WhatsApp send-text can take 10-30s on this
+// overloaded box; otherwise falls back to a microtask.
+function runBackground(p: Promise<unknown>): void {
+  const done = Promise.resolve(p).catch((e) => console.error("[whatsapp] bg:", (e as Error)?.message));
+  try {
+    // @ts-ignore EdgeRuntime is injected by the Supabase edge runtime
+    if (typeof EdgeRuntime !== "undefined" && typeof EdgeRuntime.waitUntil === "function") {
+      console.log("[wa] bg via waitUntil");
+      // @ts-ignore
+      EdgeRuntime.waitUntil(done);
+      return;
+    }
+  } catch { /* fall through */ }
+  console.log("[wa] bg via microtask (no waitUntil)");
+  queueMicrotask(() => { void done; });
+}
+
 // Alias so existing call sites that pass `supabase` keep working.
 function notifyUsersEdge(_supabaseUnused: unknown, opts: Parameters<typeof notifyUsers>[0]) {
   return notifyUsers(opts);
@@ -368,21 +387,29 @@ function openwaChatId(phone: string | null | undefined): string | null {
   return `${d}@c.us`;
 }
 
+// Fetch with a hard timeout. On this overloaded box OpenWA accepts + DELIVERS the message
+// but is often slow to RETURN the HTTP response; aborting the wait is fine (the small POST
+// has already flushed to OpenWA — proven by manual sends delivering after a client abort).
+// We only cap how long we block. Returns null on timeout/error.
+async function fetchTimeout(url: string, init: RequestInit, ms: number): Promise<Response | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ctrl.signal }); }
+  catch { return null; }
+  finally { clearTimeout(t); }
+}
+
 async function openwaSendText(chatId: string, text: string): Promise<void> {
   const apiKey = await openwaApiKey();
   if (!apiKey) return;
   const sessionId = await openwaSessionId();
   if (!sessionId) return;
-  try {
-    const r = await fetch(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
-      method: "POST",
-      headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ chatId, text: String(text).slice(0, 4096) }),
-    });
-    if (!r.ok) console.warn(`[whatsapp] send to ${chatId} -> HTTP ${r.status}`);
-  } catch (e) {
-    console.warn("[whatsapp] send error:", (e as Error)?.message);
-  }
+  const r = await fetchTimeout(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
+    method: "POST",
+    headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ chatId, text: String(text).slice(0, 4096) }),
+  }, 8000);
+  if (r && !r.ok) console.warn(`[whatsapp] send to ${chatId} -> HTTP ${r.status}`);
 }
 
 function capWord(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -449,10 +476,41 @@ function waDigits(jid: string | null | undefined): string {
   return String(jid).split("@")[0].split(":")[0].replace(/\D+/g, "");
 }
 
+// WhatsApp now addresses senders with privacy "@lid" IDs (e.g. "271382004895763@lid")
+// that are NOT phone numbers. Resolve them to the real "@c.us" number via OpenWA's
+// contact lookup so we can map the sender to a TaskFlow profile. "@c.us" jids pass through.
+const _waPhoneCache = new Map<string, { phone: string; at: number }>();
+async function waResolveSenderPhone(jid: string | null | undefined): Promise<string> {
+  const raw = String(jid ?? "").trim();
+  if (!raw) return "";
+  if (raw.includes("@c.us") || !raw.includes("@")) return waDigits(raw); // already a phone
+  const cached = _waPhoneCache.get(raw);
+  if (cached && (Date.now() - cached.at) < 3_600_000) return cached.phone;
+  try {
+    const apiKey = await openwaApiKey();
+    const sessionId = await openwaSessionId();
+    if (apiKey && sessionId) {
+      const r = await fetchTimeout(`${OPENWA_API_URL}/api/sessions/${sessionId}/contacts/${raw}`, {
+        headers: { "X-API-Key": apiKey },
+      }, 8000);
+      if (r && r.ok) {
+        const c = await r.json();
+        const id = String(c?.id ?? "");                 // e.g. "918160500203@c.us"
+        if (id.includes("@c.us")) {
+          const phone = waDigits(id);
+          _waPhoneCache.set(raw, { phone, at: Date.now() });
+          return phone;
+        }
+      }
+    }
+  } catch { /* fall through to raw digits (won't match a profile) */ }
+  return waDigits(raw);
+}
+
 async function waFindProfileByPhone(digits: string): Promise<any | null> {
   if (!digits || digits.length < 10) return null;
   const last10 = digits.slice(-10);
-  const { data } = await supabase.from("profiles").select("id, full_name, email, org_id, phone").not("phone", "is", null);
+  const { data } = await supabase.from("profiles").select("id, full_name, email, org_id, phone, role").not("phone", "is", null);
   for (const p of (data || []) as any[]) {
     const pd = String(p.phone || "").replace(/\D+/g, "");
     if (pd.length >= 10 && pd.slice(-10) === last10) return p;
@@ -465,6 +523,7 @@ async function waCreateItem(draft: any, creator: any, assigneeId: string): Promi
   const base: any = {
     title: draft.title, description: draft.description || null, assignee_id: assigneeId,
     priority: draft.priority || "medium", created_by: creator.id, org_id: creator.org_id,
+    project_id: draft.project_id || null,
   };
   if (isMeeting) { base.status = "scheduled"; base.meeting_date = draft.date || null; }
   else { base.status = "pending"; base.due_date = draft.date || null; }
@@ -475,28 +534,114 @@ async function waCreateItem(draft: any, creator: any, assigneeId: string): Promi
   if (error) return { error: error.message };
   if (row?.id) { try { await supabase.from(jn).insert([{ [fk]: row.id, profile_id: assigneeId }]); } catch { /* */ } }
   try {
-    const shaped = { assignee_ids: [assigneeId], title: draft.title, description: draft.description || "", priority: draft.priority || "medium", due_date: draft.date || null, due_time: null, meeting_date: draft.date || null, meeting_time: null, project_name: null };
+    const shaped = { assignee_ids: [assigneeId], title: draft.title, description: draft.description || "", priority: draft.priority || "medium", due_date: draft.date || null, due_time: null, meeting_date: draft.date || null, meeting_time: null, project_name: draft.project_name || null };
     await whatsappNotifyAssignees(isMeeting ? "meeting" : "task", shaped, creator.full_name || "A colleague", creator.id);
   } catch { /* notify is best-effort */ }
   return { id: row?.id };
 }
 
+// ── WhatsApp bot helpers: users type & read dates as DD-MM-YYYY; the DB stores YYYY-MM-DD ──
+function waParseDate(s: string): string | null {           // "20-07-2026" -> "2026-07-20"
+  const m = String(s).match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (!m) return null;
+  const dd = m[1].padStart(2, "0"), mm = m[2].padStart(2, "0"), yy = m[3];
+  if (+mm < 1 || +mm > 12 || +dd < 1 || +dd > 31) return null;
+  return `${yy}-${mm}-${dd}`;
+}
+function waFmtDate(iso: string | null | undefined): string { // "2026-07-20" -> "20-07-2026"
+  if (!iso) return "—";
+  const m = String(iso).match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : String(iso);
+}
+// Review summary shown before creation (Confirm/Cancel step).
+function waSummary(draft: any): string {
+  const isMeeting = draft.kind === "meeting";
+  return [
+    `📋 Please review your ${isMeeting ? "*Meeting*" : "*Task*"}:`, "",
+    `• *Title:* ${draft.title || "—"}`,
+    `• *Description:* ${draft.description ? draft.description : "—"}`,
+    `• *Project:* ${draft.project_name || "None"}`,
+    `• *Priority:* ${capWord(draft.priority || "medium")}`,
+    `• *${isMeeting ? "Date" : "Due"}:* ${waFmtDate(draft.date)}`,
+    `• *Assign to:* ${draft.assignee_name || "—"}`,
+    "",
+    "✅ Reply *confirm* to create",
+    "❌ Reply *cancel* to discard",
+  ].join("\n");
+}
+// "View Calendar": the user's own tasks & meetings (assigned to or created by them), by date.
+async function waBuildCalendar(profile: any): Promise<string> {
+  const uid = profile.id;
+  const { data: tasks } = await supabase.from("tasks").select("title, due_date, status")
+    .or(`assignee_id.eq.${uid},created_by.eq.${uid}`).order("due_date", { ascending: true, nullsFirst: false }).limit(15);
+  const { data: meets } = await supabase.from("meetings").select("title, meeting_date, status")
+    .or(`assignee_id.eq.${uid},created_by.eq.${uid}`).order("meeting_date", { ascending: true, nullsFirst: false }).limit(15);
+  const L: string[] = ["🗓️ *Your Calendar*", "", "*📋 Tasks*"];
+  if (tasks && (tasks as any[]).length) for (const t of tasks as any[]) L.push(`• ${t.title} — ${waFmtDate(t.due_date)}${t.status ? ` _(${t.status})_` : ""}`);
+  else L.push("_none_");
+  L.push("", "*📅 Meetings*");
+  if (meets && (meets as any[]).length) for (const m of meets as any[]) L.push(`• ${m.title} — ${waFmtDate(m.meeting_date)}${m.status ? ` _(${m.status})_` : ""}`);
+  else L.push("_none_");
+  L.push("", "Send */taskflow* to create a new one.");
+  return L.join("\n");
+}
+
+const WA_AI_INTRO = `🤖 *TaskFlow‑AI* is on!
+
+Just tell me what to do in plain language — e.g.
+• _add a task to call the client tomorrow, high priority, assign to Preet_
+• _mark the invoice task as done_
+• _change the dashboard task due date to 25-07-2026_
+• _create a project called Website Revamp_
+• _what's overdue this week?_
+
+I can add, change or delete tasks, meetings, projects and users — within your permissions.
+
+_Send *menu* to go back._`;
+
+// Thin wrapper: verify the shared secret, then hand off to background processing and
+// return 200 IMMEDIATELY. The box is often overloaded so send-text can take 10-30s; if we
+// blocked the response on it, OpenWA would time out and RETRY the webhook (we saw the same
+// "/taskflow" delivered 3x), causing duplicate replies and state churn.
 async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   const secret = await waWebhookSecret();
   if (secret && (req.headers.get("x-taskflow-secret") || "") !== secret) return new Response("forbidden", { status: 403 });
   let body: any = {};
   try { body = await req.json(); } catch { return new Response("ok"); }
+  // Process synchronously but with bounded fetch timeouts (see fetchTimeout): the edge
+  // supervisor kills background/waitUntil work on this box, so we must finish before
+  // responding. Bounded sends keep total well under OpenWA's webhook retry window.
+  try { await processWhatsAppMessage(body); } catch (e) { console.error("[whatsapp]", (e as Error)?.message); }
+  return new Response("ok");
+}
+
+// Actual conversation state machine. Runs in the background; its return values are ignored
+// (the `return new Response("ok")` statements simply short-circuit the flow).
+async function processWhatsAppMessage(body: any): Promise<void> {
   const msg = body?.data?.message ?? body?.message ?? body?.data ?? body;
   if (msg?.fromMe === true || msg?.direction === "outgoing" || msg?.direction === "outbound") return new Response("ok");
+  // Idempotency: our reply is synchronous, and a slow one (AI create ≈ 12s) makes OpenWA
+  // re-deliver the webhook — processing the same message twice (duplicate task). Claim the
+  // message id once; a retry hits the unique constraint (23505) and is skipped. Fail-open:
+  // any other error (e.g. table missing) still processes, so the bot never gets stuck.
+  const _mid = String(msg?.id ?? msg?.waMessageId ?? "").trim() ||
+    `${msg?.from ?? ""}|${msg?.timestamp ?? ""}|${String(msg?.body ?? "").slice(0, 40)}`;
+  const { error: _dupErr } = await supabase.from("wa_processed").insert({ msg_id: _mid });
+  if (_dupErr && ((_dupErr as any).code === "23505" || /duplicate|already exists/i.test((_dupErr as any).message || ""))) return new Response("ok"); // duplicate delivery — skip
   const text = String(msg?.body ?? msg?.text ?? msg?.content ?? "").trim();
-  const senderDigits = waDigits(msg?.from ?? msg?.chatId ?? msg?.author ?? "");
+  const senderDigits = await waResolveSenderPhone(msg?.from ?? msg?.chatId ?? msg?.author ?? "");
   if (!senderDigits || !text) return new Response("ok");
 
   const profile = await waFindProfileByPhone(senderDigits);
+  console.log(`[wa] in="${text.slice(0, 24)}" sender=${senderDigits} profile=${profile?.email || "NONE"}`);
   if (!profile || !profile.org_id) return new Response("ok"); // unknown number -> silent ignore
 
   const replyTo = `${senderDigits}@c.us`;
-  const reply = (t: string) => openwaSendText(replyTo, t);
+  const reply = async (t: string) => {
+    console.log(`[wa] -> send to ${replyTo}: ${t.slice(0, 24)}`);
+    await openwaSendText(replyTo, t);
+    console.log(`[wa] <- sent to ${replyTo}`);
+  };
   const { data: convRow } = await supabase.from("wa_conversations").select("state, draft").eq("phone", senderDigits).maybeSingle();
   const state = convRow?.state || "idle";
   const draft: any = convRow?.draft || {};
@@ -505,36 +650,71 @@ async function handleWhatsAppWebhook(req: Request): Promise<Response> {
   const low = text.toLowerCase();
 
   if (low === "/cancel" || low === "cancel") { await clear(); await reply("❌ Cancelled. Send */taskflow* to start again."); return new Response("ok"); }
-  const isTrigger = low === "/taskflow" || low === "/task" || low === "/meeting" || low === "/start";
-  if (state === "idle" && !isTrigger) { await reply(`👋 Hi ${profile.full_name || "there"}! Send *"/taskflow"* to create a task or meeting.`); return new Response("ok"); }
+  const isTrigger = low === "/taskflow" || low === "/task" || low === "/meeting" || low === "/start" || low === "/calendar" || low === "/ai" || low === "/taskflow-ai";
+  if (state === "idle" && !isTrigger) { await reply(`👋 Hi ${profile.full_name || "there"}! Send *"/taskflow"* to create a task/meeting, view your calendar, or use 🤖 TaskFlow‑AI.`); return new Response("ok"); }
   if (isTrigger) {
-    if (low === "/task") { await save("title", { kind: "task" }); await reply("👋 New *Task*.\n\n📝 What's the *title*?\n_(send /cancel anytime)_"); return new Response("ok"); }
-    if (low === "/meeting") { await save("title", { kind: "meeting" }); await reply("👋 New *Meeting*.\n\n📝 What's the *title*?\n_(send /cancel anytime)_"); return new Response("ok"); }
-    await save("kind", {}); await reply(`👋 Hi ${profile.full_name || "there"}! What do you want to create?\n\n1️⃣  Task\n2️⃣  Meeting\n\nReply *1* or *2*.  _(send /cancel anytime)_`); return new Response("ok");
+    if (low === "/task") { await save("title", { kind: "task" }); await reply("👋 New *Task*.\n\n📝 What's the *title*?\n_(send *cancel* anytime)_"); return new Response("ok"); }
+    if (low === "/meeting") { await save("title", { kind: "meeting" }); await reply("👋 New *Meeting*.\n\n📝 What's the *title*?\n_(send *cancel* anytime)_"); return new Response("ok"); }
+    if (low === "/calendar") { await clear(); await reply(await waBuildCalendar(profile)); return new Response("ok"); }
+    if (low === "/ai" || low === "/taskflow-ai") { await save("ai", {}); await reply(WA_AI_INTRO); return new Response("ok"); }
+    await save("kind", {});
+    await reply(`👋 Hi ${profile.full_name || "there"}! What would you like to do?\n\n1️⃣  New Task\n2️⃣  New Meeting\n3️⃣  View Calendar\n4️⃣  TaskFlow‑AI 🤖\n\n_Reply *1*, *2*, *3* or *4* (or type: task / meeting / calendar / ai). Send *cancel* anytime._`);
+    return new Response("ok");
+  }
+  if (state === "ai") {
+    if (["menu", "exit", "back", "/menu"].includes(low)) {
+      await save("kind", {});
+      await reply(`👋 Back to menu. What would you like to do?\n\n1️⃣  New Task\n2️⃣  New Meeting\n3️⃣  View Calendar\n4️⃣  TaskFlow‑AI 🤖\n\nReply *1*, *2*, *3* or *4*.`);
+      return new Response("ok");
+    }
+    const ans = await runAiAssistant({ id: profile.id, email: profile.email, role: profile.role, org_id: profile.org_id }, text);
+    await reply(`${ans}\n\n_🤖 TaskFlow‑AI — send *menu* to exit._`);
+    return new Response("ok");
   }
   if (state === "kind") {
-    const kind = /^1/.test(text) ? "task" : /^2/.test(text) ? "meeting" : null;
-    if (!kind) { await reply("Please reply *1* for Task or *2* for Meeting."); return new Response("ok"); }
-    draft.kind = kind; await save("title", draft); await reply(`📝 What's the *title* of the ${kind}?`); return new Response("ok");
+    let choice: string | null = null;
+    const numChoice = (text.match(/[1-4]/) || [""])[0]; // tolerate "4", "4️⃣", "option 4", etc.
+    if (numChoice === "1" || low === "task") choice = "task";
+    else if (numChoice === "2" || low === "meeting") choice = "meeting";
+    else if (numChoice === "3" || low.startsWith("cal") || low === "view" || low === "calender") choice = "calendar";
+    else if (numChoice === "4" || low === "ai" || low.includes("taskflow-ai") || low.includes("taskflow ai")) choice = "ai";
+    if (!choice) { await reply("Please reply *1* (Task), *2* (Meeting), *3* (View Calendar) or *4* (TaskFlow‑AI)."); return new Response("ok"); }
+    if (choice === "calendar") { await clear(); await reply(await waBuildCalendar(profile)); return new Response("ok"); }
+    if (choice === "ai") { await save("ai", {}); await reply(WA_AI_INTRO); return new Response("ok"); }
+    draft.kind = choice; await save("title", draft); await reply(`📝 What's the *title* of the ${choice}?`); return new Response("ok");
   }
   if (state === "title") {
     draft.title = text.slice(0, 200); await save("desc", draft); await reply("🗒️ Add a *description*? Send it, or reply *skip*."); return new Response("ok");
   }
   if (state === "desc") {
-    draft.description = low === "skip" ? "" : text.slice(0, 1000); await save("priority", draft);
+    draft.description = low === "skip" ? "" : text.slice(0, 1000);
+    const { data: projs } = await supabase.from("projects").select("id, name").eq("org_id", profile.org_id).order("name");
+    draft._projects = (projs || []).map((p: any) => ({ id: p.id, name: p.name || "Untitled" }));
+    await save("project", draft);
+    const listTxt = (draft._projects as any[]).map((p, i) => `${i + 1}.  ${p.name}`).join("\n");
+    await reply(`📁 Which *project*?\n\n0.  None${listTxt ? "\n" + listTxt : ""}\n\nReply with the number.`); return new Response("ok");
+  }
+  if (state === "project") {
+    const projs: any[] = draft._projects || [];
+    if (text.trim() === "0" || low === "none") { draft.project_id = null; draft.project_name = null; }
+    else {
+      const idx = parseInt(text, 10) - 1;
+      if (Number.isNaN(idx) || idx < 0 || idx >= projs.length) { await reply("Please reply with a valid project number (*0* for None)."); return new Response("ok"); }
+      draft.project_id = projs[idx].id; draft.project_name = projs[idx].name;
+    }
+    await save("priority", draft);
     await reply("🚦 *Priority*?\n\n1  Low\n2  Medium\n3  High\n\nReply 1 / 2 / 3."); return new Response("ok");
   }
   if (state === "priority") {
     draft.priority = /^1/.test(text) ? "low" : /^3/.test(text) ? "high" : "medium"; await save("date", draft);
     const label = draft.kind === "meeting" ? "meeting date" : "due date";
-    await reply(`📅 What's the *${label}*? Send *YYYY-MM-DD* (e.g. 2026-07-20), or reply *skip*.`); return new Response("ok");
+    await reply(`📅 What's the *${label}*? Send *DD-MM-YYYY* (e.g. 20-07-2026), or reply *skip*.`); return new Response("ok");
   }
   if (state === "date") {
     let date: string | null = null;
     if (low !== "skip") {
-      const m = text.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-      if (!m) { await reply("Please use *YYYY-MM-DD* (e.g. 2026-07-20), or reply *skip*."); return new Response("ok"); }
-      date = `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+      date = waParseDate(text);
+      if (!date) { await reply("Please use *DD-MM-YYYY* (e.g. 20-07-2026), or reply *skip*."); return new Response("ok"); }
     }
     draft.date = date;
     const { data: users } = await supabase.from("profiles").select("id, full_name, email").eq("org_id", profile.org_id).order("full_name");
@@ -552,13 +732,21 @@ async function handleWhatsAppWebhook(req: Request): Promise<Response> {
       if (Number.isNaN(idx) || idx < 0 || idx >= users.length) { await reply("Please reply with a valid number from the list."); return new Response("ok"); }
       assigneeId = users[idx].id;
     }
-    const res = await waCreateItem(draft, profile, assigneeId);
-    await clear();
-    if (res.error) { await reply(`⚠️ Sorry, couldn't create it: ${res.error}`); return new Response("ok"); }
-    const asgName = assigneeId === profile.id ? "yourself" : (users.find((u) => u.id === assigneeId)?.name || "the assignee");
-    const kindLabel = draft.kind === "meeting" ? "Meeting" : "Task";
-    await reply(`✅ *${kindLabel} created!*\n\n*${draft.title}*\n• Priority: ${draft.priority}\n${draft.date ? `• ${draft.kind === "meeting" ? "Date" : "Due"}: ${draft.date}\n` : ""}• Assigned to: ${asgName}\n\nIt's now live in TaskFlow. 🎉`);
-    return new Response("ok");
+    draft.assignee_id = assigneeId;
+    draft.assignee_name = assigneeId === profile.id ? "Myself" : (users.find((u) => u.id === assigneeId)?.name || "the assignee");
+    await save("confirm", draft);
+    await reply(waSummary(draft)); return new Response("ok");
+  }
+  if (state === "confirm") {
+    if (low === "confirm" || low === "yes" || low === "ok" || low === "y") {
+      const res = await waCreateItem(draft, profile, draft.assignee_id);
+      await clear();
+      if (res.error) { await reply(`⚠️ Sorry, couldn't create it: ${res.error}`); return new Response("ok"); }
+      const kindLabel = draft.kind === "meeting" ? "Meeting" : "Task";
+      await reply(`✅ *${kindLabel} created!*\n\n*${draft.title}*\n• Project: ${draft.project_name || "None"}\n• Priority: ${capWord(draft.priority || "medium")}\n• ${draft.kind === "meeting" ? "Date" : "Due"}: ${waFmtDate(draft.date)}\n• Assigned to: ${draft.assignee_name}\n\nIt's now live in TaskFlow. 🎉`);
+      return new Response("ok");
+    }
+    await reply("Reply *confirm* ✅ to create, or *cancel* ❌ to discard."); return new Response("ok");
   }
   return new Response("ok");
 }
@@ -589,7 +777,19 @@ async function parseBody(req: Request) {
   return {};
 }
 
+// Per-boot random secret for in-process AI dispatch impersonation. It never leaves the
+// process, so external callers cannot forge the x-internal-* headers to impersonate a user.
+const INTERNAL_SECRET = crypto.randomUUID();
 async function getAuthUser(req: Request): Promise<AppUser | null> {
+  const internalSecret = req.headers.get("x-internal-secret");
+  if (internalSecret) {
+    if (internalSecret !== INTERNAL_SECRET) return null;
+    const uid = req.headers.get("x-internal-user") || "";
+    if (!uid) return null;
+    const { data: ip } = await supabase.from("profiles").select("email, role, org_id").eq("id", uid).maybeSingle();
+    if (!ip) return null;
+    return { id: uid, email: (ip as any).email, role: (ip as any).role, org_id: (ip as any).org_id };
+  }
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return null;
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -598,11 +798,24 @@ async function getAuthUser(req: Request): Promise<AppUser | null> {
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return null;
 
-  const { data: profile } = await supabase
+  let { data: profile } = await supabase
     .from("profiles")
     .select("role, org_id")
     .eq("id", data.user.id)
     .maybeSingle();
+
+  // First login via an external provider (Google) has no profile row yet. Create a
+  // minimal one (no org) so the app can route the user into onboarding.
+  if (!profile) {
+    const meta = (data.user.user_metadata ?? {}) as Record<string, string>;
+    const fullName = meta.full_name || meta.name || (data.user.email ?? "").split("@")[0] || "New user";
+    const { data: created } = await supabase
+      .from("profiles")
+      .insert([{ id: data.user.id, email: data.user.email, full_name: fullName, role: "employee", org_id: null }])
+      .select("role, org_id")
+      .maybeSingle();
+    profile = created ?? { role: "employee", org_id: null } as any;
+  }
 
   if (!profile) return null;
 
@@ -1124,28 +1337,16 @@ async function handleAuthSignup(req: Request) {
     email,
     password,
     email_confirm: true,
-    user_metadata: { full_name: fullName, role: "admin" },
+    user_metadata: { full_name: fullName },
   });
   if (error) return json({ error: error.message }, error.status || 400);
 
   const user = created.user;
-  let orgId: string | null = null;
-  const { data: org } = await supabase
-    .from("organizations")
-    .insert([{ name: `${fullName}'s workspace` }])
-    .select("id")
-    .single();
-  orgId = org?.id ?? null;
-
+  // No org yet — the signup wizard (verify phone -> create org OR join by 6-digit code)
+  // decides. Admin-created users (POST /admin/users) still get an org immediately.
   if (user) {
     await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        email,
-        full_name: fullName,
-        role: "admin",
-        org_id: orgId,
-      },
+      { id: user.id, email, full_name: fullName, role: "employee", org_id: null },
       { onConflict: "id" },
     );
   }
@@ -1209,7 +1410,29 @@ async function handleAuthMe(req: Request) {
 
   const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   if (error) return json({ error: error.message }, 500);
-  return json(data);
+
+  // Onboarding routing info (additive — existing fields are unchanged).
+  let org: any = null;
+  if (data.org_id) {
+    const { data: o } = await supabase.from("organizations").select("id, name, org_uid").eq("id", data.org_id).maybeSingle();
+    org = o ?? null;
+  }
+  let joinRequest: any = null;
+  if (!data.org_id) {
+    const { data: jr } = await supabase.from("org_join_requests")
+      .select("id, status, org_id, created_at").eq("profile_id", user.id)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    joinRequest = jr ?? null;
+  }
+  const status = data.org_id
+    ? "active"
+    : joinRequest?.status === "pending"
+      ? "pending_approval"
+      : joinRequest?.status === "rejected"
+        ? "rejected"
+        : "needs_onboarding";
+
+  return json({ ...data, org, join_request: joinRequest, status, needs_onboarding: status === "needs_onboarding" });
 }
 
 async function handleAuthProfiles(req: Request) {
@@ -1222,6 +1445,446 @@ async function handleAuthProfiles(req: Request) {
   const { data, error } = await pq;
   if (error) return json({ error: error.message }, 500);
   return json(data ?? []);
+}
+
+// ── In-app AI assistant (web UI: POST /ai/query) ──
+// Answers questions about the org's tasks using OpenRouter. Key + model come from env OR
+// public.app_settings ('openrouter_api_key' / 'openrouter_model') so they're SQL-settable.
+async function openrouterKey(): Promise<string> {
+  return Deno.env.get("OPENROUTER_API_KEY") || (await getAppSetting("openrouter_api_key"));
+}
+async function openrouterModel(): Promise<string> {
+  return Deno.env.get("OPENROUTER_MODEL") || (await getAppSetting("openrouter_model")) || "poolside/laguna-xs-2.1:free";
+}
+function stripThinkTags(s: string): string { // some free models leak <think>…</think>
+  let t = String(s || "");
+  const i = t.lastIndexOf("</think>");
+  if (i >= 0) t = t.slice(i + "</think>".length);
+  return t.replace(/<\/?think>/gi, "").trim();
+}
+// The model returns ONE JSON object (maybe fenced / with leaked reasoning); extract it.
+function aiExtractJson(s: string): any | null {
+  let t = stripThinkTags(s || "");
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1];
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b < 0 || b < a) return null;
+  try { return JSON.parse(t.slice(a, b + 1)); } catch { return null; }
+}
+function aiNormDate(s: any): string | null { // accept YYYY-MM-DD or DD-MM-YYYY
+  if (s === null || s === undefined || s === "") return null;
+  const str = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const m = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : null;
+}
+function aiPriority(p: any): string {
+  const s = String(p || "").toLowerCase();
+  if (s.startsWith("hi") || s === "urgent" || s === "h") return "high";
+  if (s.startsWith("lo") || s === "l") return "low";
+  return "medium";
+}
+function aiStatus(s: any, isMeeting: boolean): string | null {
+  const x = String(s || "").toLowerCase().replace(/\s+/g, "_");
+  if (x.startsWith("compl") || x === "done" || x === "finished") return "completed";
+  if (isMeeting) {
+    if (x.startsWith("sched") || x === "upcoming") return "scheduled";
+    if (x.startsWith("cancel")) return "cancelled";
+    return null;
+  }
+  if (x === "in_progress" || x === "inprogress" || x.startsWith("progress") || x === "doing" || x === "started") return "in_progress";
+  if (x.startsWith("block")) return "blocked";
+  if (x.startsWith("pend") || x === "todo" || x === "to_do" || x === "open") return "pending";
+  return null;
+}
+function aiGenPassword(): string {
+  const c = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let s = ""; for (let i = 0; i < 10; i++) s += c[Math.floor(Math.random() * c.length)];
+  return "Tf" + s + "!";
+}
+function aiFriendlyErr(r: { status: number; data: any }): string {
+  if (r.status === 403) return "⚠️ You don't have permission to do that.";
+  const m = r.data?.error || r.data?.detail;
+  return "⚠️ " + (m || `Couldn't complete that (error ${r.status}).`);
+}
+// Run an internal API call as the SAME user (reuses each handler's auth + permission rules).
+async function aiDispatch(userId: string, method: string, path: string, body: any): Promise<{ ok: boolean; status: number; data: any }> {
+  const headers = new Headers({ "content-type": "application/json", "x-internal-secret": INTERNAL_SECRET, "x-internal-user": userId });
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && method !== "DELETE") init.body = JSON.stringify(body || {});
+  const sub = new Request("https://internal" + path, init);
+  let resp: Response | null | undefined = null;
+  if (path.startsWith("/tasks")) resp = await handleTasks(sub, path);
+  else if (path.startsWith("/meetings")) resp = await handleMeetings(sub, path);
+  else if (path.startsWith("/projects")) resp = await handleProjects(sub, path);
+  else if (path.startsWith("/admin")) resp = await handleAdmin(sub, path);
+  if (!resp) return { ok: false, status: 404, data: { error: "Unsupported operation" } };
+  let data: any = null; try { data = await resp.json(); } catch { /* */ }
+  return { ok: resp.ok, status: resp.status, data };
+}
+
+// AI assistant + controller: natural language → answer OR one app operation.
+// The model only emits a small JSON action; ALL execution + permissions happen here.
+async function handleAIQuery(req: Request): Promise<Response> {
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  let question = "";
+  try { question = String((((await req.json()) as any) || {}).question || "").trim(); } catch { /* */ }
+  if (!question) return json({ error: "Question is required" }, 400);
+  return json({ answer: await runAiAssistant(auth.user, question) });
+}
+
+// Shared AI assistant + controller core — used by the web (/ai/query) AND the WhatsApp
+// "TaskFlow-AI" mode. Returns a short human message (never JSON). Ops execute AS `user`
+// (permissions enforced by the same handlers the dashboard uses).
+async function runAiAssistant(user: AppUser & { email?: string }, question: string): Promise<string> {
+  const key = await openrouterKey();
+  const model = await openrouterModel();
+  if (!key || !model) return "⚠️ The AI assistant isn't configured yet.";
+
+  const org = user.org_id;
+  const [membersRes, projectsRes, tasksRes, meetingsRes] = await Promise.all([
+    supabase.from("profiles").select("id, full_name, email, role").eq("org_id", org),
+    supabase.from("projects").select("id, name").eq("org_id", org),
+    (() => { let q = supabase.from("tasks").select("id, title, status, priority, due_date, assignee_id, project_id").order("created_at", { ascending: false }).limit(60); if (org) q = q.eq("org_id", org); if (user.role !== "admin") q = q.eq("assignee_id", user.id); return q; })(),
+    (() => { let q = supabase.from("meetings").select("id, title, status, priority, meeting_date, assignee_id, project_id").order("created_at", { ascending: false }).limit(40); if (org) q = q.eq("org_id", org); if (user.role !== "admin") q = q.eq("assignee_id", user.id); return q; })(),
+  ]);
+  const members = (membersRes.data || []) as any[];
+  const projects = (projectsRes.data || []) as any[];
+  const tasksCtx = (tasksRes.data || []) as any[];
+  const meetingsCtx = (meetingsRes.data || []) as any[];
+  const nameById = new Map(members.map((m) => [m.id, m.full_name || m.email]));
+  const userName = nameById.get(user.id) || user.email || "the current user";
+  const today = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10); // IST
+
+  const nrm = (s: any) => String(s ?? "").trim().toLowerCase();
+  const pick = (list: any[], qq: any, fields: string[]): { status: "ok"; item: any } | { status: "none" | "ambiguous" } => {
+    const q = nrm(qq); if (!q) return { status: "none" };
+    let c = list.filter((x) => fields.some((f) => nrm(x[f]) === q));
+    if (c.length === 0) c = list.filter((x) => fields.some((f) => nrm(x[f]).includes(q)));
+    if (c.length === 1) return { status: "ok", item: c[0] };
+    return { status: c.length > 1 ? "ambiguous" : "none" };
+  };
+  const resolveAssignee = (name: any): { status: "ok"; id: string; label: string } | { status: "empty" | "none" | "ambiguous" } => {
+    if (name === undefined || name === null || nrm(name) === "") return { status: "empty" };
+    if (["me", "myself", "i", nrm(userName)].includes(nrm(name))) return { status: "ok", id: user.id, label: userName };
+    const r = pick(members, name, ["full_name", "email"]);
+    return r.status === "ok" ? { status: "ok", id: r.item.id, label: r.item.full_name || r.item.email } : { status: r.status };
+  };
+  const A = (msg: string) => msg;
+
+  // Context for the model: names it can reference + current data for answering questions.
+  const ctx = {
+    today,
+    me: userName,
+    my_role: user.role,
+    members: members.map((m) => ({ name: m.full_name || m.email, role: m.role })),
+    projects: projects.map((p) => p.name),
+    tasks: tasksCtx.map((t) => ({ title: t.title, status: t.status, priority: t.priority, due: t.due_date, assignee: nameById.get(t.assignee_id) || null })),
+    meetings: meetingsCtx.map((m) => ({ title: m.title, status: m.status, date: m.meeting_date, assignee: nameById.get(m.assignee_id) || null })),
+  };
+  const systemPrompt = `You are TaskFlow's AI assistant AND controller. You either ANSWER a question or perform ONE operation.
+Today is ${today}. Current user: "${userName}" (role: ${user.role}).
+Output ONLY one complete, valid JSON object — nothing before or after it, no code fences, no reasoning, no <think>. Keep any "message"/"answer" under 300 characters.
+Use names EXACTLY as they appear in the data. If a referenced person/task/meeting/project is not in the data, use op "clarify". If the user just greets or chats, use op "answer".
+When asked to create something, ALWAYS emit the create op (duplicates are allowed) — never refuse because a similar item already exists.
+Resolve relative dates to absolute YYYY-MM-DD using today. "me"/"myself"/"I" = the current user.
+
+Ops:
+{"op":"answer","message":"<answer using the data>"}
+{"op":"clarify","message":"<what you need>"}
+{"op":"create_task","title","assignee?","priority?":"low|medium|high","due_date?":"YYYY-MM-DD","project?","description?"}
+{"op":"update_task","target":"<task title>","fields":{"title?","status?":"pending|in_progress|completed|blocked","priority?","due_date?","assignee?","project?","description?"}}
+{"op":"delete_task","target":"<task title>"}
+{"op":"create_meeting","title","assignee?","priority?","date?":"YYYY-MM-DD","project?","description?"}
+{"op":"update_meeting","target":"<meeting title>","fields":{"title?","status?":"scheduled|completed|cancelled","priority?","date?","assignee?","project?","description?"}}
+{"op":"delete_meeting","target":"<meeting title>"}
+{"op":"create_project","name","description?"}
+{"op":"create_user","fullName","email","password?","role?":"admin|employee","phone?"}
+{"op":"update_user","target":"<member name>","fields":{"fullName?","phone?"}}
+{"op":"set_password","target":"<member name>","password?"}
+{"op":"delete_user","target":"<member name>"}`;
+
+  const callModel = async (m: string, ms: number): Promise<string | null> => {
+    const r = await fetchTimeout("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json", "HTTP-Referer": "https://taskflow.unimisk.com", "X-Title": "TaskFlow" },
+      body: JSON.stringify({ model: m, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: `DATA:\n${JSON.stringify(ctx)}\n\nUser: ${question}` }], max_tokens: 700, temperature: 0 }),
+    }, ms);
+    if (!r || !r.ok) return null;
+    try { return stripThinkTags((await r.json())?.choices?.[0]?.message?.content || ""); } catch { return null; }
+  };
+  const raw = (await callModel(model, 15000)) || (await callModel("nvidia/nemotron-3-ultra-550b-a55b:free", 7000));
+  if (!raw) return "⚠️ The AI is busy right now. Please try again in a moment.";
+
+  const act = aiExtractJson(raw);
+  if (!act || !act.op) {
+    // NEVER surface raw/garbled model output (e.g. truncated JSON). Salvage a human message
+    // if one is present, otherwise ask the user to rephrase.
+    const salv = raw.match(/"(?:message|answer|reply)"\s*:\s*"([^"]{1,600})/);
+    if (salv) return A(salv[1].replace(/\\n/g, "\n").trim());
+    if (/[{}\[\]<>]|"op"/.test(raw) || raw.length > 500) return A("🤔 I didn't quite catch that. Try rephrasing — e.g. *add a task to call Preet tomorrow, high priority*.");
+    return A(raw.trim() || "🤔 I didn't catch that. Please try again.");
+  }
+  const op = String(act.op).toLowerCase();
+  const f = act.fields || act;
+
+  try {
+    if (op === "answer" || op === "clarify") { const m = String(act.message || act.answer || "").trim(); return A(m || "🤔 I didn't catch that. Please rephrase."); }
+
+    if (op === "create_task" || op === "create_meeting") {
+      const isM = op === "create_meeting";
+      const title = String(act.title || "").trim();
+      if (!title) return A("⚠️ What should it be called?");
+      const body: any = { title, description: act.description || null, priority: aiPriority(act.priority) };
+      const date = aiNormDate(act.date ?? act.due_date ?? act.meeting_date);
+      if (isM) body.meeting_date = date; else body.due_date = date;
+      let projLabel = "";
+      if (act.project && nrm(act.project) !== "none") {
+        const pr = pick(projects, act.project, ["name"]);
+        if (pr.status !== "ok") return A(`⚠️ I couldn't find a project called "${act.project}".`);
+        body.project_id = pr.item.id; projLabel = pr.item.name;
+      }
+      const ra = resolveAssignee(act.assignee);
+      let asg = "";
+      if (ra.status === "ok") { body.assignee_ids = [ra.id]; asg = ra.label; }
+      else if (ra.status === "ambiguous") return A(`⚠️ More than one person matches "${act.assignee}". Who exactly?`);
+      else if (ra.status === "none") return A(`⚠️ I couldn't find "${act.assignee}" in your team.`);
+      const r = await aiDispatch(user.id,"POST", isM ? "/meetings" : "/tasks", body);
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`✅ ${isM ? "Meeting" : "Task"} *${title}* created${asg ? ` and assigned to ${asg}` : ""}${date ? `, ${isM ? "on" : "due"} ${waFmtDate(date)}` : ""}, ${aiPriority(act.priority)} priority${projLabel ? `, project ${projLabel}` : ""}. It's on the dashboard now.`);
+    }
+
+    if (op === "update_task" || op === "update_meeting") {
+      const isM = op === "update_meeting";
+      const hit = pick(isM ? meetingsCtx : tasksCtx, act.target, ["title"]);
+      if (hit.status === "ambiguous") return A(`⚠️ More than one ${isM ? "meeting" : "task"} matches "${act.target}". Be more specific?`);
+      if (hit.status !== "ok") return A(`⚠️ I couldn't find a ${isM ? "meeting" : "task"} called "${act.target}".`);
+      const id = hit.item.id;
+      const body: any = {}; const changes: string[] = [];
+      if (f.title) { body.title = String(f.title).trim(); changes.push(`title → ${body.title}`); }
+      if (f.description !== undefined) { body.description = f.description; changes.push("description updated"); }
+      if (f.priority) { body.priority = aiPriority(f.priority); changes.push(`priority → ${body.priority}`); }
+      if (f.due_date !== undefined || f.date !== undefined || f.meeting_date !== undefined) {
+        const d = aiNormDate(f.due_date ?? f.date ?? f.meeting_date);
+        if (isM) body.meeting_date = d; else body.due_date = d;
+        changes.push(`${isM ? "date" : "due"} → ${d ? waFmtDate(d) : "none"}`);
+      }
+      if (f.project !== undefined) {
+        if (f.project === null || nrm(f.project) === "none") { body.project_id = null; changes.push("project → none"); }
+        else { const pr = pick(projects, f.project, ["name"]); if (pr.status !== "ok") return A(`⚠️ I couldn't find a project called "${f.project}".`); body.project_id = pr.item.id; changes.push(`project → ${pr.item.name}`); }
+      }
+      if (f.assignee) { const ra = resolveAssignee(f.assignee); if (ra.status !== "ok") return A(`⚠️ I couldn't find "${f.assignee}" in your team.`); body.assignee_ids = [ra.id]; changes.push(`assignee → ${ra.label}`); }
+      if (Object.keys(body).length) { const r = await aiDispatch(user.id,"PATCH", `/${isM ? "meetings" : "tasks"}/${id}`, body); if (!r.ok) return A(aiFriendlyErr(r)); }
+      if (f.status) {
+        const st = aiStatus(f.status, isM);
+        if (!st) return A(`⚠️ "${f.status}" isn't a valid status.`);
+        const r = await aiDispatch(user.id,"PATCH", `/${isM ? "meetings" : "tasks"}/${id}/status`, { status: st });
+        if (!r.ok) return A(aiFriendlyErr(r));
+        changes.push(`status → ${st}`);
+      }
+      if (!changes.length) return A(`⚠️ What would you like to change about "${hit.item.title}"?`);
+      return A(`✅ Updated ${isM ? "meeting" : "task"} *${hit.item.title}* — ${changes.join(", ")}.`);
+    }
+
+    if (op === "delete_task" || op === "delete_meeting") {
+      const isM = op === "delete_meeting";
+      const hit = pick(isM ? meetingsCtx : tasksCtx, act.target, ["title"]);
+      if (hit.status !== "ok") return A(`⚠️ I couldn't uniquely find a ${isM ? "meeting" : "task"} called "${act.target}".`);
+      const r = await aiDispatch(user.id,"DELETE", `/${isM ? "meetings" : "tasks"}/${hit.item.id}`, {});
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`🗑️ Deleted ${isM ? "meeting" : "task"} *${hit.item.title}*.`);
+    }
+
+    if (op === "create_project") {
+      const name = String(act.name || act.title || "").trim();
+      if (!name) return A("⚠️ What should the project be called?");
+      const r = await aiDispatch(user.id,"POST", "/projects", { name, description: act.description || null });
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`✅ Project *${name}* created.`);
+    }
+
+    if (op === "create_user") {
+      const fullName = String(act.fullName || act.name || "").trim();
+      const email = String(act.email || "").trim();
+      if (!fullName) return A("⚠️ What's the new user's full name?");
+      if (!email) return A(`⚠️ What email address should I use for ${fullName}?`);
+      const role = nrm(act.role) === "admin" ? "admin" : "employee";
+      const explicit = !!String(act.password || "").trim();
+      const password = String(act.password || "").trim() || aiGenPassword();
+      const r = await aiDispatch(user.id,"POST", "/admin/users", { email, password, fullName, role, phone: act.phone ? String(act.phone).trim() : "" });
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`✅ Created ${role} *${fullName}* (${email}).${explicit ? "" : `\nTemporary password: *${password}* — share it securely and have them change it.`}`);
+    }
+
+    if (op === "update_user") {
+      const hit = pick(members, act.target || act.name, ["full_name", "email"]);
+      if (hit.status !== "ok") return A(`⚠️ I couldn't find "${act.target || act.name}" in your team.`);
+      const body: any = {}; const changes: string[] = [];
+      if (f.fullName || f.full_name) { body.fullName = String(f.fullName || f.full_name).trim(); changes.push(`name → ${body.fullName}`); }
+      if (f.phone !== undefined) { body.phone = f.phone ? String(f.phone).trim() : ""; changes.push(`phone → ${body.phone || "cleared"}`); }
+      if (!changes.length) return A(`⚠️ What should I change for ${hit.item.full_name || hit.item.email}?`);
+      const r = await aiDispatch(user.id,"PATCH", `/admin/users/${hit.item.id}`, body);
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`✅ Updated *${hit.item.full_name || hit.item.email}* — ${changes.join(", ")}.`);
+    }
+
+    if (op === "set_password") {
+      const hit = pick(members, act.target || act.name, ["full_name", "email"]);
+      if (hit.status !== "ok") return A(`⚠️ I couldn't find "${act.target || act.name}".`);
+      const explicit = !!String(act.password || "").trim();
+      const password = String(act.password || "").trim() || aiGenPassword();
+      const r = await aiDispatch(user.id,"POST", `/admin/users/${hit.item.id}/password`, { password });
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`✅ Password updated for *${hit.item.full_name || hit.item.email}*.${explicit ? "" : `\nNew password: *${password}*`}`);
+    }
+
+    if (op === "delete_user") {
+      const hit = pick(members, act.target || act.name, ["full_name", "email"]);
+      if (hit.status !== "ok") return A(`⚠️ I couldn't find "${act.target || act.name}".`);
+      const r = await aiDispatch(user.id,"DELETE", `/admin/users/${hit.item.id}`, {});
+      if (!r.ok) return A(aiFriendlyErr(r));
+      return A(`🗑️ Removed user *${hit.item.full_name || hit.item.email}*.`);
+    }
+
+    return A(String(act.message || act.answer || "🤔 I didn't catch that. Try, e.g., *add a task…* or *what's overdue?*")); // unknown op
+  } catch (e) {
+    console.error("[ai] op error:", (e as Error)?.message);
+    return A("⚠️ Something went wrong while doing that. Please try again.");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Signup onboarding: WhatsApp 4-digit OTP + "create org" / "join org by 6-digit code".
+// OTP is required at SIGNUP only — login never asks for it. Admin-created users
+// (POST /admin/users) already have an org, so they skip all of this.
+// ─────────────────────────────────────────────────────────────────────────────
+function normPhoneDigits(input: unknown): string {
+  let d = String(input ?? "").replace(/\D+/g, "");
+  if (!d) return "";
+  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);  // trunk zero
+  if (d.length === 10) d = OPENWA_DEFAULT_CC + d;            // bare local -> add country code
+  return d;
+}
+function genOtpCode(): string { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+async function phoneTakenBy(e164: string, exceptProfileId?: string): Promise<boolean> {
+  const { data } = await supabase.from("profiles").select("id").eq("phone", e164).maybeSingle();
+  return !!data && data.id !== exceptProfileId;
+}
+
+async function handleOtpSend(req: Request) {
+  const body = await parseBody(req) as any;
+  const digits = normPhoneDigits(body.phone);
+  if (digits.length < 11) return json({ error: "Enter a valid mobile number with country code." }, 400);
+  const e164 = "+" + digits;
+  if (await phoneTakenBy(e164)) return json({ error: "This mobile number is already registered." }, 409);
+
+  const { data: prev } = await supabase.from("phone_otps").select("created_at").eq("phone", digits).maybeSingle();
+  if (prev && Date.now() - new Date(prev.created_at).getTime() < 30_000) {
+    return json({ error: "Please wait a few seconds before requesting another code." }, 429);
+  }
+  const code = genOtpCode();
+  const { error } = await supabase.from("phone_otps").upsert({
+    phone: digits, code, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+    attempts: 0, verified: false, created_at: new Date().toISOString(),
+  }, { onConflict: "phone" });
+  if (error) return json({ error: "Could not create a verification code. Please try again." }, 500);
+
+  await openwaSendText(`${digits}@c.us`,
+    `🔐 *TaskFlow verification*\n\nYour code is *${code}*\nIt expires in 10 minutes.\n\nIf you didn't request this, ignore this message.`);
+  return json({ ok: true, sent_to: e164, expires_in: 600 });
+}
+
+async function handleOtpVerify(req: Request) {
+  const body = await parseBody(req) as any;
+  const digits = normPhoneDigits(body.phone);
+  const code = String(body.code ?? "").trim();
+  if (!digits || !/^\d{4}$/.test(code)) return json({ error: "Enter the 4-digit code." }, 400);
+
+  const { data: row } = await supabase.from("phone_otps").select("*").eq("phone", digits).maybeSingle();
+  if (!row) return json({ error: "Request a code first." }, 400);
+  if (new Date(row.expires_at).getTime() < Date.now()) return json({ error: "That code expired. Request a new one." }, 400);
+  if ((row.attempts ?? 0) >= 5) return json({ error: "Too many attempts. Request a new code." }, 429);
+  if (String(row.code) !== code) {
+    await supabase.from("phone_otps").update({ attempts: (row.attempts ?? 0) + 1 }).eq("phone", digits);
+    return json({ error: "Incorrect code. Please try again." }, 400);
+  }
+  await supabase.from("phone_otps").update({ verified: true }).eq("phone", digits);
+  return json({ ok: true, phone: "+" + digits });
+}
+
+// Public: confirm an org exists for a 6-digit code before the user commits to joining.
+async function handleOrgLookup(req: Request) {
+  const code = (new URL(req.url).searchParams.get("code") || "").replace(/\D+/g, "");
+  if (code.length !== 6) return json({ error: "Enter the 6-digit organization code." }, 400);
+  const { data: org } = await supabase.from("organizations").select("id, name").eq("org_uid", code).maybeSingle();
+  if (!org) return json({ error: "No organization found with that code." }, 404);
+  return json({ id: org.id, name: org.name });
+}
+
+async function handleOnboarding(req: Request) {
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  const body = await parseBody(req) as any;
+
+  const { data: me } = await supabase.from("profiles").select("id, org_id, full_name, email").eq("id", user.id).maybeSingle();
+  if (!me) return json({ error: "Profile not found." }, 404);
+  if (me.org_id) return json({ error: "You already belong to an organization." }, 400);
+
+  const digits = normPhoneDigits(body.phone);
+  const e164 = "+" + digits;
+  const { data: otp } = await supabase.from("phone_otps").select("verified").eq("phone", digits).maybeSingle();
+  if (!otp?.verified) return json({ error: "Please verify your mobile number first." }, 400);
+  if (await phoneTakenBy(e164, user.id)) return json({ error: "This mobile number is already registered." }, 409);
+
+  const mode = String(body.mode ?? "").toLowerCase();
+
+  if (mode === "create") {
+    const orgName = String(body.orgName ?? "").trim();
+    if (!orgName) return json({ error: "Organization name is required." }, 400);
+    const { data: org, error: oErr } = await supabase.from("organizations")
+      .insert([{ name: orgName }]).select("id, name, org_uid").single();   // org_uid auto-generated
+    if (oErr || !org) return json({ error: oErr?.message || "Could not create organization." }, 400);
+    const { error: pErr } = await supabase.from("profiles")
+      .update({ phone: e164, phone_verified: true, role: "admin", org_id: org.id }).eq("id", user.id);
+    if (pErr) return json({ error: pErr.message }, 400);
+    await supabase.from("phone_otps").delete().eq("phone", digits);
+    return json({ status: "active", role: "admin", org });
+  }
+
+  if (mode === "join") {
+    const code = String(body.orgCode ?? "").replace(/\D+/g, "");
+    if (code.length !== 6) return json({ error: "Enter the 6-digit organization code." }, 400);
+    const { data: org } = await supabase.from("organizations").select("id, name").eq("org_uid", code).maybeSingle();
+    if (!org) return json({ error: "No organization found with that code." }, 404);
+
+    // Stay org-less until an admin approves.
+    await supabase.from("profiles")
+      .update({ phone: e164, phone_verified: true, role: "employee", org_id: null }).eq("id", user.id);
+    const { error: jErr } = await supabase.from("org_join_requests").upsert({
+      org_id: org.id, profile_id: user.id, status: "pending",
+      created_at: new Date().toISOString(), decided_at: null, decided_by: null,
+    }, { onConflict: "org_id,profile_id" });
+    if (jErr) return json({ error: jErr.message }, 400);
+    await supabase.from("phone_otps").delete().eq("phone", digits);
+
+    scheduleNotify(async () => {
+      const { data: admins } = await supabase.from("profiles")
+        .select("phone").eq("org_id", org.id).eq("role", "admin").not("phone", "is", null);
+      for (const a of (admins || []) as any[]) {
+        const chat = openwaChatId(a.phone);
+        if (chat) {
+          await openwaSendText(chat,
+            `👤 *New join request*\n\n${me.full_name || me.email} wants to join *${org.name}*.\n\nApprove or reject it in TaskFlow → Users → Join requests.`);
+        }
+      }
+    });
+    return json({ status: "pending_approval", org: { id: org.id, name: org.name } });
+  }
+
+  return json({ error: "Choose to create a new organization or join an existing one." }, 400);
 }
 
 async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response | null> {
@@ -2914,6 +3577,50 @@ async function handleAdmin(req: Request, path: string) {
     return json({ message: "User deleted", user_id: targetId });
   }
 
+  // ── Join requests (users who signed up and entered this org's 6-digit code) ──
+  if (req.method === "GET" && path === "/admin/join-requests") {
+    if (!user.org_id) return json([]);
+    const { data, error } = await supabase.from("org_join_requests")
+      .select("id, status, created_at, decided_at, profile:profiles!profile_id(id, full_name, email, phone)")
+      .eq("org_id", user.org_id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) return json({ error: error.message }, 500);
+    return json(data ?? []);
+  }
+
+  const jrMatch = path.match(/^\/admin\/join-requests\/([^/]+)\/(approve|reject)$/);
+  if (req.method === "POST" && jrMatch) {
+    const [, reqId, action] = jrMatch;
+    if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+    const { data: jr } = await supabase.from("org_join_requests")
+      .select("id, org_id, profile_id, status").eq("id", reqId).maybeSingle();
+    if (!jr || jr.org_id !== user.org_id) return json({ error: "Request not found in your organization." }, 404);
+    if (jr.status !== "pending") return json({ error: "This request has already been decided." }, 400);
+
+    if (action === "approve") {
+      const { error: pErr } = await supabase.from("profiles")
+        .update({ org_id: jr.org_id, role: "employee" }).eq("id", jr.profile_id);
+      if (pErr) return json({ error: pErr.message }, 400);
+    }
+    const { error: uErr } = await supabase.from("org_join_requests").update({
+      status: action === "approve" ? "approved" : "rejected",
+      decided_at: new Date().toISOString(), decided_by: user.id,
+    }).eq("id", reqId);
+    if (uErr) return json({ error: uErr.message }, 400);
+
+    scheduleNotify(async () => {
+      const { data: p } = await supabase.from("profiles").select("phone").eq("id", jr.profile_id).maybeSingle();
+      const chat = p?.phone ? openwaChatId(p.phone) : null;
+      if (chat) {
+        await openwaSendText(chat, action === "approve"
+          ? "✅ Your request to join TaskFlow was *approved*. You can log in now."
+          : "❌ Your request to join TaskFlow was *declined*. Please contact your administrator.");
+      }
+    });
+    return json({ ok: true, status: action === "approve" ? "approved" : "rejected" });
+  }
+
   if (req.method === "POST" && path === "/admin/send-reminders") {
     return json({ error: "Not implemented in edge function yet" }, 501);
   }
@@ -2937,6 +3644,15 @@ Deno.serve(async (req): Promise<Response> => {
     if (req.method === "POST" && path === "/auth/login") return await handleAuthLogin(req);
     if (req.method === "GET" && path === "/auth/me") return await handleAuthMe(req);
     if (req.method === "GET" && path === "/auth/profiles") return await handleAuthProfiles(req);
+
+    // Signup onboarding: WhatsApp OTP + create/join org (OTP at signup only, never at login)
+    if (req.method === "POST" && path === "/auth/otp/send") return await handleOtpSend(req);
+    if (req.method === "POST" && path === "/auth/otp/verify") return await handleOtpVerify(req);
+    if (req.method === "GET" && path === "/auth/org/lookup") return await handleOrgLookup(req);
+    if (req.method === "POST" && path === "/auth/onboarding") return await handleOnboarding(req);
+
+    // In-app AI assistant (web UI)
+    if (req.method === "POST" && path === "/ai/query") return await handleAIQuery(req);
 
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;

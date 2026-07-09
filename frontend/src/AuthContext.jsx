@@ -232,6 +232,19 @@ export function AuthProvider({ children }) {
     }
   }
 
+  /**
+   * Google OAuth. Supabase redirects to Google, then back to `/app`, where the
+   * onboarding gate decides: verify phone -> create org OR join by 6-digit code.
+   * First-time Google users get their profile created server-side on `/auth/me`.
+   */
+  async function signInWithGoogle() {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/app` },
+    });
+    if (error) throw new Error(error.message || 'Could not start Google sign-in');
+  }
+
   async function signOut() {
     hydratedUserIdRef.current = null;
     setApiAccessToken(null);
@@ -241,7 +254,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signInWithGoogle, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
