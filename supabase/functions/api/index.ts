@@ -586,6 +586,117 @@ async function waBuildCalendar(profile: any): Promise<string> {
   return L.join("\n");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 24-hour "due soon" WhatsApp reminders. Triggered hourly by host cron:
+//   POST /cron/reminders   (header X-Cron-Secret: app_settings 'cron_secret')
+// An item is announced once, the first hour it falls inside the next 24h — so a
+// missed cron run still reminds (late) rather than skipping. public.reminders_sent
+// is the dedupe ledger. Read-only w.r.t. tasks/meetings: nothing else is touched.
+// ─────────────────────────────────────────────────────────────────────────────
+const IST_MS = 5.5 * 3600 * 1000;
+async function cronSecret(): Promise<string> {
+  return Deno.env.get("CRON_SECRET") || (await getAppSetting("cron_secret"));
+}
+/** Combine a DATE + optional TIME (stored without a zone, meant as IST) into a real instant. */
+function dueAtFromIst(dateStr: string, timeStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const t = String(timeStr || "09:00:00").slice(0, 8);            // date-only items -> 09:00 IST
+  const asIfUtc = new Date(`${dateStr}T${t.length === 5 ? t + ":00" : t}Z`);
+  if (isNaN(asIfUtc.getTime())) return null;
+  return new Date(asIfUtc.getTime() - IST_MS);                     // that wall-clock was IST
+}
+function fmtIstTime(timeStr: string | null | undefined): string {
+  return timeStr ? ` at ${String(timeStr).slice(0, 5)}` : "";
+}
+/** WhatsApp every assignee of the item who has a phone. Returns how many were messaged. */
+async function remindAssignees(kind: "task" | "meeting", row: any, dueAt: Date): Promise<number> {
+  const ids = new Set<string>();
+  if (row.assignee_id) ids.add(row.assignee_id);
+  const jn = kind === "task" ? "task_assignees" : "meeting_assignees";
+  const fk = kind === "task" ? "task_id" : "meeting_id";
+  const { data: links } = await supabase.from(jn).select("profile_id").eq(fk, row.id);
+  for (const l of (links || []) as any[]) if (l.profile_id) ids.add(l.profile_id);
+  if (!ids.size) return 0;
+
+  const { data: profs } = await supabase.from("profiles").select("id, full_name, phone").in("id", [...ids]);
+  const targets = (profs || []).filter((p: any) => p.phone && String(p.phone).trim());
+  if (!targets.length) return 0;
+
+  let projectName: string | null = null;
+  if (row.project_id) {
+    const { data: pr } = await supabase.from("projects").select("name").eq("id", row.project_id).maybeSingle();
+    projectName = (pr as any)?.name ?? null;
+  }
+  const dateStr = kind === "task" ? row.due_date : row.meeting_date;
+  const timeStr = kind === "task" ? row.due_time : row.meeting_time;
+
+  let sent = 0;
+  for (const p of targets as any[]) {
+    const chat = openwaChatId(p.phone);
+    if (!chat) continue;
+    const L = [
+      kind === "task" ? "⏰ *Reminder — task due in 24 hours*" : "⏰ *Reminder — meeting in 24 hours*", "",
+      `Hi ${p.full_name || "there"},`, "",
+      `*${row.title || "Untitled"}*`,
+      `📅 ${kind === "task" ? "Due" : "When"}: ${waFmtDate(dateStr)}${fmtIstTime(timeStr)}`,
+    ];
+    if (row.priority) L.push(`🚦 Priority: ${capWord(String(row.priority))}`);
+    if (projectName) L.push(`📁 Project: ${projectName}`);
+    L.push("", "— TaskFlow");
+    await openwaSendText(chat, L.join("\n"));
+    sent++;
+  }
+  return sent;
+}
+
+async function handleCronReminders(req: Request): Promise<Response> {
+  const secret = await cronSecret();
+  if (secret && (req.headers.get("x-cron-secret") || "") !== secret) return new Response("forbidden", { status: 403 });
+
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 24 * 3600 * 1000);
+  // Widen the date filter by a day either side so IST/UTC edges can't clip anything.
+  const from = new Date(now.getTime() + IST_MS - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const to = new Date(now.getTime() + IST_MS + 48 * 3600 * 1000).toISOString().slice(0, 10);
+
+  const [tasksRes, meetsRes] = await Promise.all([
+    supabase.from("tasks").select("id, title, due_date, due_time, status, priority, assignee_id, project_id")
+      .not("due_date", "is", null).gte("due_date", from).lte("due_date", to).neq("status", "completed").limit(200),
+    supabase.from("meetings").select("id, title, meeting_date, meeting_time, status, priority, assignee_id, project_id")
+      .not("meeting_date", "is", null).gte("meeting_date", from).lte("meeting_date", to)
+      .neq("status", "completed").neq("status", "cancelled").limit(200),
+  ]);
+
+  const due: Array<{ kind: "task" | "meeting"; row: any; dueAt: Date }> = [];
+  for (const r of (tasksRes.data || []) as any[]) {
+    const d = dueAtFromIst(r.due_date, r.due_time);
+    if (d && d > now && d <= horizon) due.push({ kind: "task", row: r, dueAt: d });
+  }
+  for (const r of (meetsRes.data || []) as any[]) {
+    const d = dueAtFromIst(r.meeting_date, r.meeting_time);
+    if (d && d > now && d <= horizon) due.push({ kind: "meeting", row: r, dueAt: d });
+  }
+  due.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
+
+  let reminded = 0, messages = 0, skipped = 0;
+  for (const item of due.slice(0, 25)) {           // bounded per run; cron repeats hourly
+    // Claim first: on a duplicate key this item was already announced for this due_at.
+    const { error: claimErr } = await supabase.from("reminders_sent")
+      .insert({ kind: item.kind, item_id: item.row.id, due_at: item.dueAt.toISOString(), recipients: 0 });
+    if (claimErr) {
+      if ((claimErr as any).code === "23505") { skipped++; continue; }
+      console.warn("[cron] claim failed:", (claimErr as any).message);
+      continue;
+    }
+    const n = await remindAssignees(item.kind, item.row, item.dueAt);
+    messages += n; reminded++;
+    await supabase.from("reminders_sent").update({ recipients: n })
+      .eq("kind", item.kind).eq("item_id", item.row.id).eq("due_at", item.dueAt.toISOString());
+    console.log(`[cron] reminded ${item.kind} "${item.row.title}" -> ${n} recipient(s)`);
+  }
+  return json({ ok: true, in_window: due.length, reminded, messages, already_sent: skipped });
+}
+
 const WA_AI_INTRO = `🤖 *TaskFlow‑AI* is on!
 
 Just tell me what to do in plain language — e.g.
@@ -3638,6 +3749,9 @@ Deno.serve(async (req): Promise<Response> => {
 
     // Inbound WhatsApp bot webhook (public; validated by shared secret header)
     if (req.method === "POST" && path === "/whatsapp/webhook") return await handleWhatsAppWebhook(req);
+
+    // Hourly cron: 24h due-soon WhatsApp reminders (validated by shared secret header)
+    if (req.method === "POST" && path === "/cron/reminders") return await handleCronReminders(req);
 
     // Auth routes
     if (req.method === "POST" && path === "/auth/signup") return await handleAuthSignup(req);
