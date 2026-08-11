@@ -1,0 +1,12 @@
+# robots.txt for TaskFlow — https://taskflow.unimisk.com
+# Public marketing pages are crawlable; the authenticated app is not.
+
+User-agent: *
+Allow: /
+
+# Authenticated app surfaces (no indexable content — render behind login)
+Disallow: /app
+Disallow: /admin
+Disallow: /dashboard
+
+Sitemap: https://taskflow.unimisk.com/sitemap.xml
