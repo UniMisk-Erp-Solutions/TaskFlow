@@ -8,12 +8,13 @@ const sections = [
   { title: "4. Content ownership", body: `You retain ownership of your customer data. You grant us a limited right to host, process, and transmit it for the purpose of providing and improving the service.` },
   { title: "5. Prohibited use", body: `You agree not to misuse the platform for unlawful, harmful, or unauthorized purposes. Prohibited activities include attempting to breach security, distributing malware, or reverse engineering the service.` },
   { title: "6. Billing and payments", body: `By subscribing to a paid plan, you authorize us to charge applicable fees. Failure to pay may result in restricted access or suspension of your workspace.` },
-  { title: "7. Limitation of liability", body: `To the maximum extent permitted by law, Taskflow will not be liable for indirect, incidental, or consequential damages arising from your use of the platform.` },
+  { title: "7. Limitation of liability", body: `To the maximum extent permitted by law, TaskFlow will not be liable for indirect, incidental, or consequential damages arising from your use of the platform.` },
+  { title: "8. Signing in with Google", body: `You may create or access your account using Google Sign-In. By doing so, you authorize us to receive your basic Google profile information — your name, email address, and profile picture — for the purpose of authenticating you and identifying you within your workspace. We request only non-sensitive scopes and do not access any other Google service. Our handling of this information is described in our Privacy Policy and complies with the Google API Services User Data Policy.` },
 ];
 
 export default function Terms() {
-  const effectiveDate = "15 May 2026";
-  const companyName = "Taskflow";
+  const effectiveDate = "11 August 2026";
+  const companyName = "TaskFlow";
   const supportEmail = "info@unimisk.com";
 
   return (

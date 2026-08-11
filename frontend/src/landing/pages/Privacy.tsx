@@ -19,6 +19,18 @@ const sections = [
     body: `We use your personal information to create and manage user accounts, provide access to workspaces, process subscriptions, deliver product features, send notifications, respond to support requests, and improve our services.`,
   },
   {
+    title: "Signing in with Google",
+    body: `If you choose "Continue with Google", we use Google Sign-In (OAuth 2.0) to authenticate you. Google shares with us only your basic profile information — your name, email address, and profile picture — which we use solely to create and sign in to your TaskFlow account and to identify you within your workspace. We request only the non-sensitive "email", "profile", and "openid" scopes; we do not request or receive access to your Gmail, Google Drive, Google Calendar, Google Contacts, or any other Google service. TaskFlow's use and transfer of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. We never sell Google user data and never use it for advertising. You can review or revoke TaskFlow's access at any time at https://myaccount.google.com/permissions.`,
+  },
+  {
+    title: "Data sharing and disclosure",
+    body: `We do not sell your personal information or Google user data. We share information only with service providers that help us operate the platform (such as hosting and infrastructure) under confidentiality obligations, or when required by law. We do not transfer Google user data to third parties except as necessary to provide or improve the service, for security, or to comply with applicable law.`,
+  },
+  {
+    title: "Data retention and deletion",
+    body: `We retain your personal and workspace information for as long as your account is active. A workspace administrator can remove a user at any time, which deletes that user's profile and any Google Sign-In association. You may also request deletion of your account and associated personal data by emailing us at the address below; we will delete it within a reasonable period, except where retention is required by law.`,
+  },
+  {
     title: "Communications",
     body: `We may send you service-related emails such as account verification, password reset, billing alerts, and important administrative announcements. For marketing communications, you may opt out anytime using the unsubscribe link.`,
   },
@@ -29,8 +41,8 @@ const sections = [
 ];
 
 export default function Privacy() {
-  const effectiveDate = "15 May 2026";
-  const productName = "Taskflow";
+  const effectiveDate = "11 August 2026";
+  const productName = "TaskFlow";
   const supportEmail = "info@unimisk.com";
 
   return (
