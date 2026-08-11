@@ -99,7 +99,7 @@ function onboardingScreen(profile) {
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth();
-  if (loading) return <FullLoader />;
+  if (loading && !profile) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
 
@@ -113,7 +113,7 @@ function RoleRouter() {
 
 function ProtectedAdmin({ children }) {
   const { user, profile, loading } = useAuth();
-  if (loading) return <FullLoader />;
+  if (loading && !profile) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
@@ -125,7 +125,7 @@ function ProtectedAdmin({ children }) {
 
 function ProtectedEmployee({ children }) {
   const { user, profile, loading } = useAuth();
-  if (loading) return <FullLoader />;
+  if (loading && !profile) return <FullLoader />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;

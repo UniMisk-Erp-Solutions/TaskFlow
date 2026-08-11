@@ -140,21 +140,22 @@ export default function Onboarding() {
         </p>
 
         {step === 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <form onSubmit={(e) => { e.preventDefault(); sendOtp(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 8 }}>
               <select className="input" value={cc} onChange={(e) => setCc(e.target.value)} style={{ flex: '0 0 150px' }}>
                 {COUNTRY_CODES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
               </select>
               <input
-                className="input" inputMode="numeric" placeholder="Mobile number" value={local} maxLength={12}
+                className="input" type="tel" name="phone" autoComplete="tel-national" inputMode="numeric"
+                placeholder="Mobile number" value={local} maxLength={12} autoFocus
                 onChange={(e) => setLocal(e.target.value.replace(/\D/g, ''))} style={{ flex: 1 }}
               />
             </div>
             {error && <div className="form-error">{error}</div>}
-            <button className="btn btn-primary btn-lg" disabled={busy} onClick={sendOtp} style={{ justifyContent: 'center' }}>
+            <button type="submit" className="btn btn-primary btn-lg" disabled={busy} style={{ justifyContent: 'center' }}>
               {busy ? <span className="spinner" /> : 'Send code on WhatsApp'}
             </button>
-          </div>
+          </form>
         )}
 
         {step === 2 && (
