@@ -6,9 +6,6 @@ import { useTheme } from "@/src/lib/ThemeContext";
 import { Button } from "../ui/Button";
 import { tone, display, BRAND } from "../../lib/ui";
 
-declare const __TASKFLOW_BUILD__: string;
-const BUILD_STAMP = typeof __TASKFLOW_BUILD__ === "string" ? __TASKFLOW_BUILD__ : "dev";
-
 const NAV_HEIGHT = 64;
 
 const primaryLinks = [
@@ -133,21 +130,6 @@ export const Navbar = () => {
             }}
           >
             Taskflow
-          </span>
-          <span
-            title={`build ${BUILD_STAMP}`}
-            style={{
-              fontSize: 10,
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              color: tone.muted,
-              padding: "2px 6px",
-              borderRadius: 5,
-              border: `1px solid ${tone.border}`,
-              background: tone.card,
-              letterSpacing: "0.02em",
-            }}
-          >
-            {BUILD_STAMP.slice(2, 10)}
           </span>
         </Link>
 
