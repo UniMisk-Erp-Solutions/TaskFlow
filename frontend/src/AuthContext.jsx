@@ -240,7 +240,13 @@ export function AuthProvider({ children }) {
   async function signInWithGoogle() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/app` },
+      options: {
+        redirectTo: `${window.location.origin}/app`,
+        // Always show Google's account chooser, even when the user is already
+        // signed into one Google account / previously authorized the app —
+        // otherwise Google silently auto-selects it and skips the picker.
+        queryParams: { prompt: 'select_account' },
+      },
     });
     if (error) throw new Error(error.message || 'Could not start Google sign-in');
   }
