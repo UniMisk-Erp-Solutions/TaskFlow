@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import MaintenanceGate from './MaintenanceGate';
 
 // Log the build timestamp on every boot so you can verify the exact deployed
 // version from the browser console (handy when CDN / Coolify caching is suspect).
@@ -22,6 +23,11 @@ if (window.location.pathname !== '/' && !window.location.pathname.includes('.'))
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    {/* Outermost wrapper: when the cloud maintenance system flags "taskflow",
+        the app tree below (router, auth/session, theme, Supabase client usage)
+        never mounts. Fail-open — any error renders <App /> normally. */}
+    <MaintenanceGate projectKey="taskflow">
+      <App />
+    </MaintenanceGate>
   </React.StrictMode>
 );
