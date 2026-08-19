@@ -24,9 +24,15 @@ if (window.location.pathname !== '/' && !window.location.pathname.includes('.'))
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     {/* Outermost wrapper: when the cloud maintenance system flags "taskflow",
-        the app tree below (router, auth/session, theme, Supabase client usage)
-        never mounts. Fail-open — any error renders <App /> normally. */}
-    <MaintenanceGate projectKey="taskflow">
+        the gated app tree below (router, auth/session, theme, Supabase usage)
+        is covered by the static maintenance screen. Fail-open — any error
+        renders <App /> normally. `publicPaths` = the backend-free landing /
+        marketing / legal routes that must stay reachable while the app is down.
+        /login and /signup are intentionally NOT listed (they need the backend). */}
+    <MaintenanceGate
+      projectKey="taskflow"
+      publicPaths={["/", "/features", "/pricing", "/about", "/contact", "/security", "/privacy", "/terms", "/docs"]}
+    >
       <App />
     </MaintenanceGate>
   </React.StrictMode>
