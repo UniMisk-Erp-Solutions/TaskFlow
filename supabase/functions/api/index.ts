@@ -892,6 +892,45 @@ const AXYNT_TOOLS = [
   { name: "create_project", description: "Create a project.", params: { org_id: { type: "string(uuid)", required: true }, name: { type: "string", required: true }, description: { type: "string", required: false } } },
 ];
 
+// Helpful default descriptions so the agent knows how to obtain each id.
+const AX_PARAM_DESC: Record<string, string> = {
+  org_id: "The workspace UUID. Get it from list_organizations. Required to scope this operation.",
+  org_uid: "The workspace's 6-digit code (alternative to org_id).",
+  assignee_id: "A person's id (profiles.id) from list_members.",
+  project_id: "A project's id from list_projects.",
+  task_id: "The task's id (from list_tasks).",
+  meeting_id: "The meeting's id (from list_meetings).",
+  due_date: "Due date in YYYY-MM-DD.",
+  due_time: "Due time in HH:MM (24h).",
+  meeting_date: "Meeting date in YYYY-MM-DD.",
+  meeting_time: "Meeting time in HH:MM (24h).",
+  name: "Name text.",
+  title: "Title text.",
+  description: "Free-text description.",
+};
+// Convert our compact param map into a standard JSON Schema object so agent
+// platforms (Axynt / OpenAI / Anthropic style) render params + required correctly.
+function axToSchema(params: Record<string, any>) {
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    const baseType = String(v.type || "string").replace(/\(.*\)/, "") || "string"; // "string(uuid)" -> "string"
+    const fmt = String(v.type || "").match(/\((\w+)\)/);                            // uuid | date | time
+    const prop: any = { type: baseType };
+    const desc = (v.description || AX_PARAM_DESC[k] || "") + (fmt ? ` (${fmt[1]})` : "");
+    if (desc.trim()) prop.description = desc.trim();
+    if (v.enum) prop.enum = v.enum;
+    properties[k] = prop;
+    if (v.required) required.push(k);
+  }
+  return { type: "object", properties, required };
+}
+// Discovery payload: expose params under EVERY common key so Axynt sees them.
+const AXYNT_TOOLS_DISCOVERY = AXYNT_TOOLS.map((t) => {
+  const schema = axToSchema(t.params);
+  return { name: t.name, description: t.description, parameters: schema, input_schema: schema, params: t.params };
+});
+
 // Inbound: Axynt's agent calls TaskFlow tools.
 async function handleAiCallback(req: Request): Promise<Response> {
   const raw = await req.text();
@@ -901,7 +940,7 @@ async function handleAiCallback(req: Request): Promise<Response> {
   // Discovery is a PUBLIC handshake: it only returns the tool schema (no data,
   // no side effects), so it does NOT require a signature — Axynt sends it
   // unsigned, which is why the signed-only version was returning 401.
-  if (body.action === "list_tools") return json({ tools: AXYNT_TOOLS });
+  if (body.action === "list_tools") return json({ tools: AXYNT_TOOLS_DISCOVERY });
 
   // Every data operation must carry a valid HMAC signature.
   const secret = await axyntSecret();
