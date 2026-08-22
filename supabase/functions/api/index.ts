@@ -892,18 +892,28 @@ const AXYNT_TOOLS = [
   { name: "create_project", description: "Create a project.", params: { org_id: { type: "string(uuid)", required: true }, name: { type: "string", required: true }, description: { type: "string", required: false } } },
 ];
 
-// Inbound: Axynt's agent calls TaskFlow tools. HMAC-verified, fail-closed.
+// Inbound: Axynt's agent calls TaskFlow tools.
 async function handleAiCallback(req: Request): Promise<Response> {
+  const raw = await req.text();
+  let body: any;
+  try { body = JSON.parse(raw || "{}"); } catch { return json({ error: "Invalid JSON body" }, 400); }
+
+  // Discovery is a PUBLIC handshake: it only returns the tool schema (no data,
+  // no side effects), so it does NOT require a signature — Axynt sends it
+  // unsigned, which is why the signed-only version was returning 401.
+  if (body.action === "list_tools") return json({ tools: AXYNT_TOOLS });
+
+  // Every data operation must carry a valid HMAC signature.
   const secret = await axyntSecret();
   if (!secret) return json({ error: "AI callback is not configured" }, 503);
-  const raw = await req.text();
   const header = req.headers.get("x-signature") || "";
   const provided = (header.startsWith("sha256=") ? header.slice(7) : header).trim().toLowerCase();
   const expected = await axyntHmacHex(secret, raw);
-  if (!provided || !axyntSafeEqual(provided, expected)) return json({ error: "Invalid signature" }, 401);
-  let body: any;
-  try { body = JSON.parse(raw || "{}"); } catch { return json({ error: "Invalid JSON body" }, 400); }
-  if (body.action === "list_tools") return json({ tools: AXYNT_TOOLS });
+  if (!provided || !axyntSafeEqual(provided, expected)) {
+    // Diagnostic only (HMACs, not the secret) so a real tool-call mismatch is debuggable.
+    console.warn(`[axynt] signature mismatch tool=${body.tool || "?"} has_header=${!!header} provided_len=${provided.length} provided_pre=${provided.slice(0, 8)} expected_pre=${expected.slice(0, 8)}`);
+    return json({ error: "Invalid signature" }, 401);
+  }
   const tool = String(body.tool || req.headers.get("x-axyntai-tool") || "");
   const fn = AXYNT_DISPATCH[tool];
   if (!fn) return json({ error: `Unknown tool: ${tool || "(none)"}` }, 400);
