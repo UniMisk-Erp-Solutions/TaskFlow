@@ -697,6 +697,252 @@ async function handleCronReminders(req: Request): Promise<Response> {
   return json({ ok: true, in_window: due.length, reminded, messages, already_sent: skipped });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Axynt AI integration (two-way, one shared HMAC secret).
+//   Inbound  Axynt -> TaskFlow:  POST /ai-callback   (agent calls TaskFlow tools)
+//   Outbound TaskFlow -> Axynt:  postToAxynt() / POST /ai/axynt   (send a message)
+//   Signature: X-Signature: sha256=<hex HMAC-SHA256 of the RAW body>.
+//   Secret + inbound URL come from app_settings ('axynt_webhook_secret',
+//   'axynt_inbound_url') or env. Inbound FAILS CLOSED (no secret -> 503).
+//   Param keys == Postgres columns (snake_case); id/created_at/updated_at are
+//   never accepted (server-generated). Every operation is scoped to one org_id.
+// ─────────────────────────────────────────────────────────────────────────────
+async function axyntSecret(): Promise<string> {
+  return Deno.env.get("AXYNT_WEBHOOK_SECRET") || (await getAppSetting("axynt_webhook_secret"));
+}
+async function axyntInboundUrl(): Promise<string> {
+  return Deno.env.get("AXYNT_INBOUND_URL") || (await getAppSetting("axynt_inbound_url"));
+}
+async function axyntHmacHex(secret: string, body: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function axyntSafeEqual(a: string, b: string): boolean { // constant-time, equal-length hex
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+const AXYNT_PRIORITIES = ["low", "medium", "high"];
+const AXYNT_TASK_STATUS = ["pending", "in_progress", "completed", "blocked"];
+const AXYNT_MEET_STATUS = ["scheduled", "completed", "cancelled"];
+function axErr(message: string, status = 400) { return { __error: message, __status: status }; }
+function axIsErr(x: any): x is { __error: string; __status: number } { return x && typeof x.__error === "string"; }
+
+async function axResolveOrg(params: any): Promise<string | { __error: string; __status: number }> {
+  const orgId = params?.org_id ? String(params.org_id) : "";
+  const orgUid = params?.org_uid ? String(params.org_uid).replace(/\D+/g, "") : "";
+  if (orgId) { const { data } = await supabase.from("organizations").select("id").eq("id", orgId).maybeSingle(); return data ? orgId : axErr("org_id not found", 404); }
+  if (orgUid) { const { data } = await supabase.from("organizations").select("id").eq("org_uid", orgUid).maybeSingle(); return data ? data.id : axErr("org_uid not found", 404); }
+  return axErr("org_id (or org_uid) is required", 400);
+}
+async function axBelongsToOrg(table: string, id: string, orgId: string): Promise<boolean> {
+  const { data } = await supabase.from(table).select("id").eq("id", id).eq("org_id", orgId).maybeSingle();
+  return !!data;
+}
+
+async function axCreateItem(kind: "task" | "meeting", params: any) {
+  const org = await axResolveOrg(params); if (axIsErr(org)) return org;
+  const title = String(params.title ?? "").trim();
+  if (!title) return axErr("title is required");
+  const priority = params.priority ? String(params.priority).toLowerCase() : "medium";
+  if (!AXYNT_PRIORITIES.includes(priority)) return axErr(`priority must be one of ${AXYNT_PRIORITIES.join(", ")}`);
+  if (params.project_id && !(await axBelongsToOrg("projects", String(params.project_id), org)))
+    return axErr("project_id not found in this organization", 404);
+  let assigneeId: string | null = null;
+  if (params.assignee_id) {
+    const { data } = await supabase.from("profiles").select("id").eq("id", String(params.assignee_id)).eq("org_id", org).maybeSingle();
+    if (!data) return axErr("assignee_id not found in this organization", 404);
+    assigneeId = String(params.assignee_id);
+  }
+  const isM = kind === "meeting";
+  const row: any = {
+    title, description: params.description ?? null, assignee_id: assigneeId,
+    project_id: params.project_id ?? null, priority, org_id: org, created_by: null,
+    status: isM ? "scheduled" : "pending",
+  };
+  if (isM) { row.meeting_date = params.meeting_date ?? null; row.meeting_time = params.meeting_time ?? null; }
+  else { row.due_date = params.due_date ?? null; row.due_time = params.due_time ?? null; }
+  const table = isM ? "meetings" : "tasks";
+  const { data: created, error } = await supabase.from(table).insert([row]).select("*").single();
+  if (error) return axErr(error.message);
+  if (assigneeId) {
+    const jn = isM ? "meeting_assignees" : "task_assignees";
+    const fk = isM ? "meeting_id" : "task_id";
+    await supabase.from(jn).insert([{ [fk]: created.id, profile_id: assigneeId }]);
+  }
+  return created;
+}
+async function axUpdateItem(kind: "task" | "meeting", params: any) {
+  const isM = kind === "meeting";
+  const idKey = isM ? "meeting_id" : "task_id";
+  const id = String(params[idKey] ?? "");
+  if (!id) return axErr(`${idKey} is required`);
+  const table = isM ? "meetings" : "tasks";
+  const { data: existing } = await supabase.from(table).select("id, org_id").eq("id", id).maybeSingle();
+  if (!existing) return axErr(`${idKey} not found`, 404);
+  const STATUSES = isM ? AXYNT_MEET_STATUS : AXYNT_TASK_STATUS;
+  const patch: any = {};
+  if (params.title !== undefined) { const t = String(params.title).trim(); if (!t) return axErr("title cannot be empty"); patch.title = t; }
+  if (params.description !== undefined) patch.description = params.description;
+  if (params.priority !== undefined) { const p = String(params.priority).toLowerCase(); if (!AXYNT_PRIORITIES.includes(p)) return axErr(`priority must be one of ${AXYNT_PRIORITIES.join(", ")}`); patch.priority = p; }
+  if (params.status !== undefined) { const s = String(params.status); if (!STATUSES.includes(s)) return axErr(`status must be one of ${STATUSES.join(", ")}`); patch.status = s; }
+  if (isM) {
+    if (params.meeting_date !== undefined) patch.meeting_date = params.meeting_date || null;
+    if (params.meeting_time !== undefined) patch.meeting_time = params.meeting_time || null;
+  } else {
+    if (params.due_date !== undefined) patch.due_date = params.due_date || null;
+    if (params.due_time !== undefined) patch.due_time = params.due_time || null;
+  }
+  if (params.project_id !== undefined) {
+    if (params.project_id && !(await axBelongsToOrg("projects", String(params.project_id), existing.org_id))) return axErr("project_id not found in this organization", 404);
+    patch.project_id = params.project_id || null;
+  }
+  let assigneeChange = false, assigneeId: string | null = null;
+  if (params.assignee_id !== undefined) {
+    if (params.assignee_id) {
+      const { data } = await supabase.from("profiles").select("id").eq("id", String(params.assignee_id)).eq("org_id", existing.org_id).maybeSingle();
+      if (!data) return axErr("assignee_id not found in this organization", 404);
+      assigneeId = String(params.assignee_id);
+    }
+    patch.assignee_id = params.assignee_id || null; assigneeChange = true;
+  }
+  if (Object.keys(patch).length === 0) return axErr("no updatable fields provided");
+  patch.updated_at = new Date().toISOString();
+  const { data, error } = await supabase.from(table).update(patch).eq("id", id).select("*").single();
+  if (error) return axErr(error.message);
+  if (assigneeChange) {
+    const jn = isM ? "meeting_assignees" : "task_assignees";
+    const fk = isM ? "meeting_id" : "task_id";
+    await supabase.from(jn).delete().eq(fk, id);
+    if (assigneeId) await supabase.from(jn).insert([{ [fk]: id, profile_id: assigneeId }]);
+  }
+  return data;
+}
+async function axDeleteItem(kind: "task" | "meeting", params: any) {
+  const isM = kind === "meeting";
+  const idKey = isM ? "meeting_id" : "task_id";
+  const id = String(params[idKey] ?? "");
+  if (!id) return axErr(`${idKey} is required`);
+  const table = isM ? "meetings" : "tasks";
+  const { data: existing } = await supabase.from(table).select("id, title").eq("id", id).maybeSingle();
+  if (!existing) return axErr(`${idKey} not found`, 404);
+  await supabase.from(isM ? "meeting_assignees" : "task_assignees").delete().eq(idKey, id);
+  const { error } = await supabase.from(table).delete().eq("id", id);
+  if (error) return axErr(error.message);
+  return { deleted: true, [idKey]: id, title: existing.title };
+}
+
+const AXYNT_DISPATCH: Record<string, (p: any) => Promise<any>> = {
+  list_organizations: async (p) => {
+    let q = supabase.from("organizations").select("id, name, org_uid").order("created_at").limit(100);
+    if (p?.name) q = q.ilike("name", `%${String(p.name)}%`);
+    const { data, error } = await q; return error ? axErr(error.message) : (data ?? []);
+  },
+  list_members: async (p) => { const o = await axResolveOrg(p); if (axIsErr(o)) return o;
+    const { data, error } = await supabase.from("profiles").select("id, full_name, email, role").eq("org_id", o).order("full_name");
+    return error ? axErr(error.message) : (data ?? []); },
+  list_projects: async (p) => { const o = await axResolveOrg(p); if (axIsErr(o)) return o;
+    const { data, error } = await supabase.from("projects").select("id, name").eq("org_id", o).order("name");
+    return error ? axErr(error.message) : (data ?? []); },
+  list_tasks: async (p) => { const o = await axResolveOrg(p); if (axIsErr(o)) return o;
+    let q = supabase.from("tasks").select("id, title, status, priority, due_date, due_time, assignee_id, project_id").eq("org_id", o).order("created_at", { ascending: false }).limit(200);
+    if (p.status) q = q.eq("status", String(p.status));
+    if (p.assignee_id) q = q.eq("assignee_id", String(p.assignee_id));
+    if (p.project_id) q = q.eq("project_id", String(p.project_id));
+    const { data, error } = await q; return error ? axErr(error.message) : (data ?? []); },
+  list_meetings: async (p) => { const o = await axResolveOrg(p); if (axIsErr(o)) return o;
+    let q = supabase.from("meetings").select("id, title, status, priority, meeting_date, meeting_time, assignee_id, project_id").eq("org_id", o).order("created_at", { ascending: false }).limit(200);
+    if (p.status) q = q.eq("status", String(p.status));
+    if (p.assignee_id) q = q.eq("assignee_id", String(p.assignee_id));
+    if (p.project_id) q = q.eq("project_id", String(p.project_id));
+    const { data, error } = await q; return error ? axErr(error.message) : (data ?? []); },
+  create_task: (p) => axCreateItem("task", p),
+  update_task: (p) => axUpdateItem("task", p),
+  update_task_status: (p) => axUpdateItem("task", { task_id: p.task_id, status: p.status }),
+  delete_task: (p) => axDeleteItem("task", p),
+  create_meeting: (p) => axCreateItem("meeting", p),
+  update_meeting: (p) => axUpdateItem("meeting", p),
+  update_meeting_status: (p) => axUpdateItem("meeting", { meeting_id: p.meeting_id, status: p.status }),
+  delete_meeting: (p) => axDeleteItem("meeting", p),
+  create_project: async (p) => { const o = await axResolveOrg(p); if (axIsErr(o)) return o;
+    const name = String(p.name ?? "").trim(); if (!name) return axErr("name is required");
+    const { data, error } = await supabase.from("projects").insert([{ name, description: p.description ?? null, org_id: o, created_by: null }]).select("*").single();
+    return error ? axErr(error.message) : data; },
+};
+
+const AXYNT_TOOLS = [
+  { name: "list_organizations", description: "List workspaces. Call first to get org_id.", params: { name: { type: "string", required: false } } },
+  { name: "list_members", description: "People in an org; resolve names to assignee_id.", params: { org_id: { type: "string(uuid)", required: true } } },
+  { name: "list_projects", description: "Projects in an org.", params: { org_id: { type: "string(uuid)", required: true } } },
+  { name: "list_tasks", description: "Tasks in an org (optional filters).", params: { org_id: { type: "string(uuid)", required: true }, status: { type: "string", required: false, enum: AXYNT_TASK_STATUS }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false } } },
+  { name: "list_meetings", description: "Meetings in an org (optional filters).", params: { org_id: { type: "string(uuid)", required: true }, status: { type: "string", required: false, enum: AXYNT_MEET_STATUS }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false } } },
+  { name: "create_task", description: "Create a task.", params: { org_id: { type: "string(uuid)", required: true }, title: { type: "string", required: true }, description: { type: "string", required: false }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false }, priority: { type: "string", required: false, enum: AXYNT_PRIORITIES }, due_date: { type: "string(date)", required: false }, due_time: { type: "string(time)", required: false } } },
+  { name: "update_task", description: "Update a task.", params: { task_id: { type: "string(uuid)", required: true }, title: { type: "string", required: false }, description: { type: "string", required: false }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false }, priority: { type: "string", required: false, enum: AXYNT_PRIORITIES }, status: { type: "string", required: false, enum: AXYNT_TASK_STATUS }, due_date: { type: "string(date)", required: false }, due_time: { type: "string(time)", required: false } } },
+  { name: "update_task_status", description: "Change a task's status.", params: { task_id: { type: "string(uuid)", required: true }, status: { type: "string", required: true, enum: AXYNT_TASK_STATUS } } },
+  { name: "delete_task", description: "Delete a task.", params: { task_id: { type: "string(uuid)", required: true } } },
+  { name: "create_meeting", description: "Create a meeting.", params: { org_id: { type: "string(uuid)", required: true }, title: { type: "string", required: true }, description: { type: "string", required: false }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false }, priority: { type: "string", required: false, enum: AXYNT_PRIORITIES }, meeting_date: { type: "string(date)", required: false }, meeting_time: { type: "string(time)", required: false } } },
+  { name: "update_meeting", description: "Update a meeting.", params: { meeting_id: { type: "string(uuid)", required: true }, title: { type: "string", required: false }, description: { type: "string", required: false }, assignee_id: { type: "string(uuid)", required: false }, project_id: { type: "string(uuid)", required: false }, priority: { type: "string", required: false, enum: AXYNT_PRIORITIES }, status: { type: "string", required: false, enum: AXYNT_MEET_STATUS }, meeting_date: { type: "string(date)", required: false }, meeting_time: { type: "string(time)", required: false } } },
+  { name: "update_meeting_status", description: "Change a meeting's status.", params: { meeting_id: { type: "string(uuid)", required: true }, status: { type: "string", required: true, enum: AXYNT_MEET_STATUS } } },
+  { name: "delete_meeting", description: "Delete a meeting.", params: { meeting_id: { type: "string(uuid)", required: true } } },
+  { name: "create_project", description: "Create a project.", params: { org_id: { type: "string(uuid)", required: true }, name: { type: "string", required: true }, description: { type: "string", required: false } } },
+];
+
+// Inbound: Axynt's agent calls TaskFlow tools. HMAC-verified, fail-closed.
+async function handleAiCallback(req: Request): Promise<Response> {
+  const secret = await axyntSecret();
+  if (!secret) return json({ error: "AI callback is not configured" }, 503);
+  const raw = await req.text();
+  const header = req.headers.get("x-signature") || "";
+  const provided = (header.startsWith("sha256=") ? header.slice(7) : header).trim().toLowerCase();
+  const expected = await axyntHmacHex(secret, raw);
+  if (!provided || !axyntSafeEqual(provided, expected)) return json({ error: "Invalid signature" }, 401);
+  let body: any;
+  try { body = JSON.parse(raw || "{}"); } catch { return json({ error: "Invalid JSON body" }, 400); }
+  if (body.action === "list_tools") return json({ tools: AXYNT_TOOLS });
+  const tool = String(body.tool || req.headers.get("x-axyntai-tool") || "");
+  const fn = AXYNT_DISPATCH[tool];
+  if (!fn) return json({ error: `Unknown tool: ${tool || "(none)"}` }, 400);
+  try {
+    const out = await fn(body.params || {});
+    if (axIsErr(out)) return json({ error: out.__error }, out.__status || 400);
+    return json({ result: out });
+  } catch (e) {
+    return json({ error: (e as Error)?.message || "Tool execution failed" }, 400);
+  }
+}
+
+// Outbound: TaskFlow sends a signed message to Axynt's inbound webhook.
+async function postToAxynt(payload: any): Promise<{ ok: boolean; status: number; data: any }> {
+  const url = await axyntInboundUrl();
+  const secret = await axyntSecret();
+  if (!url || !secret) return { ok: false, status: 503, data: { error: "Axynt outbound not configured" } };
+  const raw = JSON.stringify(payload ?? {});
+  const sig = await axyntHmacHex(secret, raw);
+  const r = await fetchTimeout(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Signature": `sha256=${sig}` },
+    body: raw,
+  }, 30000);
+  if (!r) return { ok: false, status: 504, data: { error: "Axynt request timed out" } };
+  let data: any = null; try { data = await r.json(); } catch { /* non-JSON */ }
+  return { ok: r.ok, status: r.status, data };
+}
+async function handleAxyntSend(req: Request): Promise<Response> {
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const body = await parseBody(req) as any;
+  const message = String(body?.message ?? "").trim();
+  if (!message) return json({ error: "message is required" }, 400);
+  const r = await postToAxynt({ message, source: "taskflow", user_id: auth.user.id, org_id: auth.user.org_id });
+  if (!r.ok) return json({ error: r.data?.error || "Axynt request failed", status: r.status }, r.status >= 400 ? r.status : 502);
+  return json({ ok: true, response: r.data?.response ?? "", raw: r.data });
+}
+
 const WA_AI_INTRO = `🤖 *TaskFlow‑AI* is on!
 
 Just tell me what to do in plain language — e.g.
@@ -3753,6 +3999,9 @@ Deno.serve(async (req): Promise<Response> => {
     // Hourly cron: 24h due-soon WhatsApp reminders (validated by shared secret header)
     if (req.method === "POST" && path === "/cron/reminders") return await handleCronReminders(req);
 
+    // Axynt AI: inbound tool calls (public; HMAC-verified inside the handler)
+    if (req.method === "POST" && path === "/ai-callback") return await handleAiCallback(req);
+
     // Auth routes
     if (req.method === "POST" && path === "/auth/signup") return await handleAuthSignup(req);
     if (req.method === "POST" && path === "/auth/login") return await handleAuthLogin(req);
@@ -3767,6 +4016,9 @@ Deno.serve(async (req): Promise<Response> => {
 
     // In-app AI assistant (web UI)
     if (req.method === "POST" && path === "/ai/query") return await handleAIQuery(req);
+
+    // Outbound: send a signed message to the Axynt agent (authenticated user)
+    if (req.method === "POST" && path === "/ai/axynt") return await handleAxyntSend(req);
 
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
