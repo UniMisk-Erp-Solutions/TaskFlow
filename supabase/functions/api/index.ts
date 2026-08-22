@@ -956,8 +956,13 @@ async function handleAiCallback(req: Request): Promise<Response> {
   const tool = String(body.tool || req.headers.get("x-axyntai-tool") || "");
   const fn = AXYNT_DISPATCH[tool];
   if (!fn) return json({ error: `Unknown tool: ${tool || "(none)"}` }, 400);
+  // Accept params whether Axynt nests them under "params" OR sends them at the
+  // top level of the body (its own examples do BOTH). Nested values win.
+  const { tool: _t, action: _a, params: _nested, timestamp: _ts, signature: _sg, ...topLevel } = body;
+  const params = { ...topLevel, ...(_nested && typeof _nested === "object" ? _nested : {}) };
+  console.log(`[axynt] tool=${tool} param_keys=[${Object.keys(params).join(",")}]`);
   try {
-    const out = await fn(body.params || {});
+    const out = await fn(params);
     if (axIsErr(out)) return json({ error: out.__error }, out.__status || 400);
     return json({ result: out });
   } catch (e) {
