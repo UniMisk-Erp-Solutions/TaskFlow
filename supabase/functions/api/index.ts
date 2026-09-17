@@ -399,6 +399,35 @@ async function fetchTimeout(url: string, init: RequestInit, ms: number): Promise
   finally { clearTimeout(t); }
 }
 
+// Hard circuit breaker, independent of any single bug: no matter what triggers a send — a
+// bug we haven't found yet included — one WhatsApp chat can never receive more than
+// WA_RATE_LIMIT_MAX messages in WA_RATE_LIMIT_WINDOW_MIN minutes. The cap is set well above
+// any legitimate flow (the longest real flow, full task creation, is ~9 messages; an
+// open-ended TaskFlow-AI chat is the only unbounded one, and 20/10min comfortably covers a
+// real back-and-forth) so it never interferes with normal use — it only ever trips on a
+// genuine runaway loop. Logs every send *attempt* (table `wa_send_log`), since a loop is
+// defined by attempt frequency, not delivery outcome. Fails OPEN on any DB error — a
+// rate-limit check must never be the reason a legitimate message doesn't go out.
+const WA_RATE_LIMIT_MAX = 20;
+const WA_RATE_LIMIT_WINDOW_MIN = 10;
+async function waRateLimited(chatId: string): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - WA_RATE_LIMIT_WINDOW_MIN * 60_000).toISOString();
+    const { count, error } = await supabase.from("wa_send_log")
+      .select("id", { count: "exact", head: true }).eq("chat_id", chatId).gte("sent_at", since);
+    if (error) return false; // fail open
+    return (count ?? 0) >= WA_RATE_LIMIT_MAX;
+  } catch { return false; } // fail open
+}
+async function waLogSendAttempt(chatId: string): Promise<void> {
+  try {
+    await supabase.from("wa_send_log").insert({ chat_id: chatId });
+    if (Math.random() < 0.05) { // opportunistic prune (~1 in 20 calls) — no cron needed
+      await supabase.from("wa_send_log").delete().lt("sent_at", new Date(Date.now() - 3_600_000).toISOString());
+    }
+  } catch { /* best-effort housekeeping only */ }
+}
+
 // Returns true only if OpenWA actually confirmed the send (HTTP 2xx). Callers that dedupe
 // (reminders) or report status back to a user MUST check this — never assume success just
 // because the call didn't throw. One bounded retry: the gateway occasionally 500s right after
@@ -409,6 +438,11 @@ async function openwaSendText(chatId: string, text: string): Promise<boolean> {
   if (!apiKey) return false;
   const sessionId = await openwaSessionId();
   if (!sessionId) return false;
+  if (await waRateLimited(chatId)) {
+    console.warn(`[whatsapp] RATE LIMITED: ${chatId} hit ${WA_RATE_LIMIT_MAX} sends in ${WA_RATE_LIMIT_WINDOW_MIN}min — skipping this send as a safety measure.`);
+    return false;
+  }
+  await waLogSendAttempt(chatId);
   const body = JSON.stringify({ chatId, text: String(text).slice(0, 4096) });
   for (let attempt = 1; attempt <= 2; attempt++) {
     const r = await fetchTimeout(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
@@ -1072,9 +1106,16 @@ async function processWhatsAppMessage(body: any): Promise<void> {
   if (!profile || !profile.org_id) return new Response("ok"); // unknown number -> silent ignore
 
   const replyTo = `${senderDigits}@c.us`;
+  // Every bot reply must be unambiguously identifiable as TaskFlow — this matters most for
+  // the short mid-flow prompts ("Please reply with a valid project number.") that don't
+  // otherwise say who's texting: on a shared business number, an unbranded message reads as
+  // a stray/bugged text rather than a recognizable bot. Single choke point, so it can never
+  // be missed on a message added later.
+  const waBrand = (t: string) => /taskflow/i.test(t) ? t : `${t}\n\n_TaskFlow_`;
   const reply = async (t: string) => {
-    console.log(`[wa] -> send to ${replyTo}: ${t.slice(0, 24)}`);
-    const ok = await openwaSendText(replyTo, t);
+    const branded = waBrand(t);
+    console.log(`[wa] -> send to ${replyTo}: ${branded.slice(0, 24)}`);
+    const ok = await openwaSendText(replyTo, branded);
     console.log(ok ? `[wa] <- sent to ${replyTo}` : `[wa] <- FAILED to send to ${replyTo}`);
   };
   const { data: convRow } = await supabase.from("wa_conversations").select("state, draft, updated_at").eq("phone", senderDigits).maybeSingle();
