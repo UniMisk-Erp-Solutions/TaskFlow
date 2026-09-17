@@ -399,17 +399,28 @@ async function fetchTimeout(url: string, init: RequestInit, ms: number): Promise
   finally { clearTimeout(t); }
 }
 
-async function openwaSendText(chatId: string, text: string): Promise<void> {
+// Returns true only if OpenWA actually confirmed the send (HTTP 2xx). Callers that dedupe
+// (reminders) or report status back to a user MUST check this — never assume success just
+// because the call didn't throw. One bounded retry: the gateway occasionally 500s right after
+// a fresh "ready" event (whatsapp-web.js's internal page injection racing the ready signal),
+// and a few seconds' gap is often enough for it to settle.
+async function openwaSendText(chatId: string, text: string): Promise<boolean> {
   const apiKey = await openwaApiKey();
-  if (!apiKey) return;
+  if (!apiKey) return false;
   const sessionId = await openwaSessionId();
-  if (!sessionId) return;
-  const r = await fetchTimeout(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
-    method: "POST",
-    headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ chatId, text: String(text).slice(0, 4096) }),
-  }, 8000);
-  if (r && !r.ok) console.warn(`[whatsapp] send to ${chatId} -> HTTP ${r.status}`);
+  if (!sessionId) return false;
+  const body = JSON.stringify({ chatId, text: String(text).slice(0, 4096) });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const r = await fetchTimeout(`${OPENWA_API_URL}/api/sessions/${sessionId}/messages/send-text`, {
+      method: "POST",
+      headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+      body,
+    }, 8000);
+    if (r && r.ok) return true;
+    console.warn(`[whatsapp] send to ${chatId} attempt ${attempt} -> ${r ? `HTTP ${r.status}` : "timeout/error"}`);
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 2500));
+  }
+  return false;
 }
 
 function capWord(s: string) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
@@ -608,19 +619,22 @@ function dueAtFromIst(dateStr: string, timeStr: string | null | undefined): Date
 function fmtIstTime(timeStr: string | null | undefined): string {
   return timeStr ? ` at ${String(timeStr).slice(0, 5)}` : "";
 }
-/** WhatsApp every assignee of the item who has a phone. Returns how many were messaged. */
-async function remindAssignees(kind: "task" | "meeting", row: any, dueAt: Date): Promise<number> {
+/** WhatsApp every assignee of the item who has a phone. `attempted` = targets with a valid chat
+ *  id (i.e. there was someone to notify); `sent` = how many actually confirmed delivery. The
+ *  caller uses attempted>0 && sent===0 to distinguish "gateway failed, retry later" from
+ *  "nobody to notify" (which is not a failure and should not retry). */
+async function remindAssignees(kind: "task" | "meeting", row: any, dueAt: Date): Promise<{ attempted: number; sent: number }> {
   const ids = new Set<string>();
   if (row.assignee_id) ids.add(row.assignee_id);
   const jn = kind === "task" ? "task_assignees" : "meeting_assignees";
   const fk = kind === "task" ? "task_id" : "meeting_id";
   const { data: links } = await supabase.from(jn).select("profile_id").eq(fk, row.id);
   for (const l of (links || []) as any[]) if (l.profile_id) ids.add(l.profile_id);
-  if (!ids.size) return 0;
+  if (!ids.size) return { attempted: 0, sent: 0 };
 
   const { data: profs } = await supabase.from("profiles").select("id, full_name, phone").in("id", [...ids]);
   const targets = (profs || []).filter((p: any) => p.phone && String(p.phone).trim());
-  if (!targets.length) return 0;
+  if (!targets.length) return { attempted: 0, sent: 0 };
 
   let projectName: string | null = null;
   if (row.project_id) {
@@ -630,10 +644,11 @@ async function remindAssignees(kind: "task" | "meeting", row: any, dueAt: Date):
   const dateStr = kind === "task" ? row.due_date : row.meeting_date;
   const timeStr = kind === "task" ? row.due_time : row.meeting_time;
 
-  let sent = 0;
+  let attempted = 0, sent = 0;
   for (const p of targets as any[]) {
     const chat = openwaChatId(p.phone);
     if (!chat) continue;
+    attempted++;
     const L = [
       kind === "task" ? "⏰ *Reminder — task due in 24 hours*" : "⏰ *Reminder — meeting in 24 hours*", "",
       `Hi ${p.full_name || "there"},`, "",
@@ -643,10 +658,9 @@ async function remindAssignees(kind: "task" | "meeting", row: any, dueAt: Date):
     if (row.priority) L.push(`🚦 Priority: ${capWord(String(row.priority))}`);
     if (projectName) L.push(`📁 Project: ${projectName}`);
     L.push("", "— TaskFlow");
-    await openwaSendText(chat, L.join("\n"));
-    sent++;
+    if (await openwaSendText(chat, L.join("\n"))) sent++;
   }
-  return sent;
+  return { attempted, sent };
 }
 
 async function handleCronReminders(req: Request): Promise<Response> {
@@ -678,7 +692,7 @@ async function handleCronReminders(req: Request): Promise<Response> {
   }
   due.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
 
-  let reminded = 0, messages = 0, skipped = 0;
+  let reminded = 0, messages = 0, skipped = 0, gatewayFailed = 0;
   for (const item of due.slice(0, 25)) {           // bounded per run; cron repeats hourly
     // Claim first: on a duplicate key this item was already announced for this due_at.
     const { error: claimErr } = await supabase.from("reminders_sent")
@@ -688,13 +702,23 @@ async function handleCronReminders(req: Request): Promise<Response> {
       console.warn("[cron] claim failed:", (claimErr as any).message);
       continue;
     }
-    const n = await remindAssignees(item.kind, item.row, item.dueAt);
-    messages += n; reminded++;
-    await supabase.from("reminders_sent").update({ recipients: n })
+    const { attempted, sent } = await remindAssignees(item.kind, item.row, item.dueAt);
+    if (attempted > 0 && sent === 0) {
+      // Had someone to notify but the WhatsApp gateway didn't confirm a single delivery —
+      // this is a gateway failure, not "done". Release the claim so next hour's cron retries
+      // it instead of silently skipping the reminder forever.
+      await supabase.from("reminders_sent").delete()
+        .eq("kind", item.kind).eq("item_id", item.row.id).eq("due_at", item.dueAt.toISOString());
+      gatewayFailed++;
+      console.warn(`[cron] gateway failed for ${item.kind} "${item.row.title}" -> released claim, will retry`);
+      continue;
+    }
+    messages += sent; reminded++;
+    await supabase.from("reminders_sent").update({ recipients: sent })
       .eq("kind", item.kind).eq("item_id", item.row.id).eq("due_at", item.dueAt.toISOString());
-    console.log(`[cron] reminded ${item.kind} "${item.row.title}" -> ${n} recipient(s)`);
+    console.log(`[cron] reminded ${item.kind} "${item.row.title}" -> ${sent}/${attempted} recipient(s)`);
   }
-  return json({ ok: true, in_window: due.length, reminded, messages, already_sent: skipped });
+  return json({ ok: true, in_window: due.length, reminded, messages, already_sent: skipped, gateway_failed: gatewayFailed });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1050,19 +1074,30 @@ async function processWhatsAppMessage(body: any): Promise<void> {
   const replyTo = `${senderDigits}@c.us`;
   const reply = async (t: string) => {
     console.log(`[wa] -> send to ${replyTo}: ${t.slice(0, 24)}`);
-    await openwaSendText(replyTo, t);
-    console.log(`[wa] <- sent to ${replyTo}`);
+    const ok = await openwaSendText(replyTo, t);
+    console.log(ok ? `[wa] <- sent to ${replyTo}` : `[wa] <- FAILED to send to ${replyTo}`);
   };
-  const { data: convRow } = await supabase.from("wa_conversations").select("state, draft").eq("phone", senderDigits).maybeSingle();
-  const state = convRow?.state || "idle";
-  const draft: any = convRow?.draft || {};
+  const { data: convRow } = await supabase.from("wa_conversations").select("state, draft, updated_at").eq("phone", senderDigits).maybeSingle();
+  // This WhatsApp number is a shared business line, not bot-exclusive — people (including
+  // registered TaskFlow users) message it for ordinary, unrelated conversation all the time.
+  // A mid-flow session abandoned for a while must not silently hijack a later, unrelated
+  // message as form input (e.g. someone's actual chat reply becoming a task title) — treat a
+  // stale in-progress flow as idle again before processing this message.
+  const STALE_FLOW_MS = 30 * 60 * 1000;
+  const isStale = !!convRow?.updated_at && (Date.now() - new Date(convRow.updated_at).getTime()) > STALE_FLOW_MS;
+  const state = (convRow?.state && !isStale) ? convRow.state : "idle";
+  const draft: any = (convRow?.draft && !isStale) ? convRow.draft : {};
   const save = (s: string, d: any) => supabase.from("wa_conversations").upsert({ phone: senderDigits, profile_id: profile.id, state: s, draft: d, updated_at: new Date().toISOString() }, { onConflict: "phone" });
   const clear = () => supabase.from("wa_conversations").delete().eq("phone", senderDigits);
   const low = text.toLowerCase();
 
   if (low === "/cancel" || low === "cancel") { await clear(); await reply("❌ Cancelled. Send */taskflow* to start again."); return new Response("ok"); }
   const isTrigger = low === "/taskflow" || low === "/task" || low === "/meeting" || low === "/start" || low === "/calendar" || low === "/ai" || low === "/taskflow-ai";
-  if (state === "idle" && !isTrigger) { await reply(`👋 Hi ${profile.full_name || "there"}! Send *"/taskflow"* to create a task/meeting, view your calendar, or use 🤖 TaskFlow‑AI.`); return new Response("ok"); }
+  // Idle + not an explicit trigger = ordinary conversation unrelated to the bot. Stay silent
+  // (same as an unrecognized number) instead of auto-replying — an uninvited "Send /taskflow"
+  // nudge on every casual message a registered user sends on this shared number is what reads
+  // as TaskFlow "randomly bugging out and looping replies" into a normal human conversation.
+  if (state === "idle" && !isTrigger) { if (isStale) await clear(); return new Response("ok"); }
   if (isTrigger) {
     if (low === "/task") { await save("title", { kind: "task" }); await reply("👋 New *Task*.\n\n📝 What's the *title*?\n_(send *cancel* anytime)_"); return new Response("ok"); }
     if (low === "/meeting") { await save("title", { kind: "meeting" }); await reply("👋 New *Meeting*.\n\n📝 What's the *title*?\n_(send *cancel* anytime)_"); return new Response("ok"); }
@@ -2202,8 +2237,9 @@ async function handleOtpSend(req: Request) {
   }, { onConflict: "phone" });
   if (error) return json({ error: "Could not create a verification code. Please try again." }, 500);
 
-  await openwaSendText(`${digits}@c.us`,
+  const delivered = await openwaSendText(`${digits}@c.us`,
     `🔐 *TaskFlow verification*\n\nYour code is *${code}*\nIt expires in 10 minutes.\n\nIf you didn't request this, ignore this message.`);
+  if (!delivered) return json({ error: "Could not send the WhatsApp verification code right now. Please try again shortly." }, 502);
   return json({ ok: true, sent_to: e164, expires_in: 600 });
 }
 
