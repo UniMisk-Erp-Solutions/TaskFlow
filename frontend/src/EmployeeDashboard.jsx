@@ -12,7 +12,8 @@ import { useRealtime } from './useRealtime';
 import TaskCard from './components/TaskCard';
 import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
-import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+import KanbanBoard from './components/KanbanBoard';
 import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
 import NotificationSettings from './components/NotificationSettings';
@@ -92,7 +93,7 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
   const selfAssigneePreset = profile?.id ? [profile.id] : [];
-  const { tasks, loading, refetch, updateStatus, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
+  const { tasks, loading, refetch, updateStatus, moveTaskBoard, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus, submitMeeting, approveMeeting, requestMeetingChanges, getMeetingHistory } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
@@ -151,7 +152,7 @@ export default function EmployeeDashboard() {
   const groups = useMemo(() => ({
     overdue: tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed'),
     blocked: tasks.filter((t) => t.status === 'blocked'),
-    inProgress: tasks.filter((t) => t.status === 'in_progress'),
+    inProgress: tasks.filter((t) => t.status === 'in_progress' || t.status === 'rejected'),
     pending: tasks.filter((t) => t.status === 'pending' && !(t.due_date && t.due_date < today)),
     completed: tasks.filter((t) => t.status === 'completed'),
   }), [tasks, today]);
@@ -164,14 +165,14 @@ export default function EmployeeDashboard() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex', flexDirection: 'column' }}>
-      <Navbar />
-
-      <div style={{ flex: 1, maxWidth: 920, width: '100%', margin: '0 auto', padding: '28px 24px' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex' }}>
+      <Sidebar active={page} onNav={setPage} role="employee" />
+      <main style={{ flex: 1, minWidth: 0 }}>
+      <div className="employee-dashboard-content" style={{ width: '100%', minWidth: 0, padding: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>
-              {greeting()}, {profile?.full_name?.split(' ')[0] || 'there'}
+              {page === 'kanban' ? 'Kanban Board' : page === 'tasks' ? `${greeting()}, ${profile?.full_name?.split(' ')[0] || 'there'}` : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -183,20 +184,8 @@ export default function EmployeeDashboard() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className={`btn btn-sm ${page === 'tasks' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('tasks')}>
-            Tasks
-          </button>
-          <button className={`btn btn-sm ${page === 'calender' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('calender')}>
-            Calender
-          </button>
-          <button className={`btn btn-sm ${page === 'projects' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('projects')}>
-            Projects
-          </button>
-          <button className={`btn btn-sm ${page === 'notifications' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPage('notifications')}>
-            Notifications
-          </button>
-          <span style={{ marginLeft: 'auto', display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+          <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
             </button>
@@ -234,6 +223,18 @@ export default function EmployeeDashboard() {
           >
             <NotificationSettings />
           </div>
+        )}
+
+        {page === 'kanban' && (
+          <KanbanBoard
+            tasks={tasks}
+            projects={projects}
+            assignees={allProfiles}
+            profileById={profileById}
+            loading={loading}
+            onMoveTask={moveTaskBoard}
+            onOpenTask={setDetailTask}
+          />
         )}
 
         {page === 'tasks'
@@ -291,6 +292,7 @@ export default function EmployeeDashboard() {
           />
         )}
       </div>
+      </main>
 
       {!showAI && (
         <button type="button" className="tf-fab" onClick={() => setShowAI(true)} title="AI Assistant">

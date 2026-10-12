@@ -19,6 +19,7 @@ import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
 import ProjectsPanel from './components/ProjectsPanel';
 import NotificationSettings from './components/NotificationSettings';
+import KanbanBoard from './components/KanbanBoard';
 import { useProjects } from './useProjects';
 import api from './api';
 
@@ -55,7 +56,7 @@ function MiniStat({ label, value }) {
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const { tasks, loading, refetch, createTask, updateStatus, deleteTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
+  const { tasks, loading, refetch, createTask, updateStatus, moveTaskBoard, deleteTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const {
     meetings,
     loading: meetingsLoading,
@@ -202,9 +203,9 @@ export default function AdminDashboard() {
     catch (err) { window.alert(err.response?.data?.error || err.message); }
   }
   async function handleRequestChangesTaskInline(t) {
-    const note = window.prompt(`Request changes on "${t.title}". What needs to change?`, '');
+    const note = window.prompt(`Reject "${t.title}" and return it to In Progress. What needs to change?`, '');
     if (note === null) return;
-    if (!note.trim()) { window.alert('A note is required when requesting changes.'); return; }
+    if (!note.trim()) { window.alert('A rejection note is required.'); return; }
     try { await requestTaskChanges(t.id, note.trim()); }
     catch (err) { window.alert(err.response?.data?.error || err.message); }
   }
@@ -257,6 +258,8 @@ export default function AdminDashboard() {
                 ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}`
                 : page === 'tasks'
                   ? 'All Tasks'
+                  : page === 'kanban'
+                    ? 'Kanban Board'
                   : page === 'calender'
                     ? 'Calender View'
                     : page === 'projects'
@@ -571,6 +574,18 @@ export default function AdminDashboard() {
                 }
               </div>}
             </div>
+          )}
+
+          {page === 'kanban' && (
+            <KanbanBoard
+              tasks={tasks}
+              projects={projects}
+              assignees={allProfiles}
+              profileById={profileById}
+              loading={loading}
+              onMoveTask={moveTaskBoard}
+              onOpenTask={setDetailTask}
+            />
           )}
 
           {/* ── CALENDER ── */}

@@ -1360,6 +1360,23 @@ function taskAssigneeIds(t: any): string[] {
   return fromJ.length ? fromJ : (t.assignee_id ? [t.assignee_id] : []);
 }
 
+function taskKanbanColumnForStatus(status: string): "backlog" | "to_do" | "in_progress" | "done" {
+  if (status === "completed" || status === "submitted") return "done";
+  if (status === "blocked" || status === "changes_requested") return "backlog";
+  if (status === "in_progress" || status === "rejected") return "in_progress";
+  return "to_do";
+}
+
+async function orgAdminIds(orgId: string | null): Promise<string[]> {
+  if (!orgId) return [];
+  const { data, error } = await supabase.from("profiles").select("id").eq("org_id", orgId).eq("role", "admin");
+  if (error) {
+    console.warn("[push] could not find organization admins for review notification:", error.message);
+    return [];
+  }
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
 function meetingAssigneeIds(m: any): string[] {
   const fromJ = (m.meeting_assignees ?? []).map((x: any) => x.profile_id).filter(Boolean);
   if (m.assignee_id && !fromJ.includes(m.assignee_id)) return [m.assignee_id, ...fromJ];
@@ -2547,6 +2564,102 @@ async function handleTasks(req: Request, path: string) {
     return json(await shapeTasksWithJoins(rows));
   }
 
+  // Board lanes are intentionally separate from TaskFlow's business status:
+  // Backlog and To Do both mean `pending`, while Done may mean completed (admin)
+  // or submitted for review (employee). This preserves the existing approval flow.
+  const boardMatch = path.match(/^\/tasks\/([^/]+)\/board$/);
+  if (req.method === "PATCH" && boardMatch) {
+    const id = boardMatch[1];
+    const body = await parseBody(req) as Record<string, unknown>;
+    const column = String(body.kanban_column ?? "");
+    const order = Number(body.kanban_order);
+    const columns = ["backlog", "to_do", "in_progress", "done"];
+    if (!columns.includes(column)) return json({ error: "Choose a valid board column." }, 400);
+    if (!Number.isFinite(order) || Math.abs(order) > 1_000_000_000_000) {
+      return json({ error: "The task position is invalid. Please try again." }, 400);
+    }
+
+    const deny = await assertTaskAccess(user, id);
+    if (deny) return deny;
+    let taskQuery = supabase.from("tasks").select("*, task_assignees(profile_id)").eq("id", id);
+    if (user.org_id) taskQuery = taskQuery.eq("org_id", user.org_id);
+    const { data: current, error: currentError } = await taskQuery.maybeSingle();
+    if (currentError) return json({ error: currentError.message }, 400);
+    if (!current) return json({ error: "Task not found or access denied" }, 404);
+
+    if (user.role === "admin") {
+      try {
+        const roles = user.org_id ? await loadOrgRoleByIdForEdge(user.org_id) : {};
+        if (!edgeAdminSeesItem(current, user.id, roles, "task")) {
+          return json({ error: "Task not found or access denied" }, 403);
+        }
+      } catch (e) {
+        return json({ error: (e as Error).message || "Could not verify task access." }, 500);
+      }
+    }
+
+    const previousStatus = String(current.status || "pending");
+    const columnChanged = current.kanban_column !== column;
+    if (user.role !== "admin" && column === "done" && current.kanban_column !== "in_progress") {
+      return json({ error: "Move this task to In Progress before submitting it for review." }, 409);
+    }
+    if (columnChanged && (previousStatus === "completed" || previousStatus === "submitted") && column !== "done") {
+      return json({
+        error: previousStatus === "submitted"
+          ? "This task is waiting for review. Approve it or request changes from its details."
+          : "Completed tasks can only be reopened through the task details review flow.",
+      }, 409);
+    }
+
+    let nextStatus = previousStatus;
+    if (columnChanged) {
+      if (column === "done") nextStatus = user.role === "admin" ? "completed" : "submitted";
+      else if (column === "in_progress") nextStatus = "in_progress";
+      else nextStatus = "pending";
+    }
+
+    const patch: Record<string, unknown> = {
+      kanban_column: column,
+      kanban_order: order,
+      updated_at: new Date().toISOString(),
+    };
+    if (nextStatus !== previousStatus) patch.status = nextStatus;
+    if (nextStatus === "submitted" && previousStatus !== "submitted") {
+      patch.submission_notes = "Submitted from Kanban board";
+    }
+    if (nextStatus === "completed" && previousStatus === "submitted") {
+      patch.approval_notes = current.approval_notes || "Approved from Kanban board";
+    }
+
+    const { data: updated, error } = await supabase.from("tasks").update(patch)
+      .eq("id", id).eq("org_id", user.org_id).select("*").maybeSingle();
+    if (error) return json({ error: error.message }, 400);
+    if (!updated) return json({ error: "Task not found or access denied" }, 404);
+    const out = (await shapeTasksWithJoins([updated]))[0];
+
+    if (nextStatus !== previousStatus) {
+      const action = nextStatus === "submitted" ? "submitted" :
+        nextStatus === "completed" && previousStatus === "submitted" ? "approved" : "status_changed";
+      scheduleAudit(() => logTaskHistory(id, user.id, user.org_id, action, {
+        status: { from: previousStatus, to: nextStatus },
+        kanban_column: { from: current.kanban_column, to: column },
+      }, action === "submitted" ? "Submitted from Kanban board" : action === "approved" ? "Approved from Kanban board" : null));
+      scheduleNotify(async () => {
+        const who = await getActorDisplayName(supabase, user.id);
+        const admins = nextStatus === "submitted" ? await orgAdminIds(user.org_id) : [];
+        await notifyUsersEdge(supabase, {
+          userIds: [...(out.assignee_ids || []), ...admins],
+          excludeUserId: user.id,
+          category: "task_update",
+          title: nextStatus === "submitted" ? "Task ready for review" : nextStatus === "completed" ? "Task approved" : "Task status updated",
+          body: nextStatus === "submitted" ? `${who} submitted "${out.title}" for your review.` : `${who} moved "${out.title}" to ${column.replaceAll("_", " ")}`,
+          data: { type: "task", taskId: id, url: "/" },
+        });
+      });
+    }
+    return json(out);
+  }
+
   const getOneTask = path.match(/^\/tasks\/([^/]+)$/);
   if (req.method === "GET" && getOneTask) {
     const id = getOneTask[1];
@@ -2771,7 +2884,13 @@ async function handleTasks(req: Request, path: string) {
     const body = await parseBody(req);
     const status = (body as any).status;
     if (!status) return json({ error: "Status is required" }, 400);
+    if (!(["pending", "in_progress", "completed", "blocked", "submitted", "rejected", "changes_requested"] as string[]).includes(status)) {
+      return json({ error: "Choose a valid task status." }, 400);
+    }
     if (user.role !== "admin") {
+      if (!["pending", "in_progress", "blocked"].includes(status)) {
+        return json({ error: "Employees cannot approve or submit tasks through this action. Use Submit for review instead." }, 403);
+      }
       let rq = supabase.from("tasks").select("id, assignee_id").eq("id", id);
       if (user.org_id) rq = rq.eq("org_id", user.org_id);
       const { data: row } = await rq.maybeSingle();
@@ -2782,7 +2901,7 @@ async function handleTasks(req: Request, path: string) {
     const { data: beforeRow } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
     let uq = supabase
       .from("tasks")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ status, kanban_column: taskKanbanColumnForStatus(status), updated_at: new Date().toISOString() })
       .eq("id", id);
     if (user.org_id) uq = uq.eq("org_id", user.org_id);
     const { data, error } = await uq
@@ -2953,6 +3072,7 @@ async function handleTasks(req: Request, path: string) {
       .from("tasks")
       .update({
         status: "submitted",
+        kanban_column: "done",
         submission_notes: note || null,
         updated_at: new Date().toISOString(),
       })
@@ -2968,12 +3088,13 @@ async function handleTasks(req: Request, path: string) {
     );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
+      const admins = await orgAdminIds(user.org_id);
       await notifyUsersEdge(supabase, {
-        userIds: out.assignee_ids || [],
+        userIds: [...(out.assignee_ids || []), ...admins],
         excludeUserId: user.id,
         category: "task_update",
-        title: "Task submitted for review",
-        body: `${who} submitted: ${out.title}`,
+        title: "Task ready for review",
+        body: `${who} submitted "${out.title}" for your review.`,
         data: { type: "task", taskId: id, url: "/" },
       });
     });
@@ -2994,6 +3115,7 @@ async function handleTasks(req: Request, path: string) {
       .from("tasks")
       .update({
         status: "completed",
+        kanban_column: "done",
         approval_notes: note || null,
         updated_at: new Date().toISOString(),
       })
@@ -3032,10 +3154,19 @@ async function handleTasks(req: Request, path: string) {
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
     if (!note) return json({ error: "Please describe the changes requested" }, 400);
+    let beforeQuery = supabase.from("tasks").select("status").eq("id", id);
+    if (user.org_id) beforeQuery = beforeQuery.eq("org_id", user.org_id);
+    const { data: before, error: beforeError } = await beforeQuery.maybeSingle();
+    if (beforeError) return json({ error: beforeError.message }, 400);
+    if (!before) return json({ error: "Task not found" }, 404);
+    const reviewRejected = before.status === "submitted";
+    const nextStatus = reviewRejected ? "rejected" : "changes_requested";
+    const nextColumn = reviewRejected ? "in_progress" : "backlog";
     let uq = supabase
       .from("tasks")
       .update({
-        status: "changes_requested",
+        status: nextStatus,
+        kanban_column: nextColumn,
         approval_notes: note,
         updated_at: new Date().toISOString(),
       })
@@ -3047,7 +3178,10 @@ async function handleTasks(req: Request, path: string) {
     const shaped = await shapeTasksWithJoins([data]);
     const out = shaped[0];
     scheduleAudit(() =>
-      logTaskHistory(id, user.id, user.org_id, "changes_requested", { status: { from: null, to: "changes_requested" } }, note)
+      logTaskHistory(id, user.id, user.org_id, reviewRejected ? "rejected" : "changes_requested", {
+        status: { from: before.status, to: nextStatus },
+        kanban_column: { from: "done", to: nextColumn },
+      }, note)
     );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
@@ -3055,8 +3189,8 @@ async function handleTasks(req: Request, path: string) {
         userIds: out.assignee_ids || [],
         excludeUserId: user.id,
         category: "task_update",
-        title: "Changes requested",
-        body: `${who} requested changes on: ${out.title}`,
+        title: reviewRejected ? "Task rejected" : "Changes requested",
+        body: reviewRejected ? `${who} rejected "${out.title}" and returned it to In Progress. ${note}` : `${who} requested changes on: ${out.title}`,
         data: { type: "task", taskId: id, url: "/" },
       });
     });

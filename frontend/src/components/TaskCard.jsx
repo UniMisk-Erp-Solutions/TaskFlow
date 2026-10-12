@@ -25,7 +25,8 @@ const EMPLOYEE_STATUSES = ['pending', 'in_progress', 'submitted', 'blocked'];
 const STATUS_LABELS = {
   pending: 'Pending',
   in_progress: 'In Progress',
-  submitted: 'Submitted for review',
+  submitted: 'Under review',
+  rejected: 'Rejected',
   blocked: 'Blocked',
   completed: 'Completed',
   changes_requested: 'Changes requested',

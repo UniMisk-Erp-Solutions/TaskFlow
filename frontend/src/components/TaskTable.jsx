@@ -72,13 +72,14 @@ function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   );
 }
 
-const STATUSES = ['pending', 'in_progress', 'submitted', 'completed', 'changes_requested', 'blocked'];
+const STATUSES = ['pending', 'in_progress', 'submitted', 'completed', 'rejected', 'changes_requested', 'blocked'];
 
 const STATUS_LABELS = {
   pending: 'Pending',
   in_progress: 'In Progress',
-  submitted: 'Submitted',
+  submitted: 'Under review',
   completed: 'Completed',
+  rejected: 'Rejected',
   changes_requested: 'Changes requested',
   blocked: 'Blocked',
 };
@@ -207,7 +208,7 @@ export default function TaskTable({
                     )}
                     {task.status === 'submitted' && onRequestChanges && (
                       <RowIconBtn
-                        title="Request changes"
+                        title="Reject and return to In Progress"
                         accent="var(--status-warning)"
                         accentBg="var(--status-warning-bg)"
                         onClick={(e) => { e.stopPropagation(); onRequestChanges(task); }}

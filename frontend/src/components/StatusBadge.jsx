@@ -3,16 +3,17 @@ import React from 'react';
 const STATUS_MAP = {
   pending:           { label: 'Pending',            cls: 'badge-muted'  },
   in_progress:       { label: 'In Progress',        cls: 'badge-indigo' },
-  submitted:         { label: 'Submitted',          cls: 'badge-yellow' },
+  submitted:         { label: 'Under review',       cls: 'badge-yellow' },
   completed:         { label: 'Completed',          cls: 'badge-green'  },
+  rejected:          { label: 'Rejected',           cls: 'badge-red'    },
   changes_requested: { label: 'Changes requested',  cls: 'badge-red'    },
   blocked:           { label: 'Blocked',            cls: 'badge-red'    },
 };
 
 const PRIORITY_MAP = {
   high:   { label: 'High',   cls: 'badge-red'    },
-  medium: { label: 'Medium', cls: 'badge-yellow' },
-  low:    { label: 'Low',    cls: 'badge-muted'  },
+  medium: { label: 'Medium', cls: 'badge-blue'   },
+  low:    { label: 'Low',    cls: 'badge-yellow' },
 };
 
 export default function StatusBadge({ status }) {

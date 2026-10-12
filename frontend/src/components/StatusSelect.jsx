@@ -11,15 +11,16 @@ import React from 'react';
  * 100% inline-styled so cache can never break the colour coding.
  *
  * `kind` controls which set of statuses appears:
- *   - "task"    → pending / in_progress / submitted / completed / changes_requested / blocked
+ *   - "task"    → pending / in_progress / submitted / completed / rejected / changes_requested / blocked
  *   - "meeting" → scheduled / submitted / completed / changes_requested / cancelled
  */
 
 const TASK_STATUS = {
   pending:           { label: 'Pending',           color: '#475569', bg: 'rgba(71,85,105,0.10)' },
   in_progress:       { label: 'In Progress',       color: '#5645d4', bg: 'rgba(86,69,212,0.10)' },
-  submitted:         { label: 'Submitted',         color: '#dd5b00', bg: 'rgba(221,91,0,0.10)' },
+  submitted:         { label: 'Under review',      color: '#dd5b00', bg: 'rgba(221,91,0,0.10)' },
   completed:         { label: 'Completed',         color: '#1aae39', bg: 'rgba(26,174,57,0.12)' },
+  rejected:          { label: 'Rejected',          color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
   changes_requested: { label: 'Changes requested', color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
   blocked:           { label: 'Blocked',           color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
 };

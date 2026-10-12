@@ -8,7 +8,13 @@ const {
 } = require("../utils/orgVisibility");
 
 const VALID_PRIORITIES = ["low", "medium", "high"];
-const VALID_STATUSES = ["pending", "in_progress", "completed", "blocked"];
+const VALID_STATUSES = ["pending", "in_progress", "completed", "blocked", "rejected"];
+function taskKanbanColumnForStatus(status) {
+  if (status === "completed" || status === "submitted") return "done";
+  if (status === "blocked" || status === "changes_requested") return "backlog";
+  if (status === "in_progress" || status === "rejected") return "in_progress";
+  return "to_do";
+}
 
 async function profilesInOrg(orgId, ids) {
   const unique = [...new Set((ids || []).filter(Boolean))];
@@ -439,6 +445,9 @@ exports.updateStatus = async (req, res) => {
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Status must be one of: ${VALID_STATUSES.join(", ")}` });
     }
+    if (req.user.role !== "admin" && !["pending", "in_progress", "blocked"].includes(status)) {
+      return res.status(403).json({ error: "Employees cannot complete tasks directly. Submit the task for review instead." });
+    }
 
     const access = await loadTaskForUser(req, id);
     if (access.error === "not_found" || access.error === "forbidden") {
@@ -451,7 +460,7 @@ exports.updateStatus = async (req, res) => {
 
     const { data, error } = await supabase
       .from("tasks")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ status, kanban_column: taskKanbanColumnForStatus(status), updated_at: new Date().toISOString() })
       .eq("id", id)
       .eq("org_id", req.user.org_id)
       .select("*, task_assignees(profile_id)")
@@ -476,6 +485,90 @@ exports.updateStatus = async (req, res) => {
         }),
       )
       .catch(() => {});
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateBoardPosition = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { kanban_column, kanban_order } = req.body || {};
+    const columns = ["backlog", "to_do", "in_progress", "done"];
+    const order = Number(kanban_order);
+    if (!columns.includes(kanban_column)) {
+      return res.status(400).json({ error: "Choose a valid board column." });
+    }
+    if (!Number.isFinite(order) || Math.abs(order) > 1_000_000_000_000) {
+      return res.status(400).json({ error: "The task position is invalid. Please try again." });
+    }
+
+    const access = await loadTaskForUser(req, id);
+    if (access.error === "not_found" || access.error === "forbidden") {
+      return res.status(access.error === "forbidden" ? 403 : 404).json({ error: "Task not found or access denied" });
+    }
+    if (access.error) return res.status(400).json({ error: access.error });
+
+    const current = access.task;
+    const previousStatus = String(current.status || "pending");
+    const columnChanged = current.kanban_column !== kanban_column;
+    if (req.user.role !== "admin" && kanban_column === "done" && current.kanban_column !== "in_progress") {
+      return res.status(409).json({ error: "Move this task to In Progress before submitting it for review." });
+    }
+    if (columnChanged && ["completed", "submitted"].includes(previousStatus) && kanban_column !== "done") {
+      return res.status(409).json({
+        error: previousStatus === "submitted"
+          ? "This task is waiting for review. Approve it or request changes from its details."
+          : "Completed tasks can only be reopened through the task details review flow.",
+      });
+    }
+
+    let nextStatus = previousStatus;
+    if (columnChanged) {
+      if (kanban_column === "done") nextStatus = req.user.role === "admin" ? "completed" : "submitted";
+      else if (kanban_column === "in_progress") nextStatus = "in_progress";
+      else nextStatus = "pending";
+    }
+
+    const updates = {
+      kanban_column,
+      kanban_order: order,
+      updated_at: new Date().toISOString(),
+    };
+    if (nextStatus !== previousStatus) updates.status = nextStatus;
+    if (nextStatus === "submitted" && previousStatus !== "submitted") {
+      updates.submission_notes = "Submitted from Kanban board";
+    }
+    if (nextStatus === "completed" && previousStatus === "submitted") {
+      updates.approval_notes = current.approval_notes || "Approved from Kanban board";
+    }
+
+    const { data, error } = await supabase.from("tasks")
+      .update(updates)
+      .eq("id", id)
+      .eq("org_id", req.user.org_id)
+      .select("*, task_assignees(profile_id)")
+      .maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Task not found or access denied" });
+
+    const out = mapTaskRow(data);
+    res.json(out);
+    if (nextStatus !== previousStatus) {
+      const adminIds = nextStatus === "submitted"
+        ? (await supabase.from("profiles").select("id").eq("org_id", req.user.org_id).eq("role", "admin")).data?.map((p) => p.id) || []
+        : [];
+      void webPush.getActorDisplayName(req.user.id)
+        .then((who) => webPush.notifyUsers({
+          userIds: [...(out.assignee_ids || []), ...adminIds],
+          excludeUserId: req.user.id,
+          category: "task_update",
+          title: nextStatus === "submitted" ? "Task ready for review" : nextStatus === "completed" ? "Task approved" : "Task status updated",
+          body: nextStatus === "submitted" ? `${who} submitted "${out.title}" for your review.` : `${who} moved "${out.title}" to ${kanban_column.replaceAll("_", " ")}`,
+          data: { type: "task", taskId: id, url: "/" },
+        }))
+        .catch(() => {});
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

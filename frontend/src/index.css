@@ -475,6 +475,11 @@ textarea.input {
   color: var(--indigo);
   border: 1px solid transparent;
 }
+.badge-blue {
+  background: rgba(37, 99, 235, 0.11);
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+}
 .badge-muted {
   background: var(--tf-pearl);
   color: var(--tf-muted);
@@ -651,6 +656,99 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 
 .tf-stat-row > div:last-child {
   border-right: none;
+}
+
+/* ── Shared task Kanban board ───────────────────────── */
+.kanban-shell { min-width: 0; }
+.kanban-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px; margin-bottom: 16px; border: 1px solid var(--tf-border);
+  border-radius: 14px; background: var(--tf-panel);
+}
+.kanban-toolbar > select {
+  min-height: 38px; padding: 0 11px; border: 1px solid var(--tf-border);
+  border-radius: 9px; color: var(--tf-text); background: var(--tf-panel);
+  font: inherit; font-size: 13px; max-width: 220px;
+}
+.kanban-search {
+  display: flex; align-items: center; gap: 8px; min-height: 38px; flex: 1 1 200px;
+  padding: 0 11px; border: 1px solid var(--tf-border); border-radius: 9px;
+  color: var(--tf-muted); background: var(--tf-page);
+}
+.kanban-search input {
+  min-width: 0; width: 100%; border: 0; outline: 0; background: transparent;
+  color: var(--tf-text); font: inherit; font-size: 13px;
+}
+.kanban-result-count { margin-left: auto; color: var(--tf-muted); font-size: 12px; white-space: nowrap; }
+.kanban-error {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 14px; padding: 11px 14px; border: 1px solid var(--status-danger);
+  border-radius: 10px; color: var(--status-danger); background: var(--status-danger-bg); font-size: 13px;
+}
+.kanban-error button { border: 0; color: inherit; background: transparent; font: inherit; font-weight: 600; cursor: pointer; }
+.kanban-board {
+  display: grid; grid-template-columns: repeat(4, minmax(250px, 1fr)); align-items: start;
+  gap: 14px; overflow-x: auto; padding: 2px 2px 12px; overscroll-behavior-x: contain;
+}
+.kanban-column {
+  min-height: 300px; padding: 11px; border: 1px solid var(--tf-border);
+  border-top: 3px solid var(--kanban-lane-accent); border-radius: 14px;
+  background: color-mix(in srgb, var(--tf-panel) 92%, var(--kanban-lane-accent) 8%);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.kanban-column.is-drop-target { background: color-mix(in srgb, var(--tf-panel) 82%, var(--kanban-lane-accent) 18%); }
+.kanban-column-heading { display: flex; justify-content: space-between; align-items: center; padding: 4px 3px 12px; }
+.kanban-column-heading h2 { display: flex; align-items: center; gap: 8px; color: var(--tf-text); font: 600 14px/1.3 var(--font-display, inherit); text-transform: uppercase; letter-spacing: .045em; }
+.kanban-column-heading p { margin: 5px 0 0; color: var(--tf-muted); font-size: 11px; }
+.kanban-count { min-width: 22px; padding: 2px 6px; border-radius: 999px; color: var(--tf-muted); background: var(--tf-page); text-align: center; font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1.4; }
+.kanban-column-cards { min-height: 225px; display: flex; flex-direction: column; gap: 9px; }
+.kanban-drop-before { border-radius: 12px; }
+.kanban-card {
+  padding: 10px; border: 1px solid color-mix(in srgb, var(--kanban-priority) 28%, var(--tf-border));
+  border-radius: 12px; background: color-mix(in srgb, var(--tf-panel) 88%, var(--kanban-priority) 12%);
+  box-shadow: 0 2px 7px rgba(15, 23, 42, .035);
+  cursor: grab; transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+.kanban-card:hover, .kanban-card:focus-visible { outline: none; box-shadow: 0 5px 16px rgba(15, 23, 42, .09); transform: translateY(-1px); }
+.kanban-card:active { cursor: grabbing; }
+.kanban-card-topline { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
+.kanban-grip { color: var(--tf-muted); opacity: .55; cursor: grab; touch-action: none; }
+.kanban-card-title { margin: 6px 0 0; color: var(--tf-text); font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.kanban-project { margin-top: 6px; color: var(--color-primary); font-size: 11px; font-weight: 600; }
+.kanban-card-meta { display: flex; justify-content: space-between; align-items: flex-end; gap: 9px; margin-top: 9px; }
+.kanban-assignees { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kanban-meta-label { color: var(--tf-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .055em; }
+.kanban-meta-value { color: var(--tf-text); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kanban-due { flex-shrink: 0; display: flex; align-items: center; gap: 5px; color: var(--tf-muted); font-size: 11px; }
+.kanban-workflow-status { margin-top: 7px; }
+.kanban-empty { min-height: 100px; display: grid; place-items: center; padding: 14px; border: 1px dashed var(--tf-border); border-radius: 11px; color: var(--tf-muted); text-align: center; font-size: 12px; line-height: 1.5; }
+.kanban-hint { margin: 3px 2px 0; color: var(--tf-muted); font-size: 11px; }
+
+@media (max-width: 640px) {
+  .kanban-toolbar { gap: 8px; padding: 10px; }
+  .kanban-toolbar > select { flex: 1 1 calc(50% - 8px); max-width: none; }
+  .kanban-result-count { margin-left: 0; }
+  .kanban-board { grid-template-columns: repeat(4, minmax(270px, 82vw)); gap: 10px; }
+  .kanban-column { min-height: 55vh; }
+}
+
+@media (max-width: 760px) {
+  .employee-dashboard-content { padding: 16px !important; }
+  .employee-dashboard-content > div:first-child { gap: 12px; }
+  .employee-dashboard-content .tf-stat-row { overflow-x: auto; }
+  .employee-dashboard-content .tf-stat-row > div { min-width: 90px; padding: 12px; }
+}
+
+@media (max-width: 760px) {
+  .taskflow-sidebar { width: 68px !important; }
+  .taskflow-sidebar > div:first-child { justify-content: center !important; padding: 17px 8px !important; }
+  .taskflow-sidebar-brand, .taskflow-sidebar-role, .taskflow-sidebar-label, .taskflow-sidebar-user-copy { display: none !important; }
+  .taskflow-sidebar nav { padding: 10px 6px !important; }
+  .taskflow-sidebar nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
+  .taskflow-sidebar > div:last-child { padding: 8px 5px !important; }
+  .taskflow-sidebar > div:last-child > div { justify-content: center !important; padding: 8px 0 !important; }
+  .taskflow-sidebar > div:last-child > div > div:first-child { display: none !important; }
+  .taskflow-sidebar > div:last-child > button { justify-content: center !important; padding: 10px 6px !important; }
 }
 
 .tf-nav-global {
