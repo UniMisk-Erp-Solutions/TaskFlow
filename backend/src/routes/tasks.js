@@ -5,6 +5,7 @@ const ctrl = require("../controllers/taskController");
 
 router.get("/", auth, ctrl.getTasks);
 router.post("/", auth, ctrl.createTask);
+router.patch("/:id/board", auth, ctrl.updateBoardPosition);
 router.patch("/:id/status", auth, ctrl.updateStatus);
 router.get("/:id", auth, ctrl.getTaskById);
 router.patch("/:id", auth, ctrl.patchTask);

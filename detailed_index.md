@@ -1,0 +1,59 @@
+# Detailed Documentation Index
+
+## Project Setup and Architecture
+
+**Document:** [docs/project-setup-and-architecture.md](docs/project-setup-and-architecture.md)
+
+This guide introduces TaskFlow's purpose and major subsystems, then maps the React/Vite frontend, Express API, Supabase Edge API, database, authentication, realtime updates, and storage. It traces how a browser request receives an access token, reaches the configured API base URL, is authorized, reads or updates Supabase data, and returns to shared frontend state. A source map points readers to the dashboards, shared task hook, Kanban board, server routes/controllers/services, Edge Function, and SQL changes.
+
+The guide documents the two supported development modes (frontend with a hosted Edge API, or frontend plus local Express), required and optional environment variables, service-role key handling, database baseline assumptions, migration safety, and optional seed data. It also describes the Render, Docker, and Vercel configuration files and lists common fixes for missing environment values, CORS, API/Supabase mismatches, and migration-related errors.
+
+## Project README and Quick Start
+
+**Document:** [README.md](README.md)
+
+The README is the primary entry point for contributors and operators. It summarizes the product and its user-facing features, identifies the frontend/API/data stack, lists prerequisites, and provides copyable commands to clone the repo, install packages, configure frontend and backend environment files, choose between the hosted Edge Function and local Express API, start Vite, and start the Express API. It explains API base paths, essential Supabase settings, optional integrations, the database's existing-schema prerequisite, and relevant security boundaries for public browser keys versus server secrets.
+
+It also indexes common package scripts, deployment configurations, feature guides, repository directories, and first-step troubleshooting. The README links to the architecture guide for deeper implementation details and to the Kanban guide for task-board review semantics.
+
+## Employee Kanban Submission and Admin Review
+
+**Document:** [docs/employee-kanban-review-submission.md](docs/employee-kanban-review-submission.md)
+
+This feature note specifies the requested employee flow: employees can move assigned work among Backlog, To Do, and In Progress; only an In Progress task can be submitted to Done; and that move first requires confirmation that admin review is needed. Canceling leaves the task untouched, while confirming persists it as submitted/Under review and puts it in the admin review queue. Admin approval changes the task to completed while keeping it in Done, and rejection returns it to In Progress with a rejection status and note.
+
+The document explains the client/API permission boundary, optimistic update and rollback behavior, admin queue and notification integration, the frontend and backend source locations, and the deployment requirement when the frontend points at a hosted Edge Function. It emphasizes that the UI confirmation is not the security boundary: the API must authorize task access and protect admin-only review decisions.
+
+## Kanban Board and Review Workflow
+
+**Document:** [docs/kanban-board-review-workflow.md](docs/kanban-board-review-workflow.md)
+
+This document explains TaskFlow's shared Kanban Board for administrators and employees. It describes the four persisted lanes and how lane state is kept separate from the existing business task status so established dashboards, overdue logic, and approval behavior continue to work.
+
+It records the end-to-end review lifecycle: employees can submit assigned work from In Progress into Done, where it is marked Under review; organization administrators receive a task-update push notification through the existing notification system; approval records the task as completed and leaves it in Done; rejection records the rejected status and returns the task to In Progress. It also covers how the existing reopen flow remains distinct from submission rejection.
+
+The entry documents the compact card design and its high-pink, medium-green, and low-blue full-card priority fills, the uniform white lane surfaces in the light theme, the filters and desktop/touch/keyboard interactions, optimistic persistence and rollback, and task-detail integration. It identifies the frontend hook and components, both API implementations, and the two database migrations for Kanban ordering and rejected status. It also explains the hosted API deployment requirements for shared-backend writes.
+
+## Kanban Drag Permissions and Long-List Scrolling
+
+**Document:** [docs/kanban-drag-permission-and-scrolling.md](docs/kanban-drag-permission-and-scrolling.md)
+
+This diagnosis documents the employee-facing `Admin access required` error. The checked-in Edge Function and Express board routes allow authenticated employees to move tasks they can access, while admin-only review decisions remain protected. Since the frontend is configured for a hosted Edge API and the current board route does not emit that exact admin-guard message, seeing it during a board move indicates that the hosted API policy differs from the repository version. The task hook optimistically changes the lane and restores it when the API rejects the write, which accounts for a card snapping back after a failed drop.
+
+The note also covers the client message that identifies this API mismatch and the viewport-edge auto-scroll added to make the last cards of long columns reachable during native drag and drop. It maps these behaviors to the Kanban component, shared task hook, Edge Function, Express controller and route, and deployment script. The hosted permission fix requires deploying the current Edge Function to the linked Supabase project; local code changes alone do not alter that service.
+
+## Portal Routes and Priority Colors
+
+**Document:** [docs/portal-routes-and-priority-colors.md](docs/portal-routes-and-priority-colors.md)
+
+This guide enumerates the separate, bookmarkable page routes for every existing admin and employee sidebar feature. It explains how the portal dashboards read React Router location to render the selected page, how sidebar actions update the URL, how `/admin` and `/dashboard` redirect to default pages, and how the existing route guards continue to protect role-specific areas.
+
+The guide also records the shared high-pink, medium-green, low-blue palette for Kanban full-card fills and priority badges in task and meeting views. It identifies the router, dashboard components, sidebar, Kanban color helper, badge component, and CSS as the implementation points, and clarifies that route and palette changes do not alter SQL data or review behavior.
+
+## Kanban Column Surface and Board API 404
+
+**Document:** [docs/kanban-column-surface-and-api-404.md](docs/kanban-column-surface-and-api-404.md)
+
+This note describes the uniform theme-panel background used by all Kanban lanes, with the light theme appearing white; task card priority fills remain unchanged. It diagnoses the admin drag `Not found` response by tracing the frontend PATCH request to the board handler in the current Edge Function. The generic response is the function's unmatched-route fallback, while task lookup failures in the current handler have task-specific messages, indicating the hosted function likely predates the board-move route.
+
+The document explains that deploying the current `api` Edge Function to the frontend's Supabase project is the fix for the missing route, and that SQL is not required for this specific 404 because the board and lane data already load. It lists the CSS, Kanban helper/component, Edge API, and deployment script involved.

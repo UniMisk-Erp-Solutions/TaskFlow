@@ -14,6 +14,7 @@ function actionLabel(action) {
     case 'status_changed': return 'changed status';
     case 'submitted': return 'submitted for review';
     case 'approved': return 'approved';
+    case 'rejected': return 'rejected';
     case 'changes_requested': return 'requested changes';
     default: return action || 'updated';
   }

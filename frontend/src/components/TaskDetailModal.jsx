@@ -199,7 +199,7 @@ export default function TaskDetailModal({
   const isMyTask = userIsAssignee(record, profile?.id);
   const status = record?.status || 'pending';
   const canSubmit = !!submitTask && isMyTask
-    && (status === 'pending' || status === 'in_progress' || status === 'changes_requested' || status === 'blocked');
+    && (status === 'pending' || status === 'in_progress' || status === 'rejected' || status === 'changes_requested' || status === 'blocked');
   const canReview = isAdmin && !!approveTask && !!requestTaskChanges && status === 'submitted';
   const canReopen = isAdmin && !!requestTaskChanges && (status === 'completed' || status === 'changes_requested');
 
@@ -439,11 +439,11 @@ export default function TaskDetailModal({
                 {canReview && (
                   <>
                     <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">Reviewer note (required to request changes)</label>
+                      <label className="form-label">Reviewer note (required to reject)</label>
                       <textarea
                         className="input"
                         rows={3}
-                        placeholder="Optional for approve · required when requesting changes…"
+                        placeholder="Optional for approve · required when rejecting…"
                         value={reviewNote}
                         onChange={(e) => setReviewNote(e.target.value)}
                       />
@@ -455,7 +455,7 @@ export default function TaskDetailModal({
                         onClick={handleRequestChanges}
                         disabled={actionBusy === 'request'}
                       >
-                        {actionBusy === 'request' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Request changes'}
+                        {actionBusy === 'request' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Reject and return to In Progress'}
                       </button>
                       <button
                         type="button"

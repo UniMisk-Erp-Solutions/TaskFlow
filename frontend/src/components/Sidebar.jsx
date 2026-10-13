@@ -1,23 +1,35 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
-const NAV = [
+const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
-  { id: 'calender', icon: CalendarDays, label: 'Calender' },
+  { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
 ];
 
-export default function Sidebar({ active, onNav }) {
+const EMPLOYEE_NAV = [
+  { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'calender', icon: CalendarDays, label: 'Calendar' },
+  { id: 'projects', icon: FolderKanban, label: 'Projects' },
+  { id: 'notifications', icon: Bell, label: 'Notifications' },
+];
+
+export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
+  const isEmployee = role === 'employee';
+  const navItems = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
 
   return (
     <aside
+      className="taskflow-sidebar"
       style={{
         width: 220,
         flexShrink: 0,
@@ -40,10 +52,10 @@ export default function Sidebar({ active, onNav }) {
         }}
       >
         <Zap size={16} color="var(--color-primary)" strokeWidth={2} />
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
+        <span className="taskflow-sidebar-brand" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
           TaskFlow
         </span>
-        <span
+        <span className="taskflow-sidebar-role"
           style={{
             marginLeft: 'auto',
             fontSize: 10,
@@ -53,12 +65,12 @@ export default function Sidebar({ active, onNav }) {
             textTransform: 'uppercase',
           }}
         >
-          Admin
+          {isEmployee ? 'Employee' : 'Admin'}
         </span>
       </div>
 
       <nav style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.map(({ id, icon: Icon, label }) => {
+        {navItems.map(({ id, icon: Icon, label }) => {
           const isActive = active === id;
           return (
             <button
@@ -86,7 +98,7 @@ export default function Sidebar({ active, onNav }) {
               }}
             >
               <Icon size={17} strokeWidth={isActive ? 2 : 1.5} />
-              {label}
+              <span className="taskflow-sidebar-label">{label}</span>
             </button>
           );
         })}
@@ -112,7 +124,7 @@ export default function Sidebar({ active, onNav }) {
           >
             {(profile?.full_name || 'A')[0].toUpperCase()}
           </div>
-          <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
+          <div className="taskflow-sidebar-user-copy" style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tf-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {profile?.full_name || 'Admin'}
             </div>
@@ -149,7 +161,7 @@ export default function Sidebar({ active, onNav }) {
             e.currentTarget.style.background = 'transparent';
           }}
         >
-          <LogOut size={14} /> Sign Out
+          <LogOut size={14} /> <span className="taskflow-sidebar-label">Sign Out</span>
         </button>
       </div>
     </aside>

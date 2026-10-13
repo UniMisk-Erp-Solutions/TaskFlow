@@ -330,7 +330,7 @@ export default function OverviewUnified({
                   )}
                   {row.status === 'submitted' && (row.kind === 'task' ? onRequestChangesTask : onRequestChangesMeeting) && (
                     <RowIconBtn
-                      title="Request changes"
+                      title={row.kind === 'task' ? 'Reject and return to In Progress' : 'Request changes'}
                       accent="var(--status-warning)"
                       accentBg="var(--status-warning-bg)"
                       onClick={(e) => {

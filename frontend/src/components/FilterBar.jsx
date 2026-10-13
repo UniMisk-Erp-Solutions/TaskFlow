@@ -36,8 +36,9 @@ export default function FilterBar({
         <option value="">All Statuses</option>
         <option value="pending">Pending</option>
         <option value="in_progress">In Progress</option>
-        <option value="submitted">Submitted</option>
+        <option value="submitted">Under review</option>
         <option value="completed">Completed</option>
+        <option value="rejected">Rejected</option>
         <option value="changes_requested">Changes Requested</option>
         <option value="blocked">Blocked</option>
         <option value="scheduled">Scheduled</option>

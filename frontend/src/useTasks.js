@@ -49,6 +49,28 @@ export function useTasks() {
     return data;
   }
 
+  async function moveTaskBoard(id, kanban_column, kanban_order) {
+    const previous = tasks.find((task) => task.id === id);
+    if (!previous) throw new Error('This task is no longer on the board. Refresh and try again.');
+    const columnChanged = previous.kanban_column !== kanban_column;
+    let status = previous.status;
+    if (columnChanged) {
+      if (kanban_column === 'done') status = profile?.role === 'admin' ? 'completed' : 'submitted';
+      else if (kanban_column === 'in_progress') status = 'in_progress';
+      else status = 'pending';
+    }
+    const optimistic = { ...previous, kanban_column, kanban_order, status };
+    setTasks((current) => current.map((task) => (task.id === id ? optimistic : task)));
+    try {
+      const { data } = await api.patch(`/tasks/${id}/board`, { kanban_column, kanban_order });
+      setTasks((current) => current.map((task) => (task.id === id ? data : task)));
+      return data;
+    } catch (err) {
+      setTasks((current) => current.map((task) => (task.id === id ? previous : task)));
+      throw err;
+    }
+  }
+
   async function deleteTask(id) {
     await api.delete(`/tasks/${id}`);
     setTasks((prev) => prev.filter((t) => t.id !== id));
@@ -95,6 +117,7 @@ export function useTasks() {
     refetch: fetch,
     createTask,
     updateStatus,
+    moveTaskBoard,
     deleteTask,
     getTask,
     updateTask,
