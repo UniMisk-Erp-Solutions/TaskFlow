@@ -457,10 +457,21 @@ exports.updateStatus = async (req, res) => {
 
     const taskTitle = access.task?.title || "Task";
     const notifyIds = access.task?.assignee_ids || [];
+    const previousStatus = String(access.task?.status || "pending");
+    const statusUpdate = {
+      status,
+      kanban_column: taskKanbanColumnForStatus(status),
+      updated_at: new Date().toISOString(),
+    };
+    if (req.user.role === "admin" && previousStatus === "submitted" && status === "completed") {
+      statusUpdate.kanban_approved_at = statusUpdate.updated_at;
+    } else if (status !== "completed") {
+      statusUpdate.kanban_approved_at = null;
+    }
 
     const { data, error } = await supabase
       .from("tasks")
-      .update({ status, kanban_column: taskKanbanColumnForStatus(status), updated_at: new Date().toISOString() })
+      .update(statusUpdate)
       .eq("id", id)
       .eq("org_id", req.user.org_id)
       .select("*, task_assignees(profile_id)")
@@ -536,6 +547,11 @@ exports.updateBoardPosition = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
     if (nextStatus !== previousStatus) updates.status = nextStatus;
+    if (nextStatus === "completed" && previousStatus === "submitted") {
+      updates.kanban_approved_at = updates.updated_at;
+    } else if (nextStatus !== "completed") {
+      updates.kanban_approved_at = null;
+    }
     if (nextStatus === "submitted" && previousStatus !== "submitted") {
       updates.submission_notes = "Submitted from Kanban board";
     }

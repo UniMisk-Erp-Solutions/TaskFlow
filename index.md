@@ -9,3 +9,4 @@
 - [Kanban Column Surface and Board API 404](docs/kanban-column-surface-and-api-404.md) — Documents the uniform white lane surfaces and why the admin drag error requires deploying the current Supabase Edge API route; no SQL is needed for that 404.
 - [Kanban Drop Target and Scroll Fix](docs/kanban-drop-target-and-scroll-fix.md) — Records the earlier native drag acceptance attempt and links to the current pointer-based approach.
 - [Kanban Pointer-Based Drop Targets](docs/kanban-pointer-drop-targets.md) — Documents pointer-following previews, insertion markers, smooth edge scrolling, and full-height lane drop targets for the Kanban board.
+- [Approved Task Done-Lane Countdown](docs/kanban-approved-task-countdown.md) — Explains the 60-second employee Kanban countdown after admin approval and the additive database/API rollout needed to keep it real-time across refreshes.

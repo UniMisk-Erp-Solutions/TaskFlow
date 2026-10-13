@@ -2624,6 +2624,11 @@ async function handleTasks(req: Request, path: string) {
       updated_at: new Date().toISOString(),
     };
     if (nextStatus !== previousStatus) patch.status = nextStatus;
+    if (nextStatus === "completed" && previousStatus === "submitted") {
+      patch.kanban_approved_at = patch.updated_at;
+    } else if (nextStatus !== "completed") {
+      patch.kanban_approved_at = null;
+    }
     if (nextStatus === "submitted" && previousStatus !== "submitted") {
       patch.submission_notes = "Submitted from Kanban board";
     }
@@ -2899,9 +2904,19 @@ async function handleTasks(req: Request, path: string) {
       if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
     }
     const { data: beforeRow } = await supabase.from("tasks").select("status").eq("id", id).maybeSingle();
+    const statusUpdate: Record<string, unknown> = {
+      status,
+      kanban_column: taskKanbanColumnForStatus(status),
+      updated_at: new Date().toISOString(),
+    };
+    if (user.role === "admin" && beforeRow?.status === "submitted" && status === "completed") {
+      statusUpdate.kanban_approved_at = statusUpdate.updated_at;
+    } else if (status !== "completed") {
+      statusUpdate.kanban_approved_at = null;
+    }
     let uq = supabase
       .from("tasks")
-      .update({ status, kanban_column: taskKanbanColumnForStatus(status), updated_at: new Date().toISOString() })
+      .update(statusUpdate)
       .eq("id", id);
     if (user.org_id) uq = uq.eq("org_id", user.org_id);
     const { data, error } = await uq
@@ -3116,6 +3131,7 @@ async function handleTasks(req: Request, path: string) {
       .update({
         status: "completed",
         kanban_column: "done",
+        kanban_approved_at: new Date().toISOString(),
         approval_notes: note || null,
         updated_at: new Date().toISOString(),
       })
@@ -3167,6 +3183,7 @@ async function handleTasks(req: Request, path: string) {
       .update({
         status: nextStatus,
         kanban_column: nextColumn,
+        kanban_approved_at: null,
         approval_notes: note,
         updated_at: new Date().toISOString(),
       })

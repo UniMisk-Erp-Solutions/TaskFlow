@@ -1,11 +1,24 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, GripVertical, Search } from 'lucide-react';
+import { CalendarDays, Clock3, GripVertical, Search } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 
 function assigneeIds(task) {
   return task.assignee_ids?.length ? task.assignee_ids : task.assignee_id ? [task.assignee_id] : [];
+}
+
+const APPROVED_TASK_VISIBLE_MS = 60_000;
+
+function approvedTaskTimeLeft(task, now) {
+  const approvedAt = Date.parse(task.kanban_approved_at || '');
+  if (!Number.isFinite(approvedAt)) return null;
+  return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
+}
+
+function formatCountdown(milliseconds) {
+  const totalSeconds = Math.ceil(milliseconds / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
 
 function autoScrollAtPointer(element, clientY) {
@@ -37,7 +50,7 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
@@ -102,6 +115,12 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
       {(task.status === 'submitted' || task.status === 'rejected' || task.status === 'blocked' || task.status === 'changes_requested') && (
         <div className="kanban-workflow-status"><StatusBadge status={task.status} /></div>
       )}
+      {completionTimeLeft !== null && completionTimeLeft > 0 && (
+        <div className="kanban-completion-countdown" aria-label={`Removed from the board in ${formatCountdown(completionTimeLeft)}`}>
+          <Clock3 size={12} aria-hidden="true" />
+          <span>Clears in {formatCountdown(completionTimeLeft)}</span>
+        </div>
+      )}
 
     </article>
   );
@@ -118,6 +137,7 @@ export default function KanbanBoard({
   onOpenTask,
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragPreview, setDragPreview] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
@@ -134,6 +154,21 @@ export default function KanbanBoard({
   const reviewDialogRef = useRef(null);
 
   useEffect(() => () => pointerDragCleanup.current?.(), []);
+
+  useEffect(() => {
+    const hasActiveCountdown = !isAdmin && tasks.some((task) =>
+      task.status === 'completed' && approvedTaskTimeLeft(task, Date.now()) > 0,
+    );
+    if (!hasActiveCountdown) return undefined;
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now();
+      setClockNow(currentTime);
+      if (!tasks.some((task) => task.status === 'completed' && approvedTaskTimeLeft(task, currentTime) > 0)) {
+        window.clearInterval(timer);
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isAdmin, tasks]);
 
   useEffect(() => {
     if (!reviewTaskId) return undefined;
@@ -158,10 +193,16 @@ export default function KanbanBoard({
 
   const visibleByColumn = useMemo(() => {
     const grouped = Object.fromEntries(KANBAN_COLUMNS.map((column) => [column.id, []]));
-    filteredTasks.forEach((task) => grouped[kanbanColumnForTask(task)].push(task));
+    filteredTasks.forEach((task) => {
+      const timeLeft = approvedTaskTimeLeft(task, clockNow);
+      if (!isAdmin && task.status === 'completed' && timeLeft !== null && timeLeft <= 0) return;
+      grouped[kanbanColumnForTask(task)].push(task);
+    });
     Object.values(grouped).forEach((columnTasks) => columnTasks.sort(compareKanbanTasks));
     return grouped;
-  }, [filteredTasks]);
+  }, [filteredTasks, clockNow, isAdmin]);
+
+  const visibleTaskCount = Object.values(visibleByColumn).reduce((count, columnTasks) => count + columnTasks.length, 0);
 
   function setFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -408,7 +449,7 @@ export default function KanbanBoard({
           <option value="">All assignees</option>
           {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.full_name || assignee.email}</option>)}
         </select>
-        <span className="kanban-result-count">{filteredTasks.length} task{filteredTasks.length === 1 ? '' : 's'}</span>
+        <span className="kanban-result-count">{visibleTaskCount} task{visibleTaskCount === 1 ? '' : 's'}</span>
       </div>
 
       {error && (
@@ -449,6 +490,7 @@ export default function KanbanBoard({
                       onPointerDragStart={startPointerDrag}
                       consumeDraggedClick={consumeDraggedClick}
                       isDragging={draggedTaskId === task.id}
+                      completionTimeLeft={!isAdmin && task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
                     />
                   </div>
                 )) : (
