@@ -701,13 +701,18 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   background: var(--tf-panel);
   transition: background 120ms ease, border-color 120ms ease;
 }
-.kanban-column.is-drop-target { background: var(--tf-panel); box-shadow: 0 0 0 2px var(--tf-border); }
+.kanban-column.is-drop-target { background: var(--tf-panel); outline: 2px solid var(--color-primary); outline-offset: 1px; box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-primary) 12%, transparent); }
 .kanban-column-heading { display: flex; justify-content: space-between; align-items: center; padding: 4px 3px 12px; }
 .kanban-column-heading h2 { display: flex; align-items: center; gap: 8px; color: var(--tf-text); font: 600 14px/1.3 var(--font-display, inherit); text-transform: uppercase; letter-spacing: .045em; }
 .kanban-column-heading p { margin: 5px 0 0; color: var(--tf-muted); font-size: 11px; }
 .kanban-count { min-width: 22px; padding: 2px 6px; border-radius: 999px; color: var(--tf-muted); background: var(--tf-page); text-align: center; font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1.4; }
 .kanban-column-cards { min-height: 225px; display: flex; flex-direction: column; gap: 9px; }
-.kanban-drop-before { border-radius: 12px; }
+.kanban-column-cards.is-append-target { outline: 2px dashed color-mix(in srgb, var(--color-primary) 68%, transparent); outline-offset: 3px; border-radius: 12px; }
+.kanban-drop-before { position: relative; border-radius: 12px; }
+.kanban-drop-before.is-insertion-target::before {
+  content: ''; position: absolute; z-index: 2; top: -5px; left: 7px; right: 7px; height: 3px;
+  border-radius: 999px; background: var(--color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
 .kanban-card {
   padding: 10px; border: 1px solid color-mix(in srgb, var(--kanban-priority) 28%, var(--tf-border));
   border-radius: 12px; background: color-mix(in srgb, var(--tf-panel) 88%, var(--kanban-priority) 12%);
@@ -716,7 +721,14 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 }
 .kanban-card:hover, .kanban-card:focus-visible { outline: none; box-shadow: 0 5px 16px rgba(15, 23, 42, .09); transform: translateY(-1px); }
 .kanban-card:active { cursor: grabbing; }
-.kanban-card.is-pointer-dragging { opacity: .42; cursor: grabbing; }
+.kanban-card.is-pointer-dragging { opacity: .2; cursor: grabbing; transform: none; }
+.kanban-drag-preview {
+  position: fixed; z-index: 1500; top: 0; left: 0; pointer-events: none;
+  padding: 10px; border: 1px solid color-mix(in srgb, var(--kanban-priority) 42%, var(--tf-border));
+  border-radius: 12px; background: color-mix(in srgb, var(--tf-panel) 88%, var(--kanban-priority) 12%);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, .24); opacity: .96; will-change: transform;
+}
+.kanban-drag-preview .kanban-card-title { margin-top: 6px; }
 .kanban-card-topline { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
 .kanban-grip { color: var(--tf-muted); opacity: .55; cursor: grab; touch-action: none; }
 .kanban-card-title { margin: 6px 0 0; color: var(--tf-text); font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }

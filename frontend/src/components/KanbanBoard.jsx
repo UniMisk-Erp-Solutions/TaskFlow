@@ -29,8 +29,8 @@ function autoScrollAtPointer(element, clientY) {
   const fromTop = clientY - bounds.top;
   const fromBottom = bounds.bottom - clientY;
   let delta = 0;
-  if (fromBottom < edgeSize) delta = Math.max(4, Math.ceil((edgeSize - fromBottom) / 4));
-  else if (fromTop < edgeSize) delta = -Math.max(4, Math.ceil((edgeSize - fromTop) / 4));
+  if (fromBottom < edgeSize) delta = Math.min(14, Math.max(3, (edgeSize - fromBottom) * 0.2));
+  else if (fromTop < edgeSize) delta = -Math.min(14, Math.max(3, (edgeSize - fromTop) * 0.2));
   if (!delta) return;
 
   if (scrollContainer === window) window.scrollBy(0, delta);
@@ -119,11 +119,17 @@ export default function KanbanBoard({
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragPreview, setDragPreview] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
   const [error, setError] = useState('');
   const [reviewTaskId, setReviewTaskId] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
   const pointerDragCleanup = useRef(null);
+  const dragRuntimeRef = useRef(null);
+  const dragPreviewRef = useRef(null);
+  const overColumnRef = useRef(null);
+  const dropTargetRef = useRef(null);
   const suppressCardClickRef = useRef(false);
   const reviewDialogRef = useRef(null);
 
@@ -167,6 +173,20 @@ export default function KanbanBoard({
     return true;
   }
 
+  function setDropColumn(columnId) {
+    if (overColumnRef.current === columnId) return;
+    overColumnRef.current = columnId;
+    setOverColumn(columnId);
+  }
+
+  function setDropPosition(target) {
+    const next = target?.columnId ? target : null;
+    const current = dropTargetRef.current;
+    if (current?.columnId === next?.columnId && current?.beforeTaskId === next?.beforeTaskId) return;
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  }
+
   function nextOrder(columnId, beforeTaskId, movingTaskId) {
     const siblings = tasks
       .filter((task) => kanbanColumnForTask(task) === columnId && task.id !== movingTaskId)
@@ -195,7 +215,9 @@ export default function KanbanBoard({
       setError(displayError);
     } finally {
       setDraggedTaskId(null);
-      setOverColumn(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
     }
   }
 
@@ -208,13 +230,17 @@ export default function KanbanBoard({
       if (kanbanColumnForTask(task) !== 'in_progress') {
         setError('Move this task to In Progress before sending it for admin review.');
         setDraggedTaskId(null);
-        setOverColumn(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
         return;
       }
       setError('');
       setReviewTaskId(taskId);
       setDraggedTaskId(null);
-      setOverColumn(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
       return;
     }
 
@@ -248,52 +274,108 @@ export default function KanbanBoard({
     const pointerId = event.pointerId;
     const startX = event.clientX;
     const startY = event.clientY;
-    let dragging = false;
+    const sourceBounds = event.currentTarget.getBoundingClientRect();
+    const runtime = {
+      pointerId,
+      task,
+      x: startX,
+      y: startY,
+      startX,
+      startY,
+      width: sourceBounds.width,
+      dragging: false,
+      frameId: null,
+    };
+    dragRuntimeRef.current = runtime;
     const removeListeners = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      if (runtime.frameId !== null) window.cancelAnimationFrame(runtime.frameId);
+      runtime.frameId = null;
+      if (dragRuntimeRef.current === runtime) dragRuntimeRef.current = null;
       if (pointerDragCleanup.current === removeListeners) pointerDragCleanup.current = null;
     };
     const getDropTarget = (pointerEvent) => {
       const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY);
       const lane = target?.closest('[data-kanban-column]');
       const before = target?.closest('[data-kanban-task]');
+      let beforeTaskId = before?.getAttribute('data-kanban-task');
+      if (beforeTaskId && beforeTaskId !== task.id) {
+        const bounds = before.getBoundingClientRect();
+        if (pointerEvent.clientY >= bounds.top + bounds.height / 2) {
+          beforeTaskId = before.nextElementSibling?.getAttribute('data-kanban-task') || null;
+        }
+      }
       return {
         columnId: lane?.getAttribute('data-kanban-column'),
-        beforeTaskId: before?.getAttribute('data-kanban-task'),
+        beforeTaskId,
       };
+    };
+    const animateDrag = () => {
+      if (dragRuntimeRef.current !== runtime || !runtime.dragging) return;
+      const target = document.elementFromPoint(runtime.x, runtime.y);
+      const targetPosition = getDropTarget({ clientX: runtime.x, clientY: runtime.y });
+      const { columnId } = targetPosition;
+      setDropColumn(columnId || null);
+      setDropPosition(columnId ? targetPosition : null);
+      autoScrollAtPointer(target, runtime.y);
+      if (dragPreviewRef.current) {
+        const previewBounds = dragPreviewRef.current.getBoundingClientRect();
+        const previewX = runtime.x + previewBounds.width + 24 > window.innerWidth
+          ? runtime.x - previewBounds.width - 14
+          : runtime.x + 14;
+        const previewY = runtime.y + previewBounds.height + 24 > window.innerHeight
+          ? runtime.y - previewBounds.height - 14
+          : runtime.y + 14;
+        dragPreviewRef.current.style.transform = `translate3d(${previewX}px, ${previewY}px, 0)`;
+      }
+      runtime.frameId = window.requestAnimationFrame(animateDrag);
     };
     const onPointerMove = (moveEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
-      if (!dragging && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 6) return;
-      dragging = true;
+      runtime.x = moveEvent.clientX;
+      runtime.y = moveEvent.clientY;
+      if (!runtime.dragging && Math.hypot(runtime.x - startX, runtime.y - startY) < 4) return;
+      if (!runtime.dragging) {
+        runtime.dragging = true;
+        setDraggedTaskId(task.id);
+        setDragPreview({ task, width: runtime.width });
+        runtime.frameId = window.requestAnimationFrame(animateDrag);
+      }
       moveEvent.preventDefault();
-      setDraggedTaskId(task.id);
-      const target = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-      const { columnId } = getDropTarget(moveEvent);
-      setOverColumn(columnId || null);
-      // Keep long columns reachable while dragging to their lower cards.
-      autoScrollAtPointer(target, moveEvent.clientY);
     };
     const onPointerUp = (upEvent) => {
       if (upEvent.pointerId !== pointerId) return;
+      runtime.x = upEvent.clientX;
+      runtime.y = upEvent.clientY;
       removeListeners();
-      if (!dragging) return;
+      if (!runtime.dragging) return;
       suppressCardClickRef.current = true;
       window.setTimeout(() => { suppressCardClickRef.current = false; }, 0);
       const { columnId, beforeTaskId } = getDropTarget(upEvent);
+      if (columnId && beforeTaskId === task.id) {
+        setDraggedTaskId(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
+        return;
+      }
       if (columnId) {
         void commitMove(task.id, columnId, beforeTaskId && beforeTaskId !== task.id ? beforeTaskId : null);
       } else {
         setDraggedTaskId(null);
-        setOverColumn(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
       }
     };
     const onPointerCancel = () => {
       removeListeners();
       setDraggedTaskId(null);
-      setOverColumn(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
     };
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('pointerup', onPointerUp);
@@ -352,11 +434,11 @@ export default function KanbanBoard({
                   <p>{column.description}</p>
                 </div>
               </header>
-              <div className="kanban-column-cards">
+              <div className={`kanban-column-cards${overColumn === column.id && dropTarget?.columnId === column.id && !dropTarget.beforeTaskId ? ' is-append-target' : ''}`}>
                 {columnTasks.length ? columnTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="kanban-drop-before"
+                    className={`kanban-drop-before${dropTarget?.columnId === column.id && dropTarget.beforeTaskId === task.id ? ' is-insertion-target' : ''}`}
                     data-kanban-task={task.id}
                   >
                     <BoardCard
@@ -379,6 +461,22 @@ export default function KanbanBoard({
           );
         })}
       </div>
+      {dragPreview && (
+        <div
+          ref={dragPreviewRef}
+          className="kanban-drag-preview"
+          style={{
+            width: `min(${dragPreview.width}px, calc(100vw - 32px))`,
+            '--kanban-priority': priorityColor(dragPreview.task.priority),
+            transform: `translate3d(${(dragRuntimeRef.current?.x ?? 0) + 14}px, ${(dragRuntimeRef.current?.y ?? 0) + 14}px, 0)`,
+          }}
+          aria-hidden="true"
+        >
+          <span className="kanban-priority-label"><PriorityBadge priority={dragPreview.task.priority} /></span>
+          <h3 className="kanban-card-title">{dragPreview.task.title}</h3>
+          {dragPreview.task.project_name && <div className="kanban-project">{dragPreview.task.project_name}</div>}
+        </div>
+      )}
       {reviewTaskId && !isAdmin && (
         <div
           className="overlay"
@@ -401,7 +499,7 @@ export default function KanbanBoard({
           </div>
         </div>
       )}
-      <p className="kanban-hint">Drag a card to change its lane. Use the card menu to move tasks on touch screens. Task priority colors: high pink, medium green, low blue.</p>
+      <p className="kanban-hint">Drag a card to change its lane. On touch screens, drag using the grip. Task priority colors: high pink, medium green, low blue.</p>
     </section>
   );
 }
