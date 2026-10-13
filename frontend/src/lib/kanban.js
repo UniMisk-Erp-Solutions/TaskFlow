@@ -1,8 +1,8 @@
 export const KANBAN_COLUMNS = [
-  { id: 'backlog', label: 'Backlog', description: 'Planned for later', accent: '#64748b' },
-  { id: 'to_do', label: 'To Do', description: 'Ready to start', accent: '#0ea5e9' },
-  { id: 'in_progress', label: 'In Progress', description: 'Being worked on', accent: '#5645d4' },
-  { id: 'done', label: 'Done', description: 'Finished or awaiting review', accent: '#16a34a' },
+  { id: 'backlog', label: 'Backlog', description: 'Planned for later' },
+  { id: 'to_do', label: 'To Do', description: 'Ready to start' },
+  { id: 'in_progress', label: 'In Progress', description: 'Being worked on' },
+  { id: 'done', label: 'Done', description: 'Finished or awaiting review' },
 ];
 
 export function kanbanColumnForTask(task) {
@@ -26,7 +26,7 @@ export function compareKanbanTasks(a, b) {
 }
 
 export function priorityColor(priority) {
-  if (priority === 'high') return '#dc2626';
-  if (priority === 'low') return '#ca8a04';
-  return '#2563eb';
+  if (priority === 'high') return '#db2777';
+  if (priority === 'low') return '#2563eb';
+  return '#16a34a';
 }

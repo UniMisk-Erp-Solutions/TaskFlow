@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
 import { useProjects } from './useProjects';
@@ -92,12 +93,16 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
 
 export default function EmployeeDashboard() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const selfAssigneePreset = profile?.id ? [profile.id] : [];
   const { tasks, loading, refetch, updateStatus, moveTaskBoard, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus, submitMeeting, approveMeeting, requestMeetingChanges, getMeetingHistory } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const [showAI, setShowAI] = useState(false);
-  const [page, setPage] = useState(() => sessionStorage.getItem('taskflow_employee_page') || 'tasks');
+  const routeSegment = pathname.split('/').filter(Boolean).at(-1);
+  const page = routeSegment === 'calendar' ? 'calender' : routeSegment;
+  const validPages = ['tasks', 'kanban', 'calender', 'projects', 'notifications'];
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
   const [detailMeeting, setDetailMeeting] = useState(null);
@@ -126,9 +131,14 @@ export default function EmployeeDashboard() {
     return m;
   }, [allProfiles, profile]);
 
-  React.useEffect(() => {
-    sessionStorage.setItem('taskflow_employee_page', page);
-  }, [page]);
+  useEffect(() => {
+    if (!validPages.includes(page)) navigate('/dashboard/tasks', { replace: true });
+  }, [page, navigate]);
+
+  function navigateToPage(nextPage) {
+    const segment = nextPage === 'calender' ? 'calendar' : nextPage;
+    navigate(`/dashboard/${segment}`);
+  }
 
   function launchTaskForm(ctx = {}) {
     setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '' });
@@ -166,7 +176,7 @@ export default function EmployeeDashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex' }}>
-      <Sidebar active={page} onNav={setPage} role="employee" />
+      <Sidebar active={page} onNav={navigateToPage} role="employee" />
       <main style={{ flex: 1, minWidth: 0 }}>
       <div className="employee-dashboard-content" style={{ width: '100%', minWidth: 0, padding: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
@@ -231,6 +241,7 @@ export default function EmployeeDashboard() {
             projects={projects}
             assignees={allProfiles}
             profileById={profileById}
+            isAdmin={false}
             loading={loading}
             onMoveTask={moveTaskBoard}
             onOpenTask={setDetailTask}

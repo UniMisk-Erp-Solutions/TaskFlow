@@ -11,9 +11,9 @@ const STATUS_MAP = {
 };
 
 const PRIORITY_MAP = {
-  high:   { label: 'High',   cls: 'badge-red'    },
-  medium: { label: 'Medium', cls: 'badge-blue'   },
-  low:    { label: 'Low',    cls: 'badge-yellow' },
+  high:   { label: 'High',   cls: 'badge-pink'   },
+  medium: { label: 'Medium', cls: 'badge-green'  },
+  low:    { label: 'Low',    cls: 'badge-blue'   },
 };
 
 export default function StatusBadge({ status }) {

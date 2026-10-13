@@ -480,6 +480,11 @@ textarea.input {
   color: #2563eb;
   border: 1px solid rgba(37, 99, 235, 0.18);
 }
+.badge-pink {
+  background: rgba(219, 39, 119, 0.11);
+  color: #db2777;
+  border: 1px solid rgba(219, 39, 119, 0.2);
+}
 .badge-muted {
   background: var(--tf-pearl);
   color: var(--tf-muted);
@@ -692,11 +697,11 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 }
 .kanban-column {
   min-height: 300px; padding: 11px; border: 1px solid var(--tf-border);
-  border-top: 3px solid var(--kanban-lane-accent); border-radius: 14px;
-  background: color-mix(in srgb, var(--tf-panel) 92%, var(--kanban-lane-accent) 8%);
+  border-top: 3px solid var(--tf-border); border-radius: 14px;
+  background: var(--tf-panel);
   transition: background 120ms ease, border-color 120ms ease;
 }
-.kanban-column.is-drop-target { background: color-mix(in srgb, var(--tf-panel) 82%, var(--kanban-lane-accent) 18%); }
+.kanban-column.is-drop-target { background: var(--tf-panel); box-shadow: 0 0 0 2px var(--tf-border); }
 .kanban-column-heading { display: flex; justify-content: space-between; align-items: center; padding: 4px 3px 12px; }
 .kanban-column-heading h2 { display: flex; align-items: center; gap: 8px; color: var(--tf-text); font: 600 14px/1.3 var(--font-display, inherit); text-transform: uppercase; letter-spacing: .045em; }
 .kanban-column-heading p { margin: 5px 0 0; color: var(--tf-muted); font-size: 11px; }

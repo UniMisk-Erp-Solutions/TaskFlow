@@ -7,7 +7,7 @@ const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
-  { id: 'calender', icon: CalendarDays, label: 'Calender' },
+  { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
@@ -17,7 +17,7 @@ const ADMIN_NAV = [
 const EMPLOYEE_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
-  { id: 'calender', icon: CalendarDays, label: 'Calender' },
+  { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
 ];

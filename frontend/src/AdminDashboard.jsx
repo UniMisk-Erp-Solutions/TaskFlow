@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Sparkles, Send, RefreshCw, Upload } from 'lucide-react';
 import CsvImportModal from './components/CsvImportModal';
 import { useAuth } from './AuthContext';
@@ -56,6 +57,8 @@ function MiniStat({ label, value }) {
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { tasks, loading, refetch, createTask, updateStatus, moveTaskBoard, deleteTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const {
     meetings,
@@ -73,7 +76,9 @@ export default function AdminDashboard() {
 
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
 
-  const [page,     setPage]     = useState(() => sessionStorage.getItem('taskflow_admin_page') || 'overview');
+  const routeSegment = pathname.split('/').filter(Boolean).at(-1);
+  const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
+  const validPages = ['overview', 'tasks', 'kanban', 'calender', 'projects', 'users', 'notifications', 'email'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -100,8 +105,13 @@ export default function AdminDashboard() {
   }, [profile, allProfiles]);
 
   useEffect(() => {
-    sessionStorage.setItem('taskflow_admin_page', page);
-  }, [page]);
+    if (!validPages.includes(page)) navigate('/admin/overview', { replace: true });
+  }, [page, navigate]);
+
+  function navigateToPage(nextPage) {
+    const segment = nextPage === 'calender' ? 'calendar' : nextPage === 'email' ? 'reminders' : nextPage;
+    navigate(`/admin/${segment}`);
+  }
 
   function launchTaskForm(ctx = {}) {
     setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '' });
@@ -235,12 +245,12 @@ export default function AdminDashboard() {
 
   function openReviewQueue() {
     setFilters({ ...FILTERS_DEFAULT, status: 'submitted' });
-    setPage('tasks');
+    navigateToPage('tasks');
   }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--tf-page)' }}>
-      <Sidebar active={page} onNav={setPage} />
+      <Sidebar active={page} onNav={navigateToPage} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <div className="tf-subnav">
@@ -446,7 +456,7 @@ export default function AdminDashboard() {
                   <span style={{ fontSize: 13, color: 'var(--status-danger)' }}>
                     {overdue.length} task{overdue.length !== 1 ? 's' : ''} past due date
                   </span>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage('tasks')}>
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigateToPage('tasks')}>
                     View tasks
                   </button>
                 </div>
@@ -477,7 +487,7 @@ export default function AdminDashboard() {
                     <button className="btn btn-ghost btn-sm btn-icon" type="button" onClick={() => { refetch(); refetchMeetings(); }}>
                       <RefreshCw size={12} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => setPage('tasks')}>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigateToPage('tasks')}>
                       Open full lists
                     </button>
                   </div>
@@ -582,6 +592,7 @@ export default function AdminDashboard() {
               projects={projects}
               assignees={allProfiles}
               profileById={profileById}
+              isAdmin
               loading={loading}
               onMoveTask={moveTaskBoard}
               onOpenTask={setDetailTask}

@@ -25,23 +25,27 @@ Lane and order are stored separately from business status in `tasks.kanban_colum
 
 Employees must move a task into In Progress before submitting it to Done from the board. Submitted work stays in Done with an **Under review** badge and cannot be moved out by dragging. The task details review actions let an admin approve or reject it. Approval keeps it in Done; rejection returns it to In Progress with a **Rejected** badge and the review note in the task history.
 
+Employees can move active tasks freely among Backlog, To Do, and In Progress. When an employee drags a task from In Progress to Done, the board first opens an **Admin review needed** confirmation. Canceling keeps the task in In Progress without sending an API update. Confirming persists the move as `submitted` and Done, shows the **Under review** badge, and makes the task available from the admin **Review** queue. The board move APIs authorize the signed-in employee against assignment/task access; they do not require the employee to have the admin role. Only review decisions remain admin-only.
+
 ## Review notifications
 
 When an employee submits from the board, the API looks up administrators in the task's organization and includes them in the existing `task_update` push notification. The notification title is **Task ready for review** and links to the task. The existing TaskFlow push preference and browser subscription settings determine whether an administrator receives a browser push. The admin dashboard's pending-review count also derives from tasks in `submitted` status.
 
 ## Priority card design
 
+All four lane surfaces use the same theme panel color (white in the light theme). Lane background colors do not vary by workflow; task priority remains visible through the card fills and priority badges.
+
 Kanban cards use a light full-card tint based on task priority rather than a colored left stripe:
 
-- High — red tint.
-- Medium — blue tint.
-- Low — yellow tint.
+- High — pink tint.
+- Medium — green tint.
+- Low — blue tint.
 
 Cards stay compact and omit task descriptions. They show the title, priority, project, assignees, due date when present, and review or rejection status when relevant.
 
 ## User interface and interactions
 
-- Admin and employee sidebars both link to the same board component and route state.
+- Admin and employee sidebars both link to the same board component at their own direct routes (`/admin/kanban` and `/dashboard/kanban`).
 - The board supports search and project, priority, and assignee filters over the role-visible task set.
 - Desktop uses native drag-and-drop to move between lanes and reorder cards. Touch users can drag from the card grip; keyboard users can focus a card and use the left/right arrow keys to move between lanes.
 - Task cards open the existing task details and review experience.
@@ -53,6 +57,8 @@ Cards stay compact and omit task descriptions. They show the title, priority, pr
 The Supabase Edge API implements authenticated `PATCH /tasks/:id/board`. It validates the lane and order, checks organization and task access, limits employee moves to their accessible tasks, preserves admin visibility rules, and maps lane changes into the existing business lifecycle. Employee submission does not mark a task completed; only the admin approval endpoint can do that.
 
 The Express task router/controller also exposes the board position endpoint and applies the same employee submission guard and workflow mapping for installations using that API.
+
+The Edge API's `/tasks/:id/board` handler is present in the repository. If a board move receives the generic `Not found` response while task lists and the board load, the deployed API does not have the matching PATCH route version. The current handler returns task-specific messages for row lookup failures. Deploy the current Edge Function to the Supabase project serving the frontend. This route update does not require a new SQL migration for the reported 404.
 
 Migrations:
 

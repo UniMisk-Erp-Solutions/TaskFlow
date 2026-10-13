@@ -161,8 +161,10 @@ export default function App() {
             <Route path="/login"     element={<Login />} />
             <Route path="/signup"    element={<Navigate to="/login?mode=signup" replace />} />
             <Route path="/app"       element={<RoleRouter />} />
-            <Route path="/admin"     element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
-            <Route path="/dashboard" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
+            <Route path="/admin"     element={<Navigate to="/admin/overview" replace />} />
+            <Route path="/admin/*"  element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
+            <Route path="/dashboard" element={<Navigate to="/dashboard/tasks" replace />} />
+            <Route path="/dashboard/*" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
 
             <Route path="*"          element={<Navigate to="/" replace />} />
           </Routes>

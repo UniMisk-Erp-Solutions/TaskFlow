@@ -77,6 +77,7 @@ export default function KanbanBoard({
   projects = [],
   assignees = [],
   profileById = {},
+  isAdmin = false,
   loading = false,
   onMoveTask,
   onOpenTask,
@@ -85,9 +86,22 @@ export default function KanbanBoard({
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
   const [error, setError] = useState('');
+  const [reviewTaskId, setReviewTaskId] = useState(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const touchDragCleanup = useRef(null);
+  const reviewDialogRef = useRef(null);
 
   useEffect(() => () => touchDragCleanup.current?.(), []);
+
+  useEffect(() => {
+    if (!reviewTaskId) return undefined;
+    reviewDialogRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !submittingReview) setReviewTaskId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [reviewTaskId, submittingReview]);
 
   const filteredTasks = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
@@ -133,22 +147,83 @@ export default function KanbanBoard({
     return (lower + upper) / 2;
   }
 
-  async function commitMove(taskId, columnId, beforeTaskId = null) {
+  async function persistMove(taskId, columnId, beforeTaskId = null) {
     if (!taskId || !columnId) return;
     const order = nextOrder(columnId, beforeTaskId, taskId);
     setError('');
     try {
       await onMoveTask(taskId, columnId, order);
     } catch (moveError) {
-      setError(moveError?.response?.data?.error || moveError?.message || 'Could not move this task. Your board was restored.');
+      const apiMessage = moveError?.response?.data?.error || moveError?.message;
+      let displayError = apiMessage || 'Could not move this task. Your board was restored.';
+      if (!isAdmin && apiMessage === 'Admin access required') {
+        displayError = 'The connected API still blocks employee board moves. This project’s board endpoint allows assigned employees to move tasks; the hosted API must be updated to match.';
+      } else if (apiMessage === 'Not found') {
+        displayError = 'The connected API does not recognize the board-move endpoint yet. Deploy the current Supabase API function to enable task moves.';
+      }
+      setError(displayError);
     } finally {
       setDraggedTaskId(null);
       setOverColumn(null);
     }
   }
 
+  function commitMove(taskId, columnId, beforeTaskId = null) {
+    if (!taskId || !columnId) return;
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+
+    if (!isAdmin && columnId === 'done') {
+      if (kanbanColumnForTask(task) !== 'in_progress') {
+        setError('Move this task to In Progress before sending it for admin review.');
+        setDraggedTaskId(null);
+        setOverColumn(null);
+        return;
+      }
+      setError('');
+      setReviewTaskId(taskId);
+      setDraggedTaskId(null);
+      setOverColumn(null);
+      return;
+    }
+
+    return persistMove(taskId, columnId, beforeTaskId);
+  }
+
+  async function confirmReviewSubmission() {
+    const task = tasks.find((item) => item.id === reviewTaskId);
+    if (!task || kanbanColumnForTask(task) !== 'in_progress') {
+      setReviewTaskId(null);
+      setError('This task changed before it could be submitted. Refresh the board and try again.');
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      await persistMove(task.id, 'done');
+    } finally {
+      setSubmittingReview(false);
+      setReviewTaskId(null);
+    }
+  }
+
   function taskIdFromDrop(event) {
     return event.dataTransfer.getData('text/plain') || draggedTaskId;
+  }
+
+  function handleDragOver(event, columnId) {
+    event.preventDefault();
+    setOverColumn(columnId);
+
+    // Long task lists can extend well below the viewport. Scroll the page in
+    // small steps while a card is held near an edge so the last cards remain
+    // reachable during a drag.
+    const edgeSize = 72;
+    const edgeDistance = window.innerHeight - event.clientY;
+    if (edgeDistance < edgeSize) {
+      window.scrollBy(0, Math.max(4, Math.ceil((edgeSize - edgeDistance) / 4)));
+    } else if (event.clientY < edgeSize) {
+      window.scrollBy(0, -Math.max(4, Math.ceil((edgeSize - event.clientY) / 4)));
+    }
   }
 
   function startTouchDrag(event, task) {
@@ -239,13 +314,12 @@ export default function KanbanBoard({
               key={column.id}
               className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}`}
               data-kanban-column={column.id}
-              onDragOver={(event) => { event.preventDefault(); setOverColumn(column.id); }}
+              onDragOver={(event) => handleDragOver(event, column.id)}
               onDragLeave={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget)) setOverColumn(null);
               }}
               onDrop={(event) => handleColumnDrop(event, column.id)}
               aria-label={`${column.label}, ${columnTasks.length} tasks`}
-              style={{ '--kanban-lane-accent': column.accent }}
             >
               <header className="kanban-column-heading">
                 <div>
@@ -259,7 +333,7 @@ export default function KanbanBoard({
                     key={task.id}
                     className="kanban-drop-before"
                     data-kanban-task={task.id}
-                    onDragOver={(event) => event.preventDefault()}
+                    onDragOver={(event) => handleDragOver(event, column.id)}
                     onDrop={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -285,7 +359,29 @@ export default function KanbanBoard({
           );
         })}
       </div>
-      <p className="kanban-hint">Drag a card to change its lane. Use the card menu to move tasks on touch screens. Task priority colors: high red, medium blue, low yellow.</p>
+      {reviewTaskId && !isAdmin && (
+        <div
+          className="overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !submittingReview) setReviewTaskId(null);
+          }}
+        >
+          <div ref={reviewDialogRef} tabIndex={-1} className="modal kanban-review-modal" role="dialog" aria-modal="true" aria-busy={submittingReview} aria-labelledby="kanban-review-title" aria-describedby="kanban-review-description">
+            <h2 id="kanban-review-title" style={{ margin: '0 0 10px', color: 'var(--tf-text)', fontFamily: 'var(--font-display)' }}>Admin review needed</h2>
+            <p id="kanban-review-description" style={{ margin: '0 0 18px', color: 'var(--tf-muted)', fontSize: 14, lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--tf-text)' }}>{tasks.find((task) => task.id === reviewTaskId)?.title || 'This task'}</strong> will move to Done as <strong style={{ color: 'var(--status-warning)' }}>Under review</strong>. An administrator must approve it before it is marked complete. If it is rejected, it will return to In Progress.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewTaskId(null)} disabled={submittingReview}>Keep in In Progress</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={confirmReviewSubmission} disabled={submittingReview}>
+                {submittingReview ? <><span className="spinner" /> Sending…</> : 'Send for admin review'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <p className="kanban-hint">Drag a card to change its lane. Use the card menu to move tasks on touch screens. Task priority colors: high pink, medium green, low blue.</p>
     </section>
   );
 }
