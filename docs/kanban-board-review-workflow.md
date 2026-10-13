@@ -47,7 +47,7 @@ Cards stay compact and omit task descriptions. They show the title, priority, pr
 
 - Admin and employee sidebars both link to the same board component at their own direct routes (`/admin/kanban` and `/dashboard/kanban`).
 - The board supports search and project, priority, and assignee filters over the role-visible task set.
-- Desktop uses native drag-and-drop to move between lanes and reorder cards. Touch users can drag from the card grip; keyboard users can focus a card and use the left/right arrow keys to move between lanes.
+- Desktop uses native drag-and-drop with explicit move drop effects on both card targets and the full lane surface, allowing lane moves and card reordering. Touch users can drag from the card grip; keyboard users can focus a card and use the left/right arrow keys to move between lanes. Dragging near a scroll edge scrolls the nearest portal content container so lower cards remain reachable.
 - Task cards open the existing task details and review experience.
 - The board applies optimistic moves, persists through the task hook, restores the prior task if the API rejects a move, and displays the returned error.
 - Employee dashboard content uses the available main-area width, with responsive board lanes and sidebar behavior on smaller screens.

@@ -57,3 +57,11 @@ The guide also records the shared high-pink, medium-green, low-blue palette for 
 This note describes the uniform theme-panel background used by all Kanban lanes, with the light theme appearing white; task card priority fills remain unchanged. It diagnoses the admin drag `Not found` response by tracing the frontend PATCH request to the board handler in the current Edge Function. The generic response is the function's unmatched-route fallback, while task lookup failures in the current handler have task-specific messages, indicating the hosted function likely predates the board-move route.
 
 The document explains that deploying the current `api` Edge Function to the frontend's Supabase project is the fix for the missing route, and that SQL is not required for this specific 404 because the board and lane data already load. It lists the CSS, Kanban helper/component, Edge API, and deployment script involved.
+
+## Kanban Drop Target and Scroll Fix
+
+**Document:** [docs/kanban-drop-target-and-scroll-fix.md](docs/kanban-drop-target-and-scroll-fix.md)
+
+This feature note addresses the native browser prohibited-drop cursor and dragging lower cards in long columns. It explains that setting `effectAllowed` on the card is not enough: valid targets also prevent the default drag-enter/drag-over behavior and set `dataTransfer.dropEffect` to `move`. The lane surface accepts drops over blank space, while card insertion targets allow ordering before a specific card.
+
+The note documents the admin/employee scroll-container difference. A shared helper now finds and scrolls the nearest vertical overflow container near its top or bottom edge, with a viewport fallback; desktop native dragging and touch pointer dragging both use it. Persistence still uses the existing shared task hook and backend endpoint, so role-based access and employee review transitions are unchanged.

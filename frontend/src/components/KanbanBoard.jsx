@@ -8,6 +8,35 @@ function assigneeIds(task) {
   return task.assignee_ids?.length ? task.assignee_ids : task.assignee_id ? [task.assignee_id] : [];
 }
 
+function autoScrollAtPointer(element, clientY) {
+  let scrollContainer = element?.parentElement;
+  while (scrollContainer && scrollContainer !== document.body) {
+    const overflowY = window.getComputedStyle(scrollContainer).overflowY;
+    if (/(auto|scroll|overlay)/.test(overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1) break;
+    scrollContainer = scrollContainer.parentElement;
+  }
+
+  if (!scrollContainer) {
+    const pageScroller = document.scrollingElement;
+    if (pageScroller?.scrollHeight > window.innerHeight + 1) scrollContainer = window;
+  }
+  if (!scrollContainer) return;
+
+  const bounds = scrollContainer === window
+    ? { top: 0, bottom: window.innerHeight }
+    : scrollContainer.getBoundingClientRect();
+  const edgeSize = 72;
+  const fromTop = clientY - bounds.top;
+  const fromBottom = bounds.bottom - clientY;
+  let delta = 0;
+  if (fromBottom < edgeSize) delta = Math.max(4, Math.ceil((edgeSize - fromBottom) / 4));
+  else if (fromTop < edgeSize) delta = -Math.max(4, Math.ceil((edgeSize - fromTop) / 4));
+  if (!delta) return;
+
+  if (scrollContainer === window) window.scrollBy(0, delta);
+  else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
+}
+
 function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDragStart }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
@@ -212,18 +241,11 @@ export default function KanbanBoard({
 
   function handleDragOver(event, columnId) {
     event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
     setOverColumn(columnId);
-
-    // Long task lists can extend well below the viewport. Scroll the page in
-    // small steps while a card is held near an edge so the last cards remain
-    // reachable during a drag.
-    const edgeSize = 72;
-    const edgeDistance = window.innerHeight - event.clientY;
-    if (edgeDistance < edgeSize) {
-      window.scrollBy(0, Math.max(4, Math.ceil((edgeSize - edgeDistance) / 4)));
-    } else if (event.clientY < edgeSize) {
-      window.scrollBy(0, -Math.max(4, Math.ceil((edgeSize - event.clientY) / 4)));
-    }
+    // Admin and employee portals use different vertical scroll containers.
+    // Scroll the nearest one so the last cards stay reachable during a drag.
+    autoScrollAtPointer(event.currentTarget, event.clientY);
   }
 
   function startTouchDrag(event, task) {
@@ -242,7 +264,9 @@ export default function KanbanBoard({
     const onPointerMove = (moveEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
       moveEvent.preventDefault();
-      const lane = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest('[data-kanban-column]');
+      const target = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+      autoScrollAtPointer(target, moveEvent.clientY);
+      const lane = target?.closest('[data-kanban-column]');
       setOverColumn(lane?.getAttribute('data-kanban-column') || null);
     };
     const onPointerUp = (upEvent) => {
@@ -314,6 +338,7 @@ export default function KanbanBoard({
               key={column.id}
               className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}`}
               data-kanban-column={column.id}
+              onDragEnter={(event) => handleDragOver(event, column.id)}
               onDragOver={(event) => handleDragOver(event, column.id)}
               onDragLeave={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget)) setOverColumn(null);
@@ -333,6 +358,7 @@ export default function KanbanBoard({
                     key={task.id}
                     className="kanban-drop-before"
                     data-kanban-task={task.id}
+                    onDragEnter={(event) => handleDragOver(event, column.id)}
                     onDragOver={(event) => handleDragOver(event, column.id)}
                     onDrop={(event) => {
                       event.preventDefault();
