@@ -1,5 +1,7 @@
 # Kanban Drop Target and Scroll Fix
 
+> Historical implementation note: native drag acceptance was later replaced after the prohibited cursor continued to appear for lower-card drops. The current behavior is documented in [Kanban Pointer-Based Drop Targets](kanban-pointer-drop-targets.md).
+
 ## Purpose
 
 Fix the browser's prohibited-drop cursor and make cards near the bottom of long Kanban columns reachable in both admin and employee portals.

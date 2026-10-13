@@ -692,7 +692,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 }
 .kanban-error button { border: 0; color: inherit; background: transparent; font: inherit; font-weight: 600; cursor: pointer; }
 .kanban-board {
-  display: grid; grid-template-columns: repeat(4, minmax(250px, 1fr)); align-items: start;
+  display: grid; grid-template-columns: repeat(4, minmax(250px, 1fr)); align-items: stretch;
   gap: 14px; overflow-x: auto; padding: 2px 2px 12px; overscroll-behavior-x: contain;
 }
 .kanban-column {
@@ -716,6 +716,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 }
 .kanban-card:hover, .kanban-card:focus-visible { outline: none; box-shadow: 0 5px 16px rgba(15, 23, 42, .09); transform: translateY(-1px); }
 .kanban-card:active { cursor: grabbing; }
+.kanban-card.is-pointer-dragging { opacity: .42; cursor: grabbing; }
 .kanban-card-topline { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
 .kanban-grip { color: var(--tf-muted); opacity: .55; cursor: grab; touch-action: none; }
 .kanban-card-title { margin: 6px 0 0; color: var(--tf-text); font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }

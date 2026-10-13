@@ -7,4 +7,5 @@
 - [Kanban Drag Permissions and Long-List Scrolling](docs/kanban-drag-permission-and-scrolling.md) — Explains why employee drops can show an admin-only API error, how failed optimistic moves appear to snap back, and how drag scrolling works for long columns.
 - [Portal Routes and Priority Colors](docs/portal-routes-and-priority-colors.md) — Lists the distinct admin and employee page URLs and documents the high-pink, medium-green, low-blue priority palette.
 - [Kanban Column Surface and Board API 404](docs/kanban-column-surface-and-api-404.md) — Documents the uniform white lane surfaces and why the admin drag error requires deploying the current Supabase Edge API route; no SQL is needed for that 404.
-- [Kanban Drop Target and Scroll Fix](docs/kanban-drop-target-and-scroll-fix.md) — Explains valid native drop targets, card reordering, and scrolling the correct portal container while dragging through long columns.
+- [Kanban Drop Target and Scroll Fix](docs/kanban-drop-target-and-scroll-fix.md) — Records the earlier native drag acceptance attempt and links to the current pointer-based approach.
+- [Kanban Pointer-Based Drop Targets](docs/kanban-pointer-drop-targets.md) — Documents pointer-driven drag detection and equal-height lanes so a task can drop anywhere across a Kanban column, including lower positions beside long lists, while preserving touch scrolling.

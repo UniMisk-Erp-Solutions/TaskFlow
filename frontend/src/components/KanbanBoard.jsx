@@ -37,18 +37,24 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDragStart }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
 
   return (
     <article
-      className="kanban-card"
-      draggable={!locked}
-      onDragStart={(event) => onDragStart(event, task)}
-      onDragEnd={() => onDragStart(null, null)}
-      onClick={() => onOpen(task)}
+      className={`kanban-card${isDragging ? ' is-pointer-dragging' : ''}`}
+      draggable={false}
+      onPointerDown={(event) => !locked && onPointerDragStart(event, task)}
+      onClick={(event) => {
+        if (consumeDraggedClick()) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onOpen(task);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
@@ -73,7 +79,7 @@ function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDrag
           size={15}
           aria-hidden="true"
           className="kanban-grip"
-          onPointerDown={(event) => onTouchDragStart(event, task)}
+          onClick={(event) => event.stopPropagation()}
           title="Drag to move task"
         />}
       </div>
@@ -117,10 +123,11 @@ export default function KanbanBoard({
   const [error, setError] = useState('');
   const [reviewTaskId, setReviewTaskId] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
-  const touchDragCleanup = useRef(null);
+  const pointerDragCleanup = useRef(null);
+  const suppressCardClickRef = useRef(false);
   const reviewDialogRef = useRef(null);
 
-  useEffect(() => () => touchDragCleanup.current?.(), []);
+  useEffect(() => () => pointerDragCleanup.current?.(), []);
 
   useEffect(() => {
     if (!reviewTaskId) return undefined;
@@ -154,15 +161,10 @@ export default function KanbanBoard({
     setFilters((current) => ({ ...current, [key]: value }));
   }
 
-  function handleDragStart(event, task) {
-    if (!task) {
-      setDraggedTaskId(null);
-      setOverColumn(null);
-      return;
-    }
-    setDraggedTaskId(task.id);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', task.id);
+  function consumeDraggedClick() {
+    if (!suppressCardClickRef.current) return false;
+    suppressCardClickRef.current = false;
+    return true;
   }
 
   function nextOrder(columnId, beforeTaskId, movingTaskId) {
@@ -235,64 +237,68 @@ export default function KanbanBoard({
     }
   }
 
-  function taskIdFromDrop(event) {
-    return event.dataTransfer.getData('text/plain') || draggedTaskId;
-  }
-
-  function handleDragOver(event, columnId) {
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-    setOverColumn(columnId);
-    // Admin and employee portals use different vertical scroll containers.
-    // Scroll the nearest one so the last cards stay reachable during a drag.
-    autoScrollAtPointer(event.currentTarget, event.clientY);
-  }
-
-  function startTouchDrag(event, task) {
-    if (event.pointerType === 'mouse') return;
-    event.preventDefault();
-    touchDragCleanup.current?.();
-    setDraggedTaskId(task.id);
+  function startPointerDrag(event, task) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, a, input, select, textarea')) return;
+    // Touch drags start from the explicit grip so swipes elsewhere on a card
+    // remain available for scrolling the board.
+    if (event.pointerType === 'touch' && !event.target.closest('.kanban-grip')) return;
+    pointerDragCleanup.current?.();
 
     const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragging = false;
     const removeListeners = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', removeListeners);
-      if (touchDragCleanup.current === removeListeners) touchDragCleanup.current = null;
+      window.removeEventListener('pointercancel', onPointerCancel);
+      if (pointerDragCleanup.current === removeListeners) pointerDragCleanup.current = null;
+    };
+    const getDropTarget = (pointerEvent) => {
+      const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+      const lane = target?.closest('[data-kanban-column]');
+      const before = target?.closest('[data-kanban-task]');
+      return {
+        columnId: lane?.getAttribute('data-kanban-column'),
+        beforeTaskId: before?.getAttribute('data-kanban-task'),
+      };
     };
     const onPointerMove = (moveEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
+      if (!dragging && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 6) return;
+      dragging = true;
       moveEvent.preventDefault();
+      setDraggedTaskId(task.id);
       const target = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+      const { columnId } = getDropTarget(moveEvent);
+      setOverColumn(columnId || null);
+      // Keep long columns reachable while dragging to their lower cards.
       autoScrollAtPointer(target, moveEvent.clientY);
-      const lane = target?.closest('[data-kanban-column]');
-      setOverColumn(lane?.getAttribute('data-kanban-column') || null);
     };
     const onPointerUp = (upEvent) => {
       if (upEvent.pointerId !== pointerId) return;
       removeListeners();
-      const target = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
-      const lane = target?.closest('[data-kanban-column]');
-      const before = target?.closest('[data-kanban-task]');
-      const columnId = lane?.getAttribute('data-kanban-column');
-      const beforeTaskId = before?.getAttribute('data-kanban-task');
-      if (columnId) void commitMove(task.id, columnId, beforeTaskId && beforeTaskId !== task.id ? beforeTaskId : null);
-      else {
+      if (!dragging) return;
+      suppressCardClickRef.current = true;
+      window.setTimeout(() => { suppressCardClickRef.current = false; }, 0);
+      const { columnId, beforeTaskId } = getDropTarget(upEvent);
+      if (columnId) {
+        void commitMove(task.id, columnId, beforeTaskId && beforeTaskId !== task.id ? beforeTaskId : null);
+      } else {
         setDraggedTaskId(null);
         setOverColumn(null);
       }
     };
+    const onPointerCancel = () => {
+      removeListeners();
+      setDraggedTaskId(null);
+      setOverColumn(null);
+    };
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', removeListeners);
-    touchDragCleanup.current = removeListeners;
-  }
-
-  function handleColumnDrop(event, columnId) {
-    event.preventDefault();
-    event.stopPropagation();
-    void commitMove(taskIdFromDrop(event), columnId);
+    window.addEventListener('pointercancel', onPointerCancel);
+    pointerDragCleanup.current = removeListeners;
   }
 
   if (loading) {
@@ -338,12 +344,6 @@ export default function KanbanBoard({
               key={column.id}
               className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}`}
               data-kanban-column={column.id}
-              onDragEnter={(event) => handleDragOver(event, column.id)}
-              onDragOver={(event) => handleDragOver(event, column.id)}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) setOverColumn(null);
-              }}
-              onDrop={(event) => handleColumnDrop(event, column.id)}
               aria-label={`${column.label}, ${columnTasks.length} tasks`}
             >
               <header className="kanban-column-heading">
@@ -358,21 +358,15 @@ export default function KanbanBoard({
                     key={task.id}
                     className="kanban-drop-before"
                     data-kanban-task={task.id}
-                    onDragEnter={(event) => handleDragOver(event, column.id)}
-                    onDragOver={(event) => handleDragOver(event, column.id)}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void commitMove(taskIdFromDrop(event), column.id, task.id);
-                    }}
                   >
                     <BoardCard
                       task={task}
                       profileById={profileById}
                       onOpen={onOpenTask}
                       onMove={(item, nextColumn) => void commitMove(item.id, nextColumn)}
-                      onDragStart={handleDragStart}
-                      onTouchDragStart={startTouchDrag}
+                      onPointerDragStart={startPointerDrag}
+                      consumeDraggedClick={consumeDraggedClick}
+                      isDragging={draggedTaskId === task.id}
                     />
                   </div>
                 )) : (
