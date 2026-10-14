@@ -8,6 +8,29 @@ import supabase from './supabaseClient';
  * If your reverse proxy returns 403 on wss://…/realtime (common with mis-tunneled WS),
  * set VITE_DISABLE_REALTIME=true in the frontend env and rely on manual refetch / navigation.
  */
+/**
+ * Safety net for when websocket realtime is unavailable or the table is not in the
+ * realtime publication: refresh while the tab is visible, and on focus/return.
+ */
+export function useLiveRefresh(refresh, intervalMs = 5000) {
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  useEffect(() => {
+    const run = () => {
+      if (document.visibilityState === 'visible') refreshRef.current?.();
+    };
+    const timer = window.setInterval(run, intervalMs);
+    document.addEventListener('visibilitychange', run);
+    window.addEventListener('focus', run);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', run);
+      window.removeEventListener('focus', run);
+    };
+  }, [intervalMs]);
+}
+
 export function useRealtime(table, onChange) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;

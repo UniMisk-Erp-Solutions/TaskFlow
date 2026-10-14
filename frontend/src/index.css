@@ -720,7 +720,10 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   cursor: grab; transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
 }
 .kanban-card:hover, .kanban-card:focus-visible { outline: none; box-shadow: 0 5px 16px rgba(15, 23, 42, .09); transform: translateY(-1px); }
+.kanban-card, .kanban-drag-preview { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .kanban-card:active { cursor: grabbing; }
+body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !important; user-select: none !important; cursor: grabbing !important; }
+.kanban-card.is-pointer-dragging, .kanban-column { transition: none; }
 .kanban-card.is-pointer-dragging { opacity: .2; cursor: grabbing; transform: none; }
 .kanban-drag-preview {
   position: fixed; z-index: 1500; top: 0; left: 0; pointer-events: none;
@@ -953,3 +956,48 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
     opacity: 0.3;
   }
 }
+
+/* Timer analytics: per-person expandable cards */
+.timer-person-grid { display: grid; gap: 10px; }
+.timer-person-card { border: 1px solid var(--tf-border); border-radius: 12px; background: var(--tf-panel); overflow: hidden; transition: border-color 140ms ease, box-shadow 140ms ease; }
+.timer-person-card.is-open { border-color: color-mix(in srgb, var(--color-primary) 40%, var(--tf-border)); box-shadow: 0 4px 14px rgba(15, 23, 42, .06); }
+.timer-person-head { width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto auto 20px; align-items: center; gap: 14px; padding: 12px 14px; border: 0; background: transparent; color: var(--tf-text); text-align: left; cursor: pointer; font: inherit; }
+.timer-person-head:hover { background: var(--tf-page); }
+.timer-person-head:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.timer-person-avatar { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); color: var(--color-primary); font-weight: 700; font-size: 15px; }
+.timer-person-title { display: grid; gap: 6px; min-width: 0; }
+.timer-person-title > strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-person-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.timer-chip { padding: 2px 8px; border-radius: 999px; background: var(--tf-page); color: var(--tf-muted); font-size: 11px; font-weight: 500; }
+.timer-chip.is-progress { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); }
+.timer-chip.is-review { background: rgba(234, 108, 21, .14); color: #c2570c; }
+.timer-chip.is-done, .timer-chip.is-running { background: rgba(22, 163, 74, .14); color: #15803d; }
+.timer-person-stat { display: grid; gap: 2px; text-align: right; white-space: nowrap; }
+.timer-person-stat small { color: var(--tf-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.timer-person-stat strong { font: 600 15px/1.2 var(--font-display, inherit); font-variant-numeric: tabular-nums; }
+.timer-person-chevron { color: var(--tf-muted); transition: transform 160ms ease; }
+.timer-person-card.is-open .timer-person-chevron { transform: rotate(180deg); }
+.timer-task-list { list-style: none; margin: 0; padding: 4px 14px 10px 68px; border-top: 1px solid var(--tf-border); }
+.timer-task-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 70px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--tf-border); font-size: 13px; }
+.timer-task-row:last-child { border-bottom: 0; }
+.timer-task-title { overflow-wrap: anywhere; color: var(--tf-text); }
+.timer-status { justify-self: start; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--tf-page); color: var(--tf-muted); }
+.timer-status.is-rank-0 { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); }
+.timer-status.is-rank-2 { background: rgba(234, 108, 21, .14); color: #c2570c; }
+.timer-status.is-rank-3 { background: rgba(22, 163, 74, .14); color: #15803d; }
+.timer-task-time { text-align: right; font-variant-numeric: tabular-nums; color: var(--tf-text); }
+@media (max-width: 720px) {
+  .timer-person-head { grid-template-columns: 40px minmax(0, 1fr) 20px; }
+  .timer-person-stat { display: none; }
+  .timer-task-list { padding-left: 14px; }
+  .timer-task-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .timer-task-time { grid-column: 2; }
+}
+.timer-task-panel { border-top: 1px solid var(--tf-border); padding: 10px 14px 10px 68px; }
+.timer-task-panel .timer-task-list { border-top: 0; padding: 0; }
+.timer-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; }
+.timer-filter-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--tf-border); border-radius: 999px; background: var(--tf-panel); color: var(--tf-muted); font: 500 12px/1.4 inherit; cursor: pointer; }
+.timer-filter-btn span { font-variant-numeric: tabular-nums; opacity: .8; }
+.timer-filter-btn:hover { color: var(--tf-text); border-color: color-mix(in srgb, var(--color-primary) 40%, var(--tf-border)); }
+.timer-filter-btn.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+@media (max-width: 720px) { .timer-task-panel { padding-left: 14px; } }
