@@ -20,6 +20,7 @@ import { useTaskTimers } from './useTaskTimers';
 import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
 import NotificationSettings from './components/NotificationSettings';
+import ProfilePage from './components/ProfilePage';
 
 function Stat({ label, value, color }) {
   return (
@@ -105,7 +106,7 @@ export default function EmployeeDashboard() {
   const [showAI, setShowAI] = useState(false);
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment;
-  const validPages = ['tasks', 'kanban', 'timer', 'calender', 'projects', 'notifications'];
+  const validPages = ['tasks', 'kanban', 'timer', 'calender', 'projects', 'notifications', 'profile'];
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
   const [detailMeeting, setDetailMeeting] = useState(null);
@@ -185,7 +186,7 @@ export default function EmployeeDashboard() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>
-              {page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'tasks' ? `${greeting()}, ${profile?.full_name?.split(' ')[0] || 'there'}` : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : 'Notifications'}
+              {page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'tasks' ? `${greeting()}, ${profile?.full_name?.split(' ')[0] || 'there'}` : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'profile' ? 'Profile' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -197,7 +198,7 @@ export default function EmployeeDashboard() {
           </button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {page !== 'profile' && <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
@@ -206,9 +207,11 @@ export default function EmployeeDashboard() {
               <Plus size={14} /> Meeting
             </button>
           </span>
-        </div>
+        </div>}
 
-        {page !== 'notifications' && page !== 'timer' && (
+        {page === 'profile' && <ProfilePage />}
+
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && (
         <div className="tf-stat-row" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, display: 'flex', background: 'var(--tf-panel)', marginBottom: 28, overflow: 'hidden', boxShadow: 'none' }}>
           <Stat label="Total" value={stats.total} />
           <Stat label="Pending" value={stats.pending} color="var(--status-warning)" />
@@ -217,7 +220,7 @@ export default function EmployeeDashboard() {
         </div>
         )}
 
-        {page !== 'notifications' && page !== 'timer' && stats.overdue > 0 && (
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && stats.overdue > 0 && (
           <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
             <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
               {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.

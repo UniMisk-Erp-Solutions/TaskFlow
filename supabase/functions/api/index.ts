@@ -1912,6 +1912,24 @@ async function handleAuthMe(req: Request) {
   if ("error" in auth) return auth.error;
   const { user } = auth;
 
+  if (req.method === "PATCH") {
+    const body = await parseBody(req) as Record<string, unknown>;
+    const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    if (!fullName || fullName.length > 100) {
+      return json({ error: "Full name is required and must be 100 characters or fewer." }, 400);
+    }
+    if (body.phone != null && typeof body.phone !== "string") {
+      return json({ error: "Phone number must be text." }, 400);
+    }
+    if (phone.length > 30) return json({ error: "Phone number must be 30 characters or fewer." }, 400);
+    const { error: updateError } = await supabase.from("profiles")
+      .update({ full_name: fullName, phone: phone || null })
+      .eq("id", user.id);
+    if (updateError) return json({ error: updateError.message }, 400);
+    return json({ message: "Profile updated" });
+  }
+
   const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
   if (error) return json({ error: error.message }, 500);
 
@@ -4385,6 +4403,7 @@ Deno.serve(async (req): Promise<Response> => {
     if (req.method === "POST" && path === "/auth/signup") return await handleAuthSignup(req);
     if (req.method === "POST" && path === "/auth/login") return await handleAuthLogin(req);
     if (req.method === "GET" && path === "/auth/me") return await handleAuthMe(req);
+    if (req.method === "PATCH" && path === "/auth/me") return await handleAuthMe(req);
     if (req.method === "GET" && path === "/auth/profiles") return await handleAuthProfiles(req);
 
     // Signup onboarding: WhatsApp OTP + create/join org (OTP at signup only, never at login)
