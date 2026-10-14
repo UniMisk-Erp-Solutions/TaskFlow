@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
@@ -7,19 +7,23 @@ const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
+  { id: 'profile', icon: UserRound, label: 'Profile' },
 ];
 
 const EMPLOYEE_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
+  { id: 'profile', icon: UserRound, label: 'Profile' },
 ];
 
 export default function Sidebar({ active, onNav, role = 'admin' }) {
@@ -105,7 +109,8 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
       </nav>
 
       <div style={{ padding: '12px', borderTop: '1px solid var(--tf-border)' }}>
-        <div style={{ padding: '8px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ padding: '8px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, borderRadius: 11, background: active === 'profile' ? 'var(--tf-pearl)' : 'transparent' }}>
+          <button type="button" onClick={() => onNav('profile')} aria-label="Open profile" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, padding: 0, textAlign: 'left', border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }}>
           <div
             style={{
               width: 36,
@@ -132,6 +137,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
               {profile?.email}
             </div>
           </div>
+          </button>
           <ThemeToggle size={15} />
         </div>
         <button

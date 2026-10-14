@@ -21,8 +21,11 @@ import MeetingDetailModal from './components/MeetingDetailModal';
 import ProjectsPanel from './components/ProjectsPanel';
 import NotificationSettings from './components/NotificationSettings';
 import KanbanBoard from './components/KanbanBoard';
+import TimerAnalytics from './components/TimerAnalytics';
 import { useProjects } from './useProjects';
+import { useTaskTimers } from './useTaskTimers';
 import api from './api';
+import ProfilePage from './components/ProfilePage';
 
 const FILTERS_DEFAULT = { search: '', status: '', priority: '', type: '', assignee_id: '' };
 
@@ -75,10 +78,11 @@ export default function AdminDashboard() {
   } = useMeetings();
 
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
+  const taskTimers = useTaskTimers();
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
-  const validPages = ['overview', 'tasks', 'kanban', 'calender', 'projects', 'users', 'notifications', 'email'];
+  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'notifications', 'email', 'profile'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -270,6 +274,8 @@ export default function AdminDashboard() {
                   ? 'All Tasks'
                   : page === 'kanban'
                     ? 'Kanban Board'
+                  : page === 'timer'
+                    ? 'Timer Analytics'
                   : page === 'calender'
                     ? 'Calender View'
                     : page === 'projects'
@@ -278,6 +284,8 @@ export default function AdminDashboard() {
                         ? 'User Management'
                         : page === 'notifications'
                           ? 'Notifications'
+                            : page === 'profile'
+                              ? 'Profile'
                           : 'Reminders'}
             </span>
             {page === 'overview' && (
@@ -324,7 +332,7 @@ export default function AdminDashboard() {
             {sendMsg && page === 'email' && (
               <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
-            {page !== 'notifications' && page !== 'users' && (
+            {page !== 'notifications' && page !== 'users' && page !== 'profile' && (
               <>
                 <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
                   {sending ? <span className="spinner" /> : <Send size={12} />}
@@ -596,7 +604,16 @@ export default function AdminDashboard() {
               loading={loading}
               onMoveTask={moveTaskBoard}
               onOpenTask={setDetailTask}
+              timerSessions={taskTimers.sessions}
+              currentUserId={profile?.id}
+              onStartTimer={taskTimers.start}
+              onPauseTimer={taskTimers.pause}
+              timerError={taskTimers.error}
             />
+          )}
+
+          {page === 'timer' && (
+            <TimerAnalytics tasks={tasks} sessions={taskTimers.sessions} people={taskTimers.people} directoryProfiles={allProfiles} profile={profile} isAdmin loading={taskTimers.loading} error={taskTimers.error} />
           )}
 
           {/* ── CALENDER ── */}
@@ -658,6 +675,8 @@ export default function AdminDashboard() {
               <NotificationSettings />
             </div>
           )}
+
+          {page === 'profile' && <ProfilePage />}
 
           {/* ── REMINDERS ── */}
           {page === 'email' && (

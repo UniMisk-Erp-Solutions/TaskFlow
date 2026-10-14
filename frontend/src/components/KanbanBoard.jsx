@@ -1,25 +1,77 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, GripVertical, Search } from 'lucide-react';
+import { CalendarDays, Clock3, GripVertical, Search } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
+import { elapsedSecondsForSession, formatElapsedSeconds } from '../lib/taskTimer';
 
 function assigneeIds(task) {
   return task.assignee_ids?.length ? task.assignee_ids : task.assignee_id ? [task.assignee_id] : [];
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDragStart }) {
+const APPROVED_TASK_VISIBLE_MS = 60_000;
+
+function approvedTaskTimeLeft(task, now) {
+  const approvedAt = Date.parse(task.kanban_approved_at || '');
+  if (!Number.isFinite(approvedAt)) return null;
+  return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
+}
+
+function formatCountdown(milliseconds) {
+  const totalSeconds = Math.ceil(milliseconds / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+
+function autoScrollAtPointer(element, clientY) {
+  let scrollContainer = element?.parentElement;
+  while (scrollContainer && scrollContainer !== document.body) {
+    const overflowY = window.getComputedStyle(scrollContainer).overflowY;
+    if (/(auto|scroll|overlay)/.test(overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1) break;
+    scrollContainer = scrollContainer.parentElement;
+  }
+
+  if (!scrollContainer) {
+    const pageScroller = document.scrollingElement;
+    if (pageScroller?.scrollHeight > window.innerHeight + 1) scrollContainer = window;
+  }
+  if (!scrollContainer) return;
+
+  const bounds = scrollContainer === window
+    ? { top: 0, bottom: window.innerHeight }
+    : scrollContainer.getBoundingClientRect();
+  const edgeSize = 72;
+  const fromTop = clientY - bounds.top;
+  const fromBottom = bounds.bottom - clientY;
+  let delta = 0;
+  if (fromBottom < edgeSize) delta = Math.min(14, Math.max(3, (edgeSize - fromBottom) * 0.2));
+  else if (fromTop < edgeSize) delta = -Math.min(14, Math.max(3, (edgeSize - fromTop) * 0.2));
+  if (!delta) return;
+
+  if (scrollContainer === window) window.scrollBy(0, delta);
+  else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
+}
+
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, timerNow, onStartTimer, onPauseTimer }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
+  const activeSession = timerSessions.find((session) => session.task_id === task.id && session.user_id === currentUserId && !session.ended_at);
+  const ownTaskSeconds = timerSessions.filter((session) => session.task_id === task.id && session.user_id === currentUserId)
+    .reduce((total, session) => total + elapsedSecondsForSession(session, timerNow), 0);
 
   return (
     <article
-      className="kanban-card"
-      draggable={!locked}
-      onDragStart={(event) => onDragStart(event, task)}
-      onDragEnd={() => onDragStart(null, null)}
-      onClick={() => onOpen(task)}
+      className={`kanban-card${isDragging ? ' is-pointer-dragging' : ''}`}
+      draggable={false}
+      onPointerDown={(event) => !locked && onPointerDragStart(event, task)}
+      onClick={(event) => {
+        if (consumeDraggedClick()) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onOpen(task);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
@@ -33,9 +85,9 @@ function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDrag
           }
         }
       }}
-      role="button"
+      role="group"
       tabIndex={0}
-      aria-label={`${task.title}, ${task.priority || 'medium'} priority. Open task details.`}
+      aria-label={`${task.title}, ${task.priority || 'medium'} priority. Press Enter to open task details.`}
       style={{ '--kanban-priority': priorityColor(task.priority) }}
     >
       <div className="kanban-card-topline">
@@ -44,7 +96,7 @@ function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDrag
           size={15}
           aria-hidden="true"
           className="kanban-grip"
-          onPointerDown={(event) => onTouchDragStart(event, task)}
+          onClick={(event) => event.stopPropagation()}
           title="Drag to move task"
         />}
       </div>
@@ -67,6 +119,23 @@ function BoardCard({ task, profileById, onOpen, onMove, onDragStart, onTouchDrag
       {(task.status === 'submitted' || task.status === 'rejected' || task.status === 'blocked' || task.status === 'changes_requested') && (
         <div className="kanban-workflow-status"><StatusBadge status={task.status} /></div>
       )}
+      {completionTimeLeft !== null && completionTimeLeft > 0 && (
+        <div className="kanban-completion-countdown" aria-label={`Removed from the board in ${formatCountdown(completionTimeLeft)}`}>
+          <Clock3 size={12} aria-hidden="true" />
+          <span>Clears in {formatCountdown(completionTimeLeft)}</span>
+        </div>
+      )}
+      {lane === 'in_progress' && (
+        <div className="kanban-task-timer">
+          <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(ownTaskSeconds)}</span>
+          <button type="button" className="kanban-task-timer-button" onClick={(event) => {
+            event.stopPropagation();
+            (activeSession ? onPauseTimer : onStartTimer)(task.id).catch(() => {});
+          }} onKeyDown={(event) => event.stopPropagation()} aria-label={`${activeSession ? 'Pause' : 'Start'} timer for ${task.title}`} title={activeSession ? 'Pause timer' : 'Start timer'}>
+            {activeSession ? 'Pause' : 'Start'}
+          </button>
+        </div>
+      )}
 
     </article>
   );
@@ -81,17 +150,51 @@ export default function KanbanBoard({
   loading = false,
   onMoveTask,
   onOpenTask,
+  timerSessions = [],
+  currentUserId,
+  onStartTimer = async () => {},
+  onPauseTimer = async () => {},
+  timerError = '',
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const [dragPreview, setDragPreview] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null);
   const [error, setError] = useState('');
   const [reviewTaskId, setReviewTaskId] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
-  const touchDragCleanup = useRef(null);
+  const pointerDragCleanup = useRef(null);
+  const dragRuntimeRef = useRef(null);
+  const dragPreviewRef = useRef(null);
+  const overColumnRef = useRef(null);
+  const dropTargetRef = useRef(null);
+  const suppressCardClickRef = useRef(false);
   const reviewDialogRef = useRef(null);
 
-  useEffect(() => () => touchDragCleanup.current?.(), []);
+  useEffect(() => () => pointerDragCleanup.current?.(), []);
+
+  useEffect(() => {
+    if (!timerSessions.some((session) => !session.ended_at)) return undefined;
+    const interval = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [timerSessions]);
+
+  useEffect(() => {
+    const hasActiveCountdown = !isAdmin && tasks.some((task) =>
+      task.status === 'completed' && approvedTaskTimeLeft(task, Date.now()) > 0,
+    );
+    if (!hasActiveCountdown) return undefined;
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now();
+      setClockNow(currentTime);
+      if (!tasks.some((task) => task.status === 'completed' && approvedTaskTimeLeft(task, currentTime) > 0)) {
+        window.clearInterval(timer);
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isAdmin, tasks]);
 
   useEffect(() => {
     if (!reviewTaskId) return undefined;
@@ -116,24 +219,48 @@ export default function KanbanBoard({
 
   const visibleByColumn = useMemo(() => {
     const grouped = Object.fromEntries(KANBAN_COLUMNS.map((column) => [column.id, []]));
-    filteredTasks.forEach((task) => grouped[kanbanColumnForTask(task)].push(task));
+    filteredTasks.forEach((task) => {
+      const timeLeft = approvedTaskTimeLeft(task, clockNow);
+      if (!isAdmin && task.status === 'completed' && timeLeft !== null && timeLeft <= 0) return;
+      grouped[kanbanColumnForTask(task)].push(task);
+    });
     Object.values(grouped).forEach((columnTasks) => columnTasks.sort(compareKanbanTasks));
     return grouped;
-  }, [filteredTasks]);
+  }, [filteredTasks, clockNow, isAdmin]);
+
+  const visibleTaskCount = Object.values(visibleByColumn).reduce((count, columnTasks) => count + columnTasks.length, 0);
+  const timerSessionsByTask = useMemo(() => {
+    const grouped = new Map();
+    timerSessions.forEach((session) => {
+      const current = grouped.get(session.task_id) || [];
+      current.push(session);
+      grouped.set(session.task_id, current);
+    });
+    return grouped;
+  }, [timerSessions]);
 
   function setFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
   }
 
-  function handleDragStart(event, task) {
-    if (!task) {
-      setDraggedTaskId(null);
-      setOverColumn(null);
-      return;
-    }
-    setDraggedTaskId(task.id);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', task.id);
+  function consumeDraggedClick() {
+    if (!suppressCardClickRef.current) return false;
+    suppressCardClickRef.current = false;
+    return true;
+  }
+
+  function setDropColumn(columnId) {
+    if (overColumnRef.current === columnId) return;
+    overColumnRef.current = columnId;
+    setOverColumn(columnId);
+  }
+
+  function setDropPosition(target) {
+    const next = target?.columnId ? target : null;
+    const current = dropTargetRef.current;
+    if (current?.columnId === next?.columnId && current?.beforeTaskId === next?.beforeTaskId) return;
+    dropTargetRef.current = next;
+    setDropTarget(next);
   }
 
   function nextOrder(columnId, beforeTaskId, movingTaskId) {
@@ -164,7 +291,9 @@ export default function KanbanBoard({
       setError(displayError);
     } finally {
       setDraggedTaskId(null);
-      setOverColumn(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
     }
   }
 
@@ -177,13 +306,17 @@ export default function KanbanBoard({
       if (kanbanColumnForTask(task) !== 'in_progress') {
         setError('Move this task to In Progress before sending it for admin review.');
         setDraggedTaskId(null);
-        setOverColumn(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
         return;
       }
       setError('');
       setReviewTaskId(taskId);
       setDraggedTaskId(null);
-      setOverColumn(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
       return;
     }
 
@@ -206,69 +339,124 @@ export default function KanbanBoard({
     }
   }
 
-  function taskIdFromDrop(event) {
-    return event.dataTransfer.getData('text/plain') || draggedTaskId;
-  }
-
-  function handleDragOver(event, columnId) {
-    event.preventDefault();
-    setOverColumn(columnId);
-
-    // Long task lists can extend well below the viewport. Scroll the page in
-    // small steps while a card is held near an edge so the last cards remain
-    // reachable during a drag.
-    const edgeSize = 72;
-    const edgeDistance = window.innerHeight - event.clientY;
-    if (edgeDistance < edgeSize) {
-      window.scrollBy(0, Math.max(4, Math.ceil((edgeSize - edgeDistance) / 4)));
-    } else if (event.clientY < edgeSize) {
-      window.scrollBy(0, -Math.max(4, Math.ceil((edgeSize - event.clientY) / 4)));
-    }
-  }
-
-  function startTouchDrag(event, task) {
-    if (event.pointerType === 'mouse') return;
-    event.preventDefault();
-    touchDragCleanup.current?.();
-    setDraggedTaskId(task.id);
+  function startPointerDrag(event, task) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (event.target.closest('button, a, input, select, textarea')) return;
+    // Touch drags start from the explicit grip so swipes elsewhere on a card
+    // remain available for scrolling the board.
+    if (event.pointerType === 'touch' && !event.target.closest('.kanban-grip')) return;
+    pointerDragCleanup.current?.();
 
     const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const sourceBounds = event.currentTarget.getBoundingClientRect();
+    const runtime = {
+      pointerId,
+      task,
+      x: startX,
+      y: startY,
+      startX,
+      startY,
+      width: sourceBounds.width,
+      dragging: false,
+      frameId: null,
+    };
+    dragRuntimeRef.current = runtime;
     const removeListeners = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', removeListeners);
-      if (touchDragCleanup.current === removeListeners) touchDragCleanup.current = null;
+      window.removeEventListener('pointercancel', onPointerCancel);
+      if (runtime.frameId !== null) window.cancelAnimationFrame(runtime.frameId);
+      runtime.frameId = null;
+      if (dragRuntimeRef.current === runtime) dragRuntimeRef.current = null;
+      if (pointerDragCleanup.current === removeListeners) pointerDragCleanup.current = null;
+    };
+    const getDropTarget = (pointerEvent) => {
+      const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+      const lane = target?.closest('[data-kanban-column]');
+      const before = target?.closest('[data-kanban-task]');
+      let beforeTaskId = before?.getAttribute('data-kanban-task');
+      if (beforeTaskId && beforeTaskId !== task.id) {
+        const bounds = before.getBoundingClientRect();
+        if (pointerEvent.clientY >= bounds.top + bounds.height / 2) {
+          beforeTaskId = before.nextElementSibling?.getAttribute('data-kanban-task') || null;
+        }
+      }
+      return {
+        columnId: lane?.getAttribute('data-kanban-column'),
+        beforeTaskId,
+      };
+    };
+    const animateDrag = () => {
+      if (dragRuntimeRef.current !== runtime || !runtime.dragging) return;
+      const target = document.elementFromPoint(runtime.x, runtime.y);
+      const targetPosition = getDropTarget({ clientX: runtime.x, clientY: runtime.y });
+      const { columnId } = targetPosition;
+      setDropColumn(columnId || null);
+      setDropPosition(columnId ? targetPosition : null);
+      autoScrollAtPointer(target, runtime.y);
+      if (dragPreviewRef.current) {
+        const previewBounds = dragPreviewRef.current.getBoundingClientRect();
+        const previewX = runtime.x + previewBounds.width + 24 > window.innerWidth
+          ? runtime.x - previewBounds.width - 14
+          : runtime.x + 14;
+        const previewY = runtime.y + previewBounds.height + 24 > window.innerHeight
+          ? runtime.y - previewBounds.height - 14
+          : runtime.y + 14;
+        dragPreviewRef.current.style.transform = `translate3d(${previewX}px, ${previewY}px, 0)`;
+      }
+      runtime.frameId = window.requestAnimationFrame(animateDrag);
     };
     const onPointerMove = (moveEvent) => {
       if (moveEvent.pointerId !== pointerId) return;
+      runtime.x = moveEvent.clientX;
+      runtime.y = moveEvent.clientY;
+      if (!runtime.dragging && Math.hypot(runtime.x - startX, runtime.y - startY) < 4) return;
+      if (!runtime.dragging) {
+        runtime.dragging = true;
+        setDraggedTaskId(task.id);
+        setDragPreview({ task, width: runtime.width });
+        runtime.frameId = window.requestAnimationFrame(animateDrag);
+      }
       moveEvent.preventDefault();
-      const lane = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest('[data-kanban-column]');
-      setOverColumn(lane?.getAttribute('data-kanban-column') || null);
     };
     const onPointerUp = (upEvent) => {
       if (upEvent.pointerId !== pointerId) return;
+      runtime.x = upEvent.clientX;
+      runtime.y = upEvent.clientY;
       removeListeners();
-      const target = document.elementFromPoint(upEvent.clientX, upEvent.clientY);
-      const lane = target?.closest('[data-kanban-column]');
-      const before = target?.closest('[data-kanban-task]');
-      const columnId = lane?.getAttribute('data-kanban-column');
-      const beforeTaskId = before?.getAttribute('data-kanban-task');
-      if (columnId) void commitMove(task.id, columnId, beforeTaskId && beforeTaskId !== task.id ? beforeTaskId : null);
-      else {
+      if (!runtime.dragging) return;
+      suppressCardClickRef.current = true;
+      window.setTimeout(() => { suppressCardClickRef.current = false; }, 0);
+      const { columnId, beforeTaskId } = getDropTarget(upEvent);
+      if (columnId && beforeTaskId === task.id) {
         setDraggedTaskId(null);
-        setOverColumn(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
+        return;
       }
+      if (columnId) {
+        void commitMove(task.id, columnId, beforeTaskId && beforeTaskId !== task.id ? beforeTaskId : null);
+      } else {
+        setDraggedTaskId(null);
+        setDragPreview(null);
+        setDropColumn(null);
+        setDropPosition(null);
+      }
+    };
+    const onPointerCancel = () => {
+      removeListeners();
+      setDraggedTaskId(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
     };
     window.addEventListener('pointermove', onPointerMove, { passive: false });
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', removeListeners);
-    touchDragCleanup.current = removeListeners;
-  }
-
-  function handleColumnDrop(event, columnId) {
-    event.preventDefault();
-    event.stopPropagation();
-    void commitMove(taskIdFromDrop(event), columnId);
+    window.addEventListener('pointercancel', onPointerCancel);
+    pointerDragCleanup.current = removeListeners;
   }
 
   if (loading) {
@@ -296,7 +484,7 @@ export default function KanbanBoard({
           <option value="">All assignees</option>
           {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.full_name || assignee.email}</option>)}
         </select>
-        <span className="kanban-result-count">{filteredTasks.length} task{filteredTasks.length === 1 ? '' : 's'}</span>
+        <span className="kanban-result-count">{visibleTaskCount} task{visibleTaskCount === 1 ? '' : 's'}</span>
       </div>
 
       {error && (
@@ -305,6 +493,7 @@ export default function KanbanBoard({
           <button type="button" onClick={() => setError('')} aria-label="Dismiss error">Dismiss</button>
         </div>
       )}
+      {timerError && <div className="kanban-error" role="alert"><span>{timerError}</span></div>}
 
       <div className="kanban-board">
         {KANBAN_COLUMNS.map((column) => {
@@ -314,11 +503,6 @@ export default function KanbanBoard({
               key={column.id}
               className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}`}
               data-kanban-column={column.id}
-              onDragOver={(event) => handleDragOver(event, column.id)}
-              onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) setOverColumn(null);
-              }}
-              onDrop={(event) => handleColumnDrop(event, column.id)}
               aria-label={`${column.label}, ${columnTasks.length} tasks`}
             >
               <header className="kanban-column-heading">
@@ -327,26 +511,27 @@ export default function KanbanBoard({
                   <p>{column.description}</p>
                 </div>
               </header>
-              <div className="kanban-column-cards">
+              <div className={`kanban-column-cards${overColumn === column.id && dropTarget?.columnId === column.id && !dropTarget.beforeTaskId ? ' is-append-target' : ''}`}>
                 {columnTasks.length ? columnTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="kanban-drop-before"
+                    className={`kanban-drop-before${dropTarget?.columnId === column.id && dropTarget.beforeTaskId === task.id ? ' is-insertion-target' : ''}`}
                     data-kanban-task={task.id}
-                    onDragOver={(event) => handleDragOver(event, column.id)}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void commitMove(taskIdFromDrop(event), column.id, task.id);
-                    }}
                   >
                     <BoardCard
                       task={task}
                       profileById={profileById}
                       onOpen={onOpenTask}
                       onMove={(item, nextColumn) => void commitMove(item.id, nextColumn)}
-                      onDragStart={handleDragStart}
-                      onTouchDragStart={startTouchDrag}
+                      onPointerDragStart={startPointerDrag}
+                      consumeDraggedClick={consumeDraggedClick}
+                      isDragging={draggedTaskId === task.id}
+                      completionTimeLeft={!isAdmin && task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
+                      timerSessions={timerSessionsByTask.get(task.id) || []}
+                      currentUserId={currentUserId}
+                      timerNow={clockNow}
+                      onStartTimer={onStartTimer}
+                      onPauseTimer={onPauseTimer}
                     />
                   </div>
                 )) : (
@@ -359,6 +544,22 @@ export default function KanbanBoard({
           );
         })}
       </div>
+      {dragPreview && (
+        <div
+          ref={dragPreviewRef}
+          className="kanban-drag-preview"
+          style={{
+            width: `min(${dragPreview.width}px, calc(100vw - 32px))`,
+            '--kanban-priority': priorityColor(dragPreview.task.priority),
+            transform: `translate3d(${(dragRuntimeRef.current?.x ?? 0) + 14}px, ${(dragRuntimeRef.current?.y ?? 0) + 14}px, 0)`,
+          }}
+          aria-hidden="true"
+        >
+          <span className="kanban-priority-label"><PriorityBadge priority={dragPreview.task.priority} /></span>
+          <h3 className="kanban-card-title">{dragPreview.task.title}</h3>
+          {dragPreview.task.project_name && <div className="kanban-project">{dragPreview.task.project_name}</div>}
+        </div>
+      )}
       {reviewTaskId && !isAdmin && (
         <div
           className="overlay"
@@ -381,7 +582,7 @@ export default function KanbanBoard({
           </div>
         </div>
       )}
-      <p className="kanban-hint">Drag a card to change its lane. Use the card menu to move tasks on touch screens. Task priority colors: high pink, medium green, low blue.</p>
+      <p className="kanban-hint">Drag a card to change its lane. On touch screens, drag using the grip. Task priority colors: high pink, medium green, low blue.</p>
     </section>
   );
 }

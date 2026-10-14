@@ -192,6 +192,87 @@ exports.getTaskById = async (req, res) => {
   }
 };
 
+exports.getTimerAnalytics = async (req, res) => {
+  try {
+    const { data: rows, error } = await supabase.from("tasks")
+      .select("id, title, status, kanban_column, assignee_id, task_assignees(profile_id)")
+      .eq("org_id", req.user.org_id);
+    if (error) return res.status(400).json({ error: error.message });
+    let visible = (rows || []).map(mapTaskRow);
+    if (req.user.role === "admin") {
+      const roleById = await loadOrgRoleById(req.user.org_id);
+      visible = filterMappedTasksForAdmin(visible, req.user.id, roleById);
+    } else {
+      visible = visible.filter((task) => task.assignee_ids.includes(req.user.id));
+    }
+    const taskIds = visible.map((task) => task.id);
+    if (!taskIds.length) return res.json({ sessions: [], people: req.user.role === "admin" ? [] : [{ id: req.user.id, full_name: "You" }] });
+    let sessionQuery = supabase.from("task_timer_sessions")
+      .select("id, org_id, task_id, user_id, started_at, ended_at")
+      .eq("org_id", req.user.org_id).in("task_id", taskIds);
+    if (req.user.role !== "admin") sessionQuery = sessionQuery.eq("user_id", req.user.id);
+    const { data: sessions, error: sessionError } = await sessionQuery.order("started_at", { ascending: false });
+    if (sessionError) return res.status(400).json({ error: sessionError.message });
+    const personIds = [...new Set([...(sessions || []).map((session) => session.user_id), ...visible.flatMap((task) => task.assignee_ids)])];
+    // Some older assigned profiles were created before org_id was consistently
+    // populated. Resolve IDs referenced by this org's tasks, including those
+    // legacy rows, while never returning profiles explicitly linked elsewhere.
+    const { data: people, error: peopleError } = personIds.length
+      ? await supabase.from("profiles").select("id, full_name, email, org_id").in("id", personIds)
+      : { data: [], error: null };
+    if (peopleError) return res.status(400).json({ error: peopleError.message });
+    res.json({
+      sessions: sessions || [],
+      people: (people || []).filter((person) => !person.org_id || person.org_id === req.user.org_id),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.startTaskTimer = async (req, res) => {
+  try {
+    const access = await loadTaskForUser(req, req.params.id);
+    if (access.error === "not_found" || access.error === "forbidden") return res.status(access.error === "forbidden" ? 403 : 404).json({ error: "Task not found or access denied" });
+    if (access.error) return res.status(400).json({ error: access.error });
+    if (access.task.kanban_column !== "in_progress") return res.status(409).json({ error: "Start a timer only while the task is In Progress." });
+    const { data: existing, error: lookupError } = await supabase.from("task_timer_sessions")
+      .select("id, org_id, task_id, user_id, started_at, ended_at")
+      .eq("task_id", req.params.id).eq("user_id", req.user.id).is("ended_at", null).maybeSingle();
+    if (lookupError) return res.status(400).json({ error: lookupError.message });
+    if (existing) return res.json(existing);
+    const { data, error } = await supabase.from("task_timer_sessions").insert([{
+      org_id: req.user.org_id, task_id: req.params.id, user_id: req.user.id,
+    }]).select("id, org_id, task_id, user_id, started_at, ended_at").single();
+    if (error) {
+      const { data: raced } = await supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at")
+        .eq("task_id", req.params.id).eq("user_id", req.user.id).is("ended_at", null).maybeSingle();
+      if (raced) return res.json(raced);
+      return res.status(400).json({ error: error.message });
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.pauseTaskTimer = async (req, res) => {
+  try {
+    const access = await loadTaskForUser(req, req.params.id);
+    if (access.error === "not_found" || access.error === "forbidden") return res.status(access.error === "forbidden" ? 403 : 404).json({ error: "Task not found or access denied" });
+    if (access.error) return res.status(400).json({ error: access.error });
+    const { data, error } = await supabase.from("task_timer_sessions")
+      .update({ ended_at: new Date().toISOString() })
+      .eq("task_id", req.params.id).eq("user_id", req.user.id).is("ended_at", null)
+      .select("id, org_id, task_id, user_id, started_at, ended_at").maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "No running timer was found for this task." });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 async function validateParentTask(req, parentTaskId, orgId) {
   if (!parentTaskId) return { ok: true };
   const { data: parent } = await supabase
@@ -457,10 +538,21 @@ exports.updateStatus = async (req, res) => {
 
     const taskTitle = access.task?.title || "Task";
     const notifyIds = access.task?.assignee_ids || [];
+    const previousStatus = String(access.task?.status || "pending");
+    const statusUpdate = {
+      status,
+      kanban_column: taskKanbanColumnForStatus(status),
+      updated_at: new Date().toISOString(),
+    };
+    if (req.user.role === "admin" && previousStatus === "submitted" && status === "completed") {
+      statusUpdate.kanban_approved_at = statusUpdate.updated_at;
+    } else if (status !== "completed") {
+      statusUpdate.kanban_approved_at = null;
+    }
 
     const { data, error } = await supabase
       .from("tasks")
-      .update({ status, kanban_column: taskKanbanColumnForStatus(status), updated_at: new Date().toISOString() })
+      .update(statusUpdate)
       .eq("id", id)
       .eq("org_id", req.user.org_id)
       .select("*, task_assignees(profile_id)")
@@ -468,6 +560,13 @@ exports.updateStatus = async (req, res) => {
 
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: "Task not found or access denied" });
+
+    if (statusUpdate.kanban_column === "done") {
+      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
+        .update({ ended_at: new Date().toISOString() })
+        .eq("task_id", id).eq("org_id", req.user.org_id).is("ended_at", null);
+      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+    }
 
     const out = mapTaskRow(data);
     res.json(out);
@@ -536,6 +635,11 @@ exports.updateBoardPosition = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
     if (nextStatus !== previousStatus) updates.status = nextStatus;
+    if (nextStatus === "completed" && previousStatus === "submitted") {
+      updates.kanban_approved_at = updates.updated_at;
+    } else if (nextStatus !== "completed") {
+      updates.kanban_approved_at = null;
+    }
     if (nextStatus === "submitted" && previousStatus !== "submitted") {
       updates.submission_notes = "Submitted from Kanban board";
     }
@@ -551,6 +655,13 @@ exports.updateBoardPosition = async (req, res) => {
       .maybeSingle();
     if (error) return res.status(400).json({ error: error.message });
     if (!data) return res.status(404).json({ error: "Task not found or access denied" });
+
+    if (kanban_column === "done" && current.kanban_column !== "done") {
+      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
+        .update({ ended_at: new Date().toISOString() })
+        .eq("task_id", id).eq("org_id", req.user.org_id).is("ended_at", null);
+      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+    }
 
     const out = mapTaskRow(data);
     res.json(out);

@@ -12,7 +12,7 @@ The guide documents the two supported development modes (frontend with a hosted 
 
 **Document:** [README.md](README.md)
 
-The README is the primary entry point for contributors and operators. It summarizes the product and its user-facing features, identifies the frontend/API/data stack, lists prerequisites, and provides copyable commands to clone the repo, install packages, configure frontend and backend environment files, choose between the hosted Edge Function and local Express API, start Vite, and start the Express API. It explains API base paths, essential Supabase settings, optional integrations, the database's existing-schema prerequisite, and relevant security boundaries for public browser keys versus server secrets.
+The README is the primary entry point for contributors and operators. It summarizes the product and its user-facing features, including shared Kanban workflow and per-task timers, identifies the frontend/API/data stack, lists prerequisites, and provides copyable commands to clone the repo, install packages, configure frontend and backend environment files, choose between the hosted Edge Function and local Express API, start Vite, and start the Express API. It explains API base paths, essential Supabase settings, optional integrations, the database's existing-schema prerequisite, and relevant security boundaries for public browser keys versus server secrets. It links to the timer guide and identifies the timer-session migration required by timer endpoints.
 
 It also indexes common package scripts, deployment configurations, feature guides, repository directories, and first-step troubleshooting. The README links to the architecture guide for deeper implementation details and to the Kanban guide for task-board review semantics.
 
@@ -57,3 +57,55 @@ The guide also records the shared high-pink, medium-green, low-blue palette for 
 This note describes the uniform theme-panel background used by all Kanban lanes, with the light theme appearing white; task card priority fills remain unchanged. It diagnoses the admin drag `Not found` response by tracing the frontend PATCH request to the board handler in the current Edge Function. The generic response is the function's unmatched-route fallback, while task lookup failures in the current handler have task-specific messages, indicating the hosted function likely predates the board-move route.
 
 The document explains that deploying the current `api` Edge Function to the frontend's Supabase project is the fix for the missing route, and that SQL is not required for this specific 404 because the board and lane data already load. It lists the CSS, Kanban helper/component, Edge API, and deployment script involved.
+
+## Kanban Drop Target and Scroll Fix
+
+**Document:** [docs/kanban-drop-target-and-scroll-fix.md](docs/kanban-drop-target-and-scroll-fix.md)
+
+This historical feature note records the initial attempt to address the native browser prohibited-drop cursor and dragging lower cards in long columns. It explains that setting `effectAllowed` on the card is not enough: valid targets also prevent the default drag-enter/drag-over behavior and set `dataTransfer.dropEffect` to `move`. The lane surface accepted drops over blank space, while card insertion targets allowed ordering before a specific card. That native approach did not eliminate the cursor issue in the reported case and was superseded by pointer-based hit detection; see the current implementation entry below.
+
+The note also describes the admin/employee scroll-container difference. The shared helper finds and scrolls the nearest vertical overflow container near its top or bottom edge, with a viewport fallback. Persistence uses the existing shared task hook and backend endpoint, so role-based access and employee review transitions remain unchanged.
+
+## Kanban Pointer-Based Drop Targets
+
+**Document:** [docs/kanban-pointer-drop-targets.md](docs/kanban-pointer-drop-targets.md)
+
+This guide documents replacing native HTML drag-and-drop with pointer-driven drag tracking because browser native hit-testing showed a prohibited cursor and failed to recognize lower-position drops. It explains the small movement threshold that preserves ordinary click-to-open behavior, pointer-coordinate target detection across the full lane, before/after card insertion, appending when dropping elsewhere in the lane, cancellation outside the board, and suppression of the synthetic click after a move. A floating card preview follows the pointer via direct transforms in an animation-frame loop, leaving the source as a dimmed placeholder and avoiding a full board render for every pointer event. The same loop drives smooth edge auto-scroll, a clear target-lane outline, and precise before/after or append markers. It also explains why all four grid lanes stretch to the tallest lane: shorter destination lanes must extend to the lower vertical positions occupied by cards in long lanes, or there is no lane element to receive the drop at that coordinate.
+
+The interaction supports mouse and pen from the card surface and touch drags from the visible grip, leaving ordinary touch swipes available for board scrolling. Edge auto-scroll keeps long lists reachable. A move still goes through the existing `commitMove`/`onMoveTask` flow, preserving optimistic updates and rollback, server authorization, saved ordering, and the employee Under review submission path. The entry lists the component, styling, shared task hook, and backend implementations, and notes that no database migration is involved.
+
+## Approved Task Done-Lane Countdown
+
+**Document:** [docs/kanban-approved-task-countdown.md](docs/kanban-approved-task-countdown.md)
+
+This feature guide describes how an approved task remains visible in the employee Kanban Done lane for 60 seconds, displays a small remaining-time badge, and then disappears from that lane only. The task remains completed in shared task data and continues to appear in task lists, totals, reports, and history. Existing completed tasks without an approval timestamp stay visible, and the admin Kanban board is not subject to the employee countdown.
+
+The countdown is calculated from the persisted nullable `tasks.kanban_approved_at` timestamp, written by admin approval paths in both the Supabase Edge API and Express board/status handlers. Existing task-table realtime subscriptions refetch the approved task for employees; the board updates the timer every second and filters expired approved cards without changing server data. The guide lists the migration, API handlers, board component, and timer styling, and gives the deployment order: run the additive migration, then deploy the updated hosted Edge Function when using that API.
+
+## Task Timer Tracking and Analytics
+
+**Document:** [docs/task-timer-tracking-and-analytics.md](docs/task-timer-tracking-and-analytics.md)
+
+This feature guide documents persistent, per-task, per-person timer intervals shared by the Admin and Employee portals. It explains the Start/Pause controls shown on In Progress Kanban cards, server and database enforcement that prevents timers from starting outside that lane, how pause/resume is represented as separate persisted sessions, and how every active session for a task is closed when the task enters Done (including employee submission for review). A database trigger makes the close atomic with the task lane update, while both API implementations also perform the close explicitly after board moves.
+
+The guide describes the dedicated `/admin/timer` and `/dashboard/timer` pages, the dotted graph covering every task with tracked time, role-specific per-task and person/task tables, and the average tracked completion time for administrators (completed tasks without timer data are excluded). It details elapsed-time calculation, Realtime refresh, organization and assignment scoped API reads, caller-owned start/pause permissions, and the Supabase RLS policy. It maps the React hook, Kanban card, analytics component, both APIs, and SQL migration. The rollout section says to apply `supabase/migrations/20261014130000_task_timer_sessions.sql` and deploy the updated Supabase Edge Function when using the hosted API; it states that this workspace change did not run the migration against a hosted database or deploy the API.
+
+## Profile Pages and Self-Service Account Details
+
+**Document:** [docs/profile-pages-and-self-service-details.md](docs/profile-pages-and-self-service-details.md)
+
+This guide documents the dedicated Profile page available to both administrators and employees. It covers the role-specific `/admin/profile` and `/dashboard/profile` routes, the sidebar navigation item and identity shortcut, and the responsive page layout that surfaces account identity, role, workspace, membership date, and account status.
+
+It explains the self-service form behavior: a user can update their own full name and phone number, while email, role, organization membership, and account status are shown as read-only account details. After a successful save, the authenticated profile is refreshed so the dashboard greeting and sidebar immediately reflect the new name. Inline feedback handles successful and failed saves.
+
+The entry maps the frontend page, both dashboard routers, the Express API route/controller, and the Supabase Edge Function handler. Both API implementations validate the editable fields and target only the authenticated profile ID, so role and organization fields cannot be changed through this endpoint. The feature uses existing profile columns and therefore needs no SQL migration; hosted installations must deploy the updated Edge Function for the hosted profile save to become available.
+
+## Timer Permissions and Team Identity
+
+**Document:** [docs/timer-permissions-and-team-identity.md](docs/timer-permissions-and-team-identity.md)
+
+This diagnostic and implementation guide explains why the employee portal can show `Admin access required` even though the repository's timer endpoints authorize an assigned employee's own session. It traces the frontend to the configured hosted API and contrasts that response with the current Express and Supabase Edge implementations, establishing that the hosted function must be brought up to the repository version. It also explains the admin Kanban `Task not found` response from the board persistence route and the importance of checking API version and org scope when a task appears on the board but the hosted write cannot find it.
+
+The guide records the intended timer security rules: an employee can start/pause their own session on assigned work, an administrator can do the same for work visible in their organization, and neither role can create or stop another person's session. It describes the timer analytics identity bug caused by strict `profiles.org_id` filtering when older assigned profiles lack that field. The API now resolves only IDs referenced by the organization's visible tasks/sessions and filters out profiles explicitly attached elsewhere; the UI also uses the loaded organization directory and displays a clearly marked unlinked ID only when the actual profile no longer exists.
+
+It maps the Express controller, Edge Function, TimerAnalytics component, and both dashboard integrations. The feature uses the existing task timer table and does not require SQL. Hosted users need the current Supabase `api` Edge Function deployed for role permissions and names to match this code.

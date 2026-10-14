@@ -289,8 +289,36 @@ exports.getMe = async (req, res) => {
       .single();
 
     if (error) throw error;
-    res.json(data);
+    let organizationName = null;
+    if (data.org_id) {
+      const { data: organization } = await supabase.from("organizations").select("name").eq("id", data.org_id).maybeSingle();
+      organizationName = organization?.name || null;
+    }
+    res.json({ ...data, organization_name: organizationName });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateMe = async (req, res) => {
+  try {
+    const { fullName, phone } = req.body || {};
+    if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 100) {
+      return res.status(400).json({ error: "Full name is required and must be 100 characters or fewer." });
+    }
+    if (phone != null && (typeof phone !== "string" || phone.trim().length > 30)) {
+      return res.status(400).json({ error: "Phone number must be 30 characters or fewer." });
+    }
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({ full_name: fullName.trim(), phone: phone?.trim() || null })
+      .eq("id", req.user.id)
+      .select("id, email, full_name, phone, role, org_id, status, created_at")
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error("auth.updateMe - Error:", err);
+    res.status(500).json({ error: "Could not update profile." });
   }
 };
