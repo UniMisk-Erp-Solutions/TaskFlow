@@ -260,7 +260,7 @@ export default function EmployeeDashboard() {
         )}
 
         {page === 'timer' && (
-          <TimerAnalytics tasks={tasks} sessions={taskTimers.sessions} people={taskTimers.people} profile={profile} isAdmin={false} loading={taskTimers.loading} error={taskTimers.error} />
+          <TimerAnalytics tasks={tasks} sessions={taskTimers.sessions} people={taskTimers.people} directoryProfiles={allProfiles} profile={profile} isAdmin={false} loading={taskTimers.loading} error={taskTimers.error} />
         )}
 
         {page === 'tasks'

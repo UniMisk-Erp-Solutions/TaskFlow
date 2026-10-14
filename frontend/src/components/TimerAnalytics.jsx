@@ -19,7 +19,7 @@ function DottedTaskChart({ rows }) {
   );
 }
 
-export default function TimerAnalytics({ tasks = [], sessions = [], people = [], profile, isAdmin, loading, error }) {
+export default function TimerAnalytics({ tasks = [], sessions = [], people = [], directoryProfiles = [], profile, isAdmin, loading, error }) {
   const [now, setNow] = useState(Date.now());
   React.useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -27,7 +27,8 @@ export default function TimerAnalytics({ tasks = [], sessions = [], people = [],
   }, []);
 
   const analytics = useMemo(() => {
-    const personById = new Map(people.map((person) => [person.id, person]));
+    const personById = new Map(directoryProfiles.map((person) => [person.id, person]));
+    people.forEach((person) => personById.set(person.id, { ...personById.get(person.id), ...person }));
     const totals = new Map();
     const totalByPersonTask = new Map();
     const activePersonTaskKeys = new Set();
@@ -61,7 +62,7 @@ export default function TimerAnalytics({ tasks = [], sessions = [], people = [],
         personTaskRows.push({
           id: `${personId}:${task.id}`,
           task,
-          person: personById.get(personId) || (personId === profile?.id ? profile : { id: personId, full_name: 'Team member' }),
+          person: personById.get(personId) || (personId === profile?.id ? profile : { id: personId, full_name: `Unlinked member · ${String(personId).slice(0, 8)}` }),
           seconds: totalByPersonTask.get(`${task.id}:${personId}`) || 0,
           active: activePersonTaskKeys.has(`${task.id}:${personId}`),
         });

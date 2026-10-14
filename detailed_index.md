@@ -99,3 +99,13 @@ This guide documents the dedicated Profile page available to both administrators
 It explains the self-service form behavior: a user can update their own full name and phone number, while email, role, organization membership, and account status are shown as read-only account details. After a successful save, the authenticated profile is refreshed so the dashboard greeting and sidebar immediately reflect the new name. Inline feedback handles successful and failed saves.
 
 The entry maps the frontend page, both dashboard routers, the Express API route/controller, and the Supabase Edge Function handler. Both API implementations validate the editable fields and target only the authenticated profile ID, so role and organization fields cannot be changed through this endpoint. The feature uses existing profile columns and therefore needs no SQL migration; hosted installations must deploy the updated Edge Function for the hosted profile save to become available.
+
+## Timer Permissions and Team Identity
+
+**Document:** [docs/timer-permissions-and-team-identity.md](docs/timer-permissions-and-team-identity.md)
+
+This diagnostic and implementation guide explains why the employee portal can show `Admin access required` even though the repository's timer endpoints authorize an assigned employee's own session. It traces the frontend to the configured hosted API and contrasts that response with the current Express and Supabase Edge implementations, establishing that the hosted function must be brought up to the repository version. It also explains the admin Kanban `Task not found` response from the board persistence route and the importance of checking API version and org scope when a task appears on the board but the hosted write cannot find it.
+
+The guide records the intended timer security rules: an employee can start/pause their own session on assigned work, an administrator can do the same for work visible in their organization, and neither role can create or stop another person's session. It describes the timer analytics identity bug caused by strict `profiles.org_id` filtering when older assigned profiles lack that field. The API now resolves only IDs referenced by the organization's visible tasks/sessions and filters out profiles explicitly attached elsewhere; the UI also uses the loaded organization directory and displays a clearly marked unlinked ID only when the actual profile no longer exists.
+
+It maps the Express controller, Edge Function, TimerAnalytics component, and both dashboard integrations. The feature uses the existing task timer table and does not require SQL. Hosted users need the current Supabase `api` Edge Function deployed for role permissions and names to match this code.

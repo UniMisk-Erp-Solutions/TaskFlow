@@ -214,11 +214,17 @@ exports.getTimerAnalytics = async (req, res) => {
     const { data: sessions, error: sessionError } = await sessionQuery.order("started_at", { ascending: false });
     if (sessionError) return res.status(400).json({ error: sessionError.message });
     const personIds = [...new Set([...(sessions || []).map((session) => session.user_id), ...visible.flatMap((task) => task.assignee_ids)])];
+    // Some older assigned profiles were created before org_id was consistently
+    // populated. Resolve IDs referenced by this org's tasks, including those
+    // legacy rows, while never returning profiles explicitly linked elsewhere.
     const { data: people, error: peopleError } = personIds.length
-      ? await supabase.from("profiles").select("id, full_name, email").eq("org_id", req.user.org_id).in("id", personIds)
+      ? await supabase.from("profiles").select("id, full_name, email, org_id").in("id", personIds)
       : { data: [], error: null };
     if (peopleError) return res.status(400).json({ error: peopleError.message });
-    res.json({ sessions: sessions || [], people: people || [] });
+    res.json({
+      sessions: sessions || [],
+      people: (people || []).filter((person) => !person.org_id || person.org_id === req.user.org_id),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -2613,17 +2613,26 @@ async function handleTasks(req: Request, path: string) {
     const participantIds = [...new Set([...(sessionRows || []).map((session) => session.user_id), ...visibleTasks.flatMap((task) =>
       (task.task_assignees || []).map((row: { profile_id: string }) => row.profile_id).concat(task.assignee_id ? [task.assignee_id] : []),
     )])];
+    // Resolve legacy profiles that are referenced by this organization's tasks
+    // but predate reliable org_id backfills. Exclude any profile assigned to a
+    // different organization before returning display data.
     const { data: profileRows, error: peopleError } = participantIds.length
-      ? await supabase.from("profiles").select("id, full_name, email").eq("org_id", user.org_id).in("id", participantIds)
+      ? await supabase.from("profiles").select("id, full_name, email, org_id").in("id", participantIds)
       : { data: [], error: null };
     if (peopleError) return json({ error: peopleError.message }, 400);
-    return json({ sessions: sessionRows || [], people: profileRows || [] });
+    return json({
+      sessions: sessionRows || [],
+      people: (profileRows || []).filter((person) => !person.org_id || person.org_id === user.org_id),
+    });
   }
 
   const timerActionMatch = path.match(/^\/tasks\/([^/]+)\/timer\/(start|pause)$/);
   if (req.method === "POST" && timerActionMatch) {
     const taskId = timerActionMatch[1];
     const action = timerActionMatch[2];
+    // Timer access is task-scoped for both roles. Employees can run/pause their
+    // own session on assigned work; admins can do the same for tasks visible to
+    // them. Never require an administrator role just to use a timer.
     const deny = await assertTaskAccess(user, taskId);
     if (deny) return deny;
     let taskQuery = supabase.from("tasks").select("id, org_id, kanban_column, assignee_id, task_assignees(profile_id)").eq("id", taskId);

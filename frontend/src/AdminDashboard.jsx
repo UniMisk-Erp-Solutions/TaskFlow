@@ -613,7 +613,7 @@ export default function AdminDashboard() {
           )}
 
           {page === 'timer' && (
-            <TimerAnalytics tasks={tasks} sessions={taskTimers.sessions} people={taskTimers.people} profile={profile} isAdmin loading={taskTimers.loading} error={taskTimers.error} />
+            <TimerAnalytics tasks={tasks} sessions={taskTimers.sessions} people={taskTimers.people} directoryProfiles={allProfiles} profile={profile} isAdmin loading={taskTimers.loading} error={taskTimers.error} />
           )}
 
           {/* ── CALENDER ── */}

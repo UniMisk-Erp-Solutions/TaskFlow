@@ -12,3 +12,4 @@
 - [Approved Task Done-Lane Countdown](docs/kanban-approved-task-countdown.md) — Explains the 60-second employee Kanban countdown after admin approval and the additive database/API rollout needed to keep it real-time across refreshes.
 - [Task Timer Tracking and Analytics](docs/task-timer-tracking-and-analytics.md) — Describes per-user task timer sessions, Start/Pause controls on In Progress cards, role-scoped timer analytics, dotted task graphs, real-time updates, and the required Supabase migration and API deployment.
 - [Profile Pages and Self-Service Account Details](docs/profile-pages-and-self-service-details.md) — Documents profile pages for admins and employees, sidebar access, editable name/phone fields, and authenticated API protections.
+- [Timer Permissions and Team Identity](docs/timer-permissions-and-team-identity.md) — Explains the hosted API permission mismatch, timer ownership rules, and profile lookup fixes for named team analytics.
