@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
@@ -7,6 +7,7 @@ const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
@@ -17,6 +18,7 @@ const ADMIN_NAV = [
 const EMPLOYEE_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
+  { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },

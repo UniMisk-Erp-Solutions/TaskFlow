@@ -2567,6 +2567,88 @@ async function handleTasks(req: Request, path: string) {
   // Board lanes are intentionally separate from TaskFlow's business status:
   // Backlog and To Do both mean `pending`, while Done may mean completed (admin)
   // or submitted for review (employee). This preserves the existing approval flow.
+  if (req.method === "GET" && path === "/tasks/timer-analytics") {
+    if (!user.org_id) return json({ sessions: [], people: [] });
+    let taskQuery = supabase.from("tasks").select("id, title, status, kanban_column, assignee_id, task_assignees(profile_id)").eq("org_id", user.org_id);
+    const { data: taskRows, error: taskError } = await taskQuery;
+    if (taskError) return json({ error: taskError.message }, 400);
+    let visibleTasks = taskRows || [];
+    if (user.role === "admin") {
+      try {
+        const roles = await loadOrgRoleByIdForEdge(user.org_id);
+        visibleTasks = visibleTasks.filter((task) => edgeAdminSeesItem(task, user.id, roles, "task"));
+      } catch (e) {
+        return json({ error: (e as Error).message || "Could not verify timer access." }, 500);
+      }
+    } else {
+      visibleTasks = visibleTasks.filter((task) => employeeSeesShapedAssigneeRow(user.id, {
+        assignee_id: task.assignee_id,
+        assignee_ids: (task.task_assignees || []).map((row: { profile_id: string }) => row.profile_id),
+      }));
+    }
+    const visibleTaskIds = visibleTasks.map((task) => task.id);
+    if (!visibleTaskIds.length) return json({ sessions: [], people: user.role === "admin" ? [] : [{ id: user.id, full_name: "You" }] });
+    let timerQuery = supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at").eq("org_id", user.org_id).in("task_id", visibleTaskIds);
+    if (user.role !== "admin") timerQuery = timerQuery.eq("user_id", user.id);
+    const { data: sessionRows, error: sessionError } = await timerQuery.order("started_at", { ascending: false });
+    if (sessionError) return json({ error: sessionError.message }, 400);
+    const participantIds = [...new Set([...(sessionRows || []).map((session) => session.user_id), ...visibleTasks.flatMap((task) =>
+      (task.task_assignees || []).map((row: { profile_id: string }) => row.profile_id).concat(task.assignee_id ? [task.assignee_id] : []),
+    )])];
+    const { data: profileRows, error: peopleError } = participantIds.length
+      ? await supabase.from("profiles").select("id, full_name, email").eq("org_id", user.org_id).in("id", participantIds)
+      : { data: [], error: null };
+    if (peopleError) return json({ error: peopleError.message }, 400);
+    return json({ sessions: sessionRows || [], people: profileRows || [] });
+  }
+
+  const timerActionMatch = path.match(/^\/tasks\/([^/]+)\/timer\/(start|pause)$/);
+  if (req.method === "POST" && timerActionMatch) {
+    const taskId = timerActionMatch[1];
+    const action = timerActionMatch[2];
+    const deny = await assertTaskAccess(user, taskId);
+    if (deny) return deny;
+    let taskQuery = supabase.from("tasks").select("id, org_id, kanban_column, assignee_id, task_assignees(profile_id)").eq("id", taskId);
+    if (user.org_id) taskQuery = taskQuery.eq("org_id", user.org_id);
+    const { data: task, error: taskError } = await taskQuery.maybeSingle();
+    if (taskError) return json({ error: taskError.message }, 400);
+    if (!task) return json({ error: "Task not found or access denied" }, 404);
+    if (user.role === "admin") {
+      try {
+        const roles = user.org_id ? await loadOrgRoleByIdForEdge(user.org_id) : {};
+        if (!edgeAdminSeesItem(task, user.id, roles, "task")) return json({ error: "Task not found or access denied" }, 403);
+      } catch (e) {
+        return json({ error: (e as Error).message || "Could not verify task access." }, 500);
+      }
+    }
+    if (action === "start") {
+      if (task.kanban_column !== "in_progress") return json({ error: "Start a timer only while the task is In Progress." }, 409);
+      let { data: active, error: activeError } = await supabase.from("task_timer_sessions")
+        .select("id, org_id, task_id, user_id, started_at, ended_at")
+        .eq("task_id", taskId).eq("user_id", user.id).is("ended_at", null).maybeSingle();
+      if (activeError) return json({ error: activeError.message }, 400);
+      if (!active) {
+        const { data: inserted, error: insertError } = await supabase.from("task_timer_sessions").insert([{
+          org_id: user.org_id, task_id: taskId, user_id: user.id,
+        }]).select("id, org_id, task_id, user_id, started_at, ended_at").single();
+        if (insertError) {
+          const retry = await supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at")
+            .eq("task_id", taskId).eq("user_id", user.id).is("ended_at", null).maybeSingle();
+          if (retry.error || !retry.data) return json({ error: insertError.message }, 400);
+          active = retry.data;
+        } else active = inserted;
+      }
+      return json(active);
+    }
+    const { data: paused, error: pauseError } = await supabase.from("task_timer_sessions")
+      .update({ ended_at: new Date().toISOString() })
+      .eq("task_id", taskId).eq("user_id", user.id).is("ended_at", null)
+      .select("id, org_id, task_id, user_id, started_at, ended_at").maybeSingle();
+    if (pauseError) return json({ error: pauseError.message }, 400);
+    if (!paused) return json({ error: "No running timer was found for this task." }, 404);
+    return json(paused);
+  }
+
   const boardMatch = path.match(/^\/tasks\/([^/]+)\/board$/);
   if (req.method === "PATCH" && boardMatch) {
     const id = boardMatch[1];
@@ -2641,6 +2723,13 @@ async function handleTasks(req: Request, path: string) {
     if (error) return json({ error: error.message }, 400);
     if (!updated) return json({ error: "Task not found or access denied" }, 404);
     const out = (await shapeTasksWithJoins([updated]))[0];
+
+    if (column === "done" && current.kanban_column !== "done") {
+      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
+        .update({ ended_at: new Date().toISOString() })
+        .eq("task_id", id).eq("org_id", user.org_id).is("ended_at", null);
+      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+    }
 
     if (nextStatus !== previousStatus) {
       const action = nextStatus === "submitted" ? "submitted" :
@@ -2924,6 +3013,11 @@ async function handleTasks(req: Request, path: string) {
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Task not found or access denied" }, 404);
+    if (statusUpdate.kanban_column === "done") {
+      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
+        .update({ ended_at: new Date().toISOString() }).eq("task_id", id).eq("org_id", user.org_id).is("ended_at", null);
+      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+    }
     const shaped = await shapeTasksWithJoins([data]);
     const out = shaped[0];
     const prevStatus = (beforeRow as { status?: string } | null)?.status ?? null;
@@ -3096,6 +3190,9 @@ async function handleTasks(req: Request, path: string) {
     const { data, error } = await uq.select("*").maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!data) return json({ error: "Task not found or access denied" }, 404);
+    const { error: timerCloseError } = await supabase.from("task_timer_sessions")
+      .update({ ended_at: new Date().toISOString() }).eq("task_id", id).eq("org_id", user.org_id).is("ended_at", null);
+    if (timerCloseError) console.error("[task timer] Could not close active sessions on submission:", timerCloseError.message);
     const shaped = await shapeTasksWithJoins([data]);
     const out = shaped[0];
     scheduleAudit(() =>

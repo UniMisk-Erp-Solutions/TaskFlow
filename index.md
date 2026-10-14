@@ -10,3 +10,4 @@
 - [Kanban Drop Target and Scroll Fix](docs/kanban-drop-target-and-scroll-fix.md) — Records the earlier native drag acceptance attempt and links to the current pointer-based approach.
 - [Kanban Pointer-Based Drop Targets](docs/kanban-pointer-drop-targets.md) — Documents pointer-following previews, insertion markers, smooth edge scrolling, and full-height lane drop targets for the Kanban board.
 - [Approved Task Done-Lane Countdown](docs/kanban-approved-task-countdown.md) — Explains the 60-second employee Kanban countdown after admin approval and the additive database/API rollout needed to keep it real-time across refreshes.
+- [Task Timer Tracking and Analytics](docs/task-timer-tracking-and-analytics.md) — Describes per-user task timer sessions, Start/Pause controls on In Progress cards, role-scoped timer analytics, dotted task graphs, real-time updates, and the required Supabase migration and API deployment.

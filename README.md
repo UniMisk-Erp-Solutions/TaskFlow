@@ -6,6 +6,7 @@ TaskFlow is a web application for teams to plan, assign, and track work in one s
 
 - Task creation, assignment, priority, due dates, status, and project organization.
 - A shared Kanban Board with Backlog, To Do, In Progress, and Done lanes. Board moves update the same tasks used by the task list and dashboards.
+- Per-user timers on In Progress tasks, with Start/Pause controls, realtime session tracking, and role-specific Timer analytics pages.
 - Employee work submission and administrator approval or rejection, with task history and notifications.
 - Separate administrator and employee experiences with role-based API access.
 - Direct, bookmarkable pages for each dashboard feature under `/admin/...` and `/dashboard/...` routes.
@@ -13,6 +14,8 @@ TaskFlow is a web application for teams to plan, assign, and track work in one s
 - Optional Google Calendar, AI, email, and browser push integrations when their credentials are configured.
 
 For the architecture, database model, feature flow, and deployment notes, see [docs/project-setup-and-architecture.md](docs/project-setup-and-architecture.md). The Kanban-specific behavior is in [docs/kanban-board-review-workflow.md](docs/kanban-board-review-workflow.md).
+
+Timer behavior, analytics, access rules, and its required migration are in [docs/task-timer-tracking-and-analytics.md](docs/task-timer-tracking-and-analytics.md).
 
 The employee submission confirmation and admin review lifecycle are documented in [docs/employee-kanban-review-submission.md](docs/employee-kanban-review-submission.md).
 
@@ -121,7 +124,7 @@ Open the URL Vite prints (normally <http://localhost:5173>). If you change front
 
 TaskFlow expects Supabase Auth and the existing TaskFlow schema (profiles, tasks, projects, meetings, and related tables, enums, policies, and triggers). Schema SQL and incremental migrations live under `supabase/` and `supabase/migrations/`.
 
-- For an existing TaskFlow Supabase project, apply only the migrations needed for the code version you are running. The Kanban Board and review workflow add migrations; see [docs/kanban-board-review-workflow.md](docs/kanban-board-review-workflow.md).
+- For an existing TaskFlow Supabase project, apply only the migrations needed for the code version you are running. The Kanban Board and review workflow add migrations; task timers require `supabase/migrations/20261014130000_task_timer_sessions.sql`. See [the Kanban guide](docs/kanban-board-review-workflow.md) and [timer guide](docs/task-timer-tracking-and-analytics.md).
 - For a new or local Supabase project, the repo includes numbered SQL setup files and additional incremental migrations. Review their prerequisites and apply them in order in a disposable development database before using the app; the repository does not provide a one-command empty-database bootstrap.
 - `supabase/12_seed_org_data.sql` creates sample users and data. Use it only in a disposable development project, never in production.
 - Local Edge Function setup, secrets, and serving steps are documented in [supabase/functions/README.md](supabase/functions/README.md).

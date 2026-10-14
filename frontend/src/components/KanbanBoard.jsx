@@ -3,6 +3,7 @@ import { CalendarDays, Clock3, GripVertical, Search } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
+import { elapsedSecondsForSession, formatElapsedSeconds } from '../lib/taskTimer';
 
 function assigneeIds(task) {
   return task.assignee_ids?.length ? task.assignee_ids : task.assignee_id ? [task.assignee_id] : [];
@@ -50,10 +51,13 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, timerNow, onStartTimer, onPauseTimer }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
+  const activeSession = timerSessions.find((session) => session.task_id === task.id && session.user_id === currentUserId && !session.ended_at);
+  const ownTaskSeconds = timerSessions.filter((session) => session.task_id === task.id && session.user_id === currentUserId)
+    .reduce((total, session) => total + elapsedSecondsForSession(session, timerNow), 0);
 
   return (
     <article
@@ -81,9 +85,9 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
           }
         }
       }}
-      role="button"
+      role="group"
       tabIndex={0}
-      aria-label={`${task.title}, ${task.priority || 'medium'} priority. Open task details.`}
+      aria-label={`${task.title}, ${task.priority || 'medium'} priority. Press Enter to open task details.`}
       style={{ '--kanban-priority': priorityColor(task.priority) }}
     >
       <div className="kanban-card-topline">
@@ -121,6 +125,17 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
           <span>Clears in {formatCountdown(completionTimeLeft)}</span>
         </div>
       )}
+      {lane === 'in_progress' && (
+        <div className="kanban-task-timer">
+          <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(ownTaskSeconds)}</span>
+          <button type="button" className="kanban-task-timer-button" onClick={(event) => {
+            event.stopPropagation();
+            (activeSession ? onPauseTimer : onStartTimer)(task.id).catch(() => {});
+          }} onKeyDown={(event) => event.stopPropagation()} aria-label={`${activeSession ? 'Pause' : 'Start'} timer for ${task.title}`} title={activeSession ? 'Pause timer' : 'Start timer'}>
+            {activeSession ? 'Pause' : 'Start'}
+          </button>
+        </div>
+      )}
 
     </article>
   );
@@ -135,6 +150,11 @@ export default function KanbanBoard({
   loading = false,
   onMoveTask,
   onOpenTask,
+  timerSessions = [],
+  currentUserId,
+  onStartTimer = async () => {},
+  onPauseTimer = async () => {},
+  timerError = '',
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -154,6 +174,12 @@ export default function KanbanBoard({
   const reviewDialogRef = useRef(null);
 
   useEffect(() => () => pointerDragCleanup.current?.(), []);
+
+  useEffect(() => {
+    if (!timerSessions.some((session) => !session.ended_at)) return undefined;
+    const interval = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [timerSessions]);
 
   useEffect(() => {
     const hasActiveCountdown = !isAdmin && tasks.some((task) =>
@@ -203,6 +229,15 @@ export default function KanbanBoard({
   }, [filteredTasks, clockNow, isAdmin]);
 
   const visibleTaskCount = Object.values(visibleByColumn).reduce((count, columnTasks) => count + columnTasks.length, 0);
+  const timerSessionsByTask = useMemo(() => {
+    const grouped = new Map();
+    timerSessions.forEach((session) => {
+      const current = grouped.get(session.task_id) || [];
+      current.push(session);
+      grouped.set(session.task_id, current);
+    });
+    return grouped;
+  }, [timerSessions]);
 
   function setFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -458,6 +493,7 @@ export default function KanbanBoard({
           <button type="button" onClick={() => setError('')} aria-label="Dismiss error">Dismiss</button>
         </div>
       )}
+      {timerError && <div className="kanban-error" role="alert"><span>{timerError}</span></div>}
 
       <div className="kanban-board">
         {KANBAN_COLUMNS.map((column) => {
@@ -491,6 +527,11 @@ export default function KanbanBoard({
                       consumeDraggedClick={consumeDraggedClick}
                       isDragging={draggedTaskId === task.id}
                       completionTimeLeft={!isAdmin && task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
+                      timerSessions={timerSessionsByTask.get(task.id) || []}
+                      currentUserId={currentUserId}
+                      timerNow={clockNow}
+                      onStartTimer={onStartTimer}
+                      onPauseTimer={onPauseTimer}
                     />
                   </div>
                 )) : (
