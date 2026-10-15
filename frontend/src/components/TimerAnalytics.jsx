@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Activity, ChevronDown, Clock3, ListChecks, Users } from 'lucide-react';
 import { elapsedSecondsForSession } from '../lib/taskTimer';
+import Pagination, { usePagination } from './Pagination';
 
 // One unit for the whole page, always whole numbers.
 //  Hours: "193h 53m"     Days: "8d 1h" (a day is 24 h; under a day it reads "9h 21m")
@@ -237,6 +238,7 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
   const panelId = `timer-person-${person.id}`;
   const active = STATUS_FILTERS.find((item) => item.key === filter);
   const visibleRows = active ? rows.filter((row) => row.group.rank === active.rank) : rows;
+  const paging = usePagination(visibleRows, { resetKey: filter });
   return (
     <article className={`timer-person-card${open ? ' is-open' : ''}`}>
       <button type="button" className="timer-person-head" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
@@ -273,7 +275,7 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
               <li className="timer-task-row timer-task-head" aria-hidden="true">
                 <span>Task</span><span>Status</span><span>Started</span><span>Ended</span><span className="timer-task-time">Time worked</span>
               </li>
-              {visibleRows.map((row) => {
+              {paging.pageItems.map((row) => {
                 const hasSegments = row.segments.length > 0;
                 const expanded = openRows.has(row.id);
                 const endTimer = row.segments.length ? row.segments[row.segments.length - 1].toSec : 0;
@@ -318,6 +320,7 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
               })}
             </ul>
           ) : <div className="timer-empty">No tasks with this status.</div>}
+          <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onPage={paging.setPage} />
         </div>
       )}
     </article>

@@ -25,3 +25,5 @@
 - [Kanban Individual vs Project Scope (Employee)](docs/kanban-individual-project-scope.md) — Documents the employee Individual/Project toggle on the Kanban board and the card badges that distinguish task kinds.
 - [Project Edit/Delete and Employee Project Scoping](docs/project-edit-delete-and-employee-scoping.md) — Documents admin project edit and delete, the new API endpoints, and employee-scoped project lists used by Projects and Kanban.
 - [Server Migrations Applied on 2026-10-15](docs/server-migrations-applied-2026-10-15.md) — Records the production database changes applied through SSH and what remains to deploy.
+- [File Explorer (Files) with Multi-Tenant Storage and Private/Public Visibility](docs/file-explorer-multi-tenant-storage.md) — Documents the Files page for admin and employee portals: folders, uploads, private/public visibility, the dedicated storage bucket, API endpoints and rollout.
+- [Pagination (35 Records per Page)](docs/pagination-35-records.md) — Documents the shared pagination hook/control that splits task, meeting, overview, file and timer lists into pages of 35 records.

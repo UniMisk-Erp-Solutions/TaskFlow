@@ -4071,6 +4071,319 @@ async function handleMeetings(req: Request, path: string) {
   return null;
 }
 
+// ── File explorer (Files) ────────────────────────────────────────────────
+// Multi-tenant: every row carries org_id and every object lives at
+//   taskflow-files/<org_id>/<owner_id>/<file_id>-<name>
+// Visibility: private = owner only (not even admins), public = whole organization.
+const DRIVE_BUCKET = "taskflow-files";
+
+type DriveFolderRow = { id: string; org_id: string; parent_id: string | null; owner_id: string; name: string; visibility: string; created_at: string };
+
+function driveCleanName(value: unknown, max = 120): string | null {
+  const name = String(value ?? "").replace(/[\\/\u0000-\u001f]+/g, " ").trim().slice(0, max);
+  return name && name !== "." && name !== ".." ? name : null;
+}
+
+function driveVisibility(value: unknown, fallback = "public"): string {
+  return value === "public" ? "public" : value === "private" ? "private" : fallback;
+}
+
+/** All of the organization's folders plus a map of which ones this user may open. */
+async function driveLoadFolders(user: AppUser) {
+  const { data, error } = await supabase
+    .from("drive_folders")
+    .select("id, org_id, parent_id, owner_id, name, visibility, created_at")
+    .eq("org_id", user.org_id);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as DriveFolderRow[];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const memo = new Map<string, boolean>();
+  const visible = (id: string, depth = 0): boolean => {
+    if (memo.has(id)) return memo.get(id)!;
+    const row = byId.get(id);
+    let result = false;
+    if (row && depth < 50) {
+      if (row.owner_id === user.id) result = true;
+      else if (row.visibility === "public") result = row.parent_id ? visible(row.parent_id, depth + 1) : true;
+    }
+    memo.set(id, result);
+    return result;
+  };
+  return { rows, byId, visible };
+}
+
+async function driveOwnerNames(ids: string[]): Promise<Record<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return {};
+  const { data } = await supabase.from("profiles").select("id, full_name, email").in("id", unique);
+  const out: Record<string, string> = {};
+  for (const row of data ?? []) out[row.id] = row.full_name || row.email || "Member";
+  return out;
+}
+
+async function handleDrive(req: Request, path: string) {
+  if (!path.startsWith("/drive")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  if (!user.org_id) return json({ error: "Your profile has no organization; the file explorer is unavailable." }, 400);
+  const url = new URL(req.url);
+
+  try {
+    // GET /drive?folder_id=  — contents of a folder (root when omitted) + breadcrumbs.
+    if (req.method === "GET" && path === "/drive") {
+      const folderId = url.searchParams.get("folder_id") || null;
+      const { rows, byId, visible } = await driveLoadFolders(user);
+      if (folderId && (!byId.has(folderId) || !visible(folderId))) return json({ error: "Folder not found" }, 404);
+
+      const folders = rows.filter((row) => (row.parent_id ?? null) === folderId && visible(row.id));
+      let fileQuery = supabase.from("drive_files")
+        .select("id, folder_id, owner_id, name, content_type, size_bytes, visibility, created_at, updated_at")
+        .eq("org_id", user.org_id);
+      fileQuery = folderId ? fileQuery.eq("folder_id", folderId) : fileQuery.is("folder_id", null);
+      const { data: fileRows, error } = await fileQuery.order("name", { ascending: true });
+      if (error) return json({ error: error.message }, 400);
+      const files = (fileRows ?? []).filter((row: any) => row.owner_id === user.id || row.visibility === "public");
+
+      const crumbs: { id: string; name: string }[] = [];
+      for (let cursor = folderId, guard = 0; cursor && guard < 50; guard++) {
+        const row = byId.get(cursor);
+        if (!row) break;
+        crumbs.unshift({ id: row.id, name: row.name });
+        cursor = row.parent_id;
+      }
+      const names = await driveOwnerNames([...folders.map((f) => f.owner_id), ...files.map((f: any) => f.owner_id)]);
+      return json({
+        folder_id: folderId,
+        breadcrumbs: crumbs,
+        folders: folders.sort((a, b) => a.name.localeCompare(b.name)).map((f) => ({
+          kind: "folder", id: f.id, name: f.name, visibility: f.visibility, owner_id: f.owner_id,
+          owner_name: names[f.owner_id] || "Member", created_at: f.created_at, is_owner: f.owner_id === user.id,
+        })),
+        files: files.map((f: any) => ({
+          kind: "file", id: f.id, name: f.name, visibility: f.visibility, owner_id: f.owner_id,
+          owner_name: names[f.owner_id] || "Member", content_type: f.content_type, size_bytes: f.size_bytes,
+          created_at: f.created_at, is_owner: f.owner_id === user.id,
+        })),
+      });
+    }
+
+    // GET /drive/search?q=
+    if (req.method === "GET" && path === "/drive/search") {
+      const q = (url.searchParams.get("q") || "").trim().toLowerCase();
+      if (q.length < 2) return json({ folders: [], files: [] });
+      const { rows, visible } = await driveLoadFolders(user);
+      const folders = rows.filter((row) => visible(row.id) && row.name.toLowerCase().includes(q)).slice(0, 50);
+      const { data: fileRows, error } = await supabase.from("drive_files")
+        .select("id, folder_id, owner_id, name, content_type, size_bytes, visibility, created_at")
+        .eq("org_id", user.org_id).ilike("name", `%${q.replace(/[%_]/g, "")}%`).limit(200);
+      if (error) return json({ error: error.message }, 400);
+      const files = (fileRows ?? []).filter((row: any) =>
+        row.owner_id === user.id || (row.visibility === "public" && (!row.folder_id || visible(row.folder_id)))).slice(0, 50);
+      const names = await driveOwnerNames([...folders.map((f) => f.owner_id), ...files.map((f: any) => f.owner_id)]);
+      return json({
+        folders: folders.map((f) => ({ kind: "folder", id: f.id, parent_id: f.parent_id, name: f.name, visibility: f.visibility, owner_id: f.owner_id, owner_name: names[f.owner_id] || "Member", created_at: f.created_at, is_owner: f.owner_id === user.id })),
+        files: files.map((f: any) => ({ kind: "file", id: f.id, folder_id: f.folder_id, name: f.name, visibility: f.visibility, owner_id: f.owner_id, owner_name: names[f.owner_id] || "Member", content_type: f.content_type, size_bytes: f.size_bytes, created_at: f.created_at, is_owner: f.owner_id === user.id })),
+      });
+    }
+
+    // POST /drive/folders  { name, parent_id?, visibility? }
+    if (req.method === "POST" && path === "/drive/folders") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const name = driveCleanName(body.name);
+      if (!name) return json({ error: "Folder name is required." }, 400);
+      const parentId = body.parent_id ? String(body.parent_id) : null;
+      if (parentId) {
+        const { byId, visible } = await driveLoadFolders(user);
+        if (!byId.has(parentId) || !visible(parentId)) return json({ error: "Parent folder not found" }, 404);
+      }
+      const { data, error } = await supabase.from("drive_folders").insert([{
+        org_id: user.org_id, parent_id: parentId, owner_id: user.id, name, visibility: driveVisibility(body.visibility),
+      }]).select("id, name, visibility, parent_id, owner_id, created_at").single();
+      if (error) {
+        const duplicate = error.message.includes("drive_folders_unique_name_idx") || error.code === "23505";
+        return json({ error: duplicate ? "You already have a folder with that name here." : error.message }, duplicate ? 409 : 400);
+      }
+      return json({ ...data, kind: "folder", is_owner: true }, 201);
+    }
+
+    // Large files are uploaded by the browser straight to storage (so they never pass through
+    // this function's memory): prepare -> upload to the signed URL -> complete.
+    // POST /drive/files/prepare  { name, folder_id?, visibility? }
+    if (req.method === "POST" && path === "/drive/files/prepare") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const displayName = driveCleanName(body.name, 255);
+      if (!displayName) return json({ error: "File name is required." }, 400);
+      const folderId = body.folder_id ? String(body.folder_id) : null;
+      if (folderId) {
+        const { byId, visible } = await driveLoadFolders(user);
+        if (!byId.has(folderId) || !visible(folderId)) return json({ error: "Folder not found" }, 404);
+      }
+      const fileId = crypto.randomUUID();
+      const objectPath = `${user.org_id}/${user.id}/${fileId}-${displayName.replace(/[^\w.\-() ]+/g, "_")}`;
+      const { data, error } = await supabase.storage.from(DRIVE_BUCKET).createSignedUploadUrl(objectPath);
+      if (error) return json({ error: error.message }, 400);
+      return json({ file_id: fileId, bucket: DRIVE_BUCKET, path: objectPath, token: data.token });
+    }
+
+    // POST /drive/files/complete  { file_id, name, folder_id?, visibility?, content_type? }
+    if (req.method === "POST" && path === "/drive/files/complete") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const displayName = driveCleanName(body.name, 255);
+      const fileId = String(body.file_id || "");
+      if (!displayName || !/^[0-9a-f-]{36}$/i.test(fileId)) return json({ error: "Invalid upload." }, 400);
+      const folderId = body.folder_id ? String(body.folder_id) : null;
+      if (folderId) {
+        const { byId, visible } = await driveLoadFolders(user);
+        if (!byId.has(folderId) || !visible(folderId)) return json({ error: "Folder not found" }, 404);
+      }
+      // The path is rebuilt from the caller's own org/user ids, so nobody can register someone else's object.
+      const safe = displayName.replace(/[^\w.\-() ]+/g, "_");
+      const objectPath = `${user.org_id}/${user.id}/${fileId}-${safe}`;
+      const { data: found } = await supabase.storage.from(DRIVE_BUCKET)
+        .list(`${user.org_id}/${user.id}`, { search: `${fileId}-`, limit: 5 });
+      const stored = (found ?? []).find((entry: any) => entry.name === `${fileId}-${safe}`);
+      if (!stored) return json({ error: "The upload did not reach storage. Please try again." }, 400);
+      const size = Number((stored as any).metadata?.size ?? (stored as any).metadata?.contentLength ?? 0);
+      const { data, error } = await supabase.from("drive_files").insert([{
+        id: fileId, org_id: user.org_id, folder_id: folderId, owner_id: user.id, name: displayName,
+        bucket: DRIVE_BUCKET, path: objectPath, content_type: body.content_type ? String(body.content_type).slice(0, 200) : null,
+        size_bytes: size, visibility: driveVisibility(body.visibility),
+      }]).select("id, folder_id, name, content_type, size_bytes, visibility, owner_id, created_at").single();
+      if (error) {
+        await supabase.storage.from(DRIVE_BUCKET).remove([objectPath]);
+        return json({ error: error.message }, 400);
+      }
+      return json({ ...data, kind: "file", is_owner: true }, 201);
+    }
+
+    // POST /drive/files  multipart: file (one or many), folder_id?, visibility?
+    if (req.method === "POST" && path === "/drive/files") {
+      const form = await req.formData();
+      const folderId = form.get("folder_id") ? String(form.get("folder_id")) : null;
+      const visibility = driveVisibility(form.get("visibility"));
+      if (folderId) {
+        const { byId, visible } = await driveLoadFolders(user);
+        if (!byId.has(folderId) || !visible(folderId)) return json({ error: "Folder not found" }, 404);
+      }
+      const uploads = form.getAll("file").filter((entry): entry is File => entry instanceof File);
+      if (!uploads.length) return json({ error: "Choose at least one file." }, 400);
+      const created: unknown[] = [];
+      for (const file of uploads) {
+        const displayName = driveCleanName(file.name, 255) || "file";
+        const fileId = crypto.randomUUID();
+        const safe = displayName.replace(/[^\w.\-() ]+/g, "_");
+        const objectPath = `${user.org_id}/${user.id}/${fileId}-${safe}`;
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const { error: upErr } = await supabase.storage.from(DRIVE_BUCKET)
+          .upload(objectPath, bytes, { contentType: file.type || "application/octet-stream", upsert: false });
+        if (upErr) return json({ error: upErr.message }, 400);
+        const { data, error } = await supabase.from("drive_files").insert([{
+          id: fileId, org_id: user.org_id, folder_id: folderId, owner_id: user.id, name: displayName,
+          bucket: DRIVE_BUCKET, path: objectPath, content_type: file.type || null, size_bytes: file.size, visibility,
+        }]).select("id, folder_id, name, content_type, size_bytes, visibility, owner_id, created_at").single();
+        if (error) {
+          await supabase.storage.from(DRIVE_BUCKET).remove([objectPath]);
+          return json({ error: error.message }, 400);
+        }
+        created.push({ ...data, kind: "file", is_owner: true });
+      }
+      return json(created, 201);
+    }
+
+    // GET /drive/files/:id/url[?download=1] — short-lived signed URL after a visibility check.
+    const urlMatch = path.match(/^\/drive\/files\/([^/]+)\/url$/);
+    if (req.method === "GET" && urlMatch) {
+      const { data: file } = await supabase.from("drive_files")
+        .select("id, org_id, folder_id, owner_id, name, bucket, path, visibility")
+        .eq("id", urlMatch[1]).eq("org_id", user.org_id).maybeSingle();
+      if (!file) return json({ error: "File not found" }, 404);
+      if (file.owner_id !== user.id) {
+        if (file.visibility !== "public") return json({ error: "File not found" }, 404);
+        if (file.folder_id) {
+          const { visible } = await driveLoadFolders(user);
+          if (!visible(file.folder_id)) return json({ error: "File not found" }, 404);
+        }
+      }
+      const download = url.searchParams.get("download") === "1";
+      const { data: signed, error } = await supabase.storage.from(file.bucket)
+        .createSignedUrl(file.path, 300, download ? { download: file.name } : undefined);
+      if (error) return json({ error: error.message }, 400);
+      return json({ url: signed.signedUrl, name: file.name });
+    }
+
+    // PATCH /drive/files/:id | /drive/folders/:id  { name?, visibility? } — owner only.
+    const patchMatch = path.match(/^\/drive\/(files|folders)\/([^/]+)$/);
+    if (req.method === "PATCH" && patchMatch) {
+      const table = patchMatch[1] === "files" ? "drive_files" : "drive_folders";
+      const { data: row } = await supabase.from(table).select("id, owner_id").eq("id", patchMatch[2]).eq("org_id", user.org_id).maybeSingle();
+      if (!row || row.owner_id !== user.id) return json({ error: "Item not found" }, 404);
+      const body = await parseBody(req) as Record<string, unknown>;
+      const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (body.name !== undefined) {
+        const name = driveCleanName(body.name, patchMatch[1] === "files" ? 255 : 120);
+        if (!name) return json({ error: "Name is required." }, 400);
+        patch.name = name;
+      }
+      if (body.visibility !== undefined) patch.visibility = driveVisibility(body.visibility);
+      const { data, error } = await supabase.from(table).update(patch).eq("id", row.id).eq("org_id", user.org_id).select("*").single();
+      if (error) {
+        const duplicate = error.code === "23505";
+        return json({ error: duplicate ? "You already have a folder with that name here." : error.message }, duplicate ? 409 : 400);
+      }
+      return json({ ...data, kind: patchMatch[1] === "files" ? "file" : "folder", is_owner: true });
+    }
+
+    // DELETE /drive/files/:id — owner, or an admin for public files (moderation).
+    const delFile = path.match(/^\/drive\/files\/([^/]+)$/);
+    if (req.method === "DELETE" && delFile) {
+      const { data: file } = await supabase.from("drive_files")
+        .select("id, owner_id, bucket, path, visibility").eq("id", delFile[1]).eq("org_id", user.org_id).maybeSingle();
+      if (!file) return json({ error: "File not found" }, 404);
+      const mayDelete = file.owner_id === user.id || (user.role === "admin" && file.visibility === "public");
+      if (!mayDelete) return json({ error: "File not found" }, 404);
+      await supabase.storage.from(file.bucket).remove([file.path]);
+      const { error } = await supabase.from("drive_files").delete().eq("id", file.id).eq("org_id", user.org_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    // DELETE /drive/folders/:id — removes the folder tree and its stored objects.
+    const delFolder = path.match(/^\/drive\/folders\/([^/]+)$/);
+    if (req.method === "DELETE" && delFolder) {
+      const { rows, byId } = await driveLoadFolders(user);
+      const root = byId.get(delFolder[1]);
+      if (!root) return json({ error: "Folder not found" }, 404);
+      const mayDelete = root.owner_id === user.id || (user.role === "admin" && root.visibility === "public");
+      if (!mayDelete) return json({ error: "Folder not found" }, 404);
+      const treeIds = new Set<string>([root.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const row of rows) {
+          if (row.parent_id && treeIds.has(row.parent_id) && !treeIds.has(row.id)) { treeIds.add(row.id); grew = true; }
+        }
+      }
+      const ids = [...treeIds];
+      const { data: inside } = await supabase.from("drive_files").select("id, owner_id, bucket, path").eq("org_id", user.org_id).in("folder_id", ids);
+      const foreignFolder = rows.some((row) => treeIds.has(row.id) && row.owner_id !== root.owner_id);
+      const foreignFile = (inside ?? []).some((row: any) => row.owner_id !== root.owner_id);
+      if (foreignFolder || foreignFile) {
+        return json({ error: "This folder contains items owned by other people. Remove or move them first." }, 409);
+      }
+      const paths = (inside ?? []).map((row: any) => row.path);
+      for (let i = 0; i < paths.length; i += 100) await supabase.storage.from(DRIVE_BUCKET).remove(paths.slice(i, i + 100));
+      const { error } = await supabase.from("drive_folders").delete().eq("id", root.id).eq("org_id", user.org_id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    return json({ error: "Not found" }, 404);
+  } catch (err) {
+    return json({ error: (err as Error).message || "File explorer error" }, 500);
+  }
+}
+
 async function handleProjects(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -4499,6 +4812,9 @@ Deno.serve(async (req): Promise<Response> => {
 
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
+
+    const driveResp = await handleDrive(req, path);
+    if (driveResp) return driveResp;
 
     const projectsResp = await handleProjects(req, path);
     if (projectsResp) return projectsResp;

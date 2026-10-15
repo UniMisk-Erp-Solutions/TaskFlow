@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.0",
     "@supabase/supabase-js": "^2.43.1",
     "@tailwindcss/vite": "^4.3.0",
     "axios": "^1.6.8",

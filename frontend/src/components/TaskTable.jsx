@@ -4,6 +4,7 @@ import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
 import { formatDate as fmt } from '../lib/dateFormat';
 import StatusSelect from './StatusSelect';
+import Pagination, { usePagination } from './Pagination';
 
 function formatAssignees(task, profileById) {
   if (!profileById) return null;
@@ -108,6 +109,8 @@ export default function TaskTable({
     return 0;
   });
 
+  const paging = usePagination(sorted, { resetKey: `${sort.key}:${sort.dir}` });
+
   async function handleDelete(id) {
     if (!window.confirm('Delete this task? This cannot be undone.')) return;
     setDelId(id);
@@ -137,7 +140,7 @@ export default function TaskTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((task) => {
+          {paging.pageItems.map((task) => {
             const overdue = isOverdue(task.due_date, task.status);
             return (
               <tr key={task.id}
@@ -242,6 +245,7 @@ export default function TaskTable({
           })}
         </tbody>
       </table>
+      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onPage={paging.setPage} />
     </div>
   );
 }

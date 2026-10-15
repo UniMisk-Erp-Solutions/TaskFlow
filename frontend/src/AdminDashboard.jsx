@@ -28,6 +28,9 @@ import { useTaskTimers } from './useTaskTimers';
 import api from './api';
 import ProfilePage from './components/ProfilePage';
 import ChatPage from './components/ChatPage';
+import FileExplorer from './components/FileExplorer';
+import { lazy, Suspense } from 'react';
+const WhiteboardPage = lazy(() => import('./components/WhiteboardPage'));
 
 const FILTERS_DEFAULT = { search: '', status: '', priority: '', type: '', assignee_id: '' };
 
@@ -85,7 +88,7 @@ export default function AdminDashboard() {
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
-  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'notifications', 'email', 'profile'];
+  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'files', 'whiteboard', 'notifications', 'email', 'profile'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -288,6 +291,10 @@ export default function AdminDashboard() {
                         ? 'User Management'
                         : page === 'chat'
                           ? 'Chat'
+                        : page === 'files'
+                          ? 'Files'
+                        : page === 'whiteboard'
+                          ? 'Whiteboard'
                         : page === 'notifications'
                           ? 'Notifications'
                             : page === 'profile'
@@ -687,6 +694,8 @@ export default function AdminDashboard() {
 
           {page === 'profile' && <ProfilePage />}
           {page === 'chat' && <ChatPage />}
+          {page === 'files' && <FileExplorer />}
+          {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage /></Suspense>}
 
           {/* ── REMINDERS ── */}
           {page === 'email' && (

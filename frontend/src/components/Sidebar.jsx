@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
@@ -12,6 +12,8 @@ const ADMIN_NAV = [
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
+  { id: 'files', icon: FolderOpen, label: 'Files' },
+  { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
@@ -24,6 +26,8 @@ const EMPLOYEE_NAV = [
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
+  { id: 'files', icon: FolderOpen, label: 'Files' },
+  { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
 ];

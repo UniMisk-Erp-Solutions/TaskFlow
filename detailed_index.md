@@ -198,3 +198,27 @@ An operations record of the access path used (SSH alias olympus, Coolify, the Ta
 **Update note (2026-10-15):** [docs/kanban-approved-task-countdown.md](docs/kanban-approved-task-countdown.md) now also covers the admin board: approved tasks clear after 60 seconds there too, with `updated_at` as the fallback anchor for older approvals; tasks always remain in the Tasks pages.
 
 **Update note (2026-10-15):** [docs/task-timer-tracking-and-analytics.md](docs/task-timer-tracking-and-analytics.md) is extended by [docs/timer-analytics-filters-and-charts.md](docs/timer-analytics-filters-and-charts.md) and [docs/timer-task-dates-and-session-history.md](docs/timer-task-dates-and-session-history.md), which replace the dotted graph with bar charts, filters, person cards and session history.
+
+---
+
+**Document:** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md)
+
+Explains the new Files feature end to end: the dedicated private taskflow-files storage bucket and its org/owner object layout, the drive_folders and drive_files tables with row level security, the visibility rules (private is owner-only, public is organization-wide, folder privacy gating its contents), the /drive Edge API endpoints and signed-URL downloads, the FileExplorer React page shared by both portals, and the migration/deployment state. It also records the honest storage note that Supabase Storage maps logical buckets onto the configured S3 backend, and that the Express backend does not yet implement these routes.
+
+---
+
+**Update note (2026-10-15):** [docs/server-migrations-applied-2026-10-15.md](docs/server-migrations-applied-2026-10-15.md) now also records the Edge Function deployment to the TaskFlow Supabase stack, the backup file name used, and the rollback step.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents that new items are public by default and that the Edit dialog changes name and visibility together.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents the removal of the 50 MB cap and the prepare/upload/complete direct-to-storage flow, including the remaining server-wide 500 MB storage limit.
+
+---
+
+**Document:** [docs/pagination-35-records.md](docs/pagination-35-records.md)
+
+Describes the reusable usePagination hook and Pagination control (35 records per page), which lists use it (tasks, meetings, overview/project table, Files, Timer person rows), why the Kanban board is excluded, and how page state resets on sort/filter/search changes and clamps after deletes. It also records that the old 40-row cap in the unified overview table was replaced by real paging.
