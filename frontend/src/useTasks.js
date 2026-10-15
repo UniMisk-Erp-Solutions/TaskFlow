@@ -8,7 +8,8 @@ export function useTasks() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetch = useCallback(async () => {
+  // `silent` refreshes in place: no spinner and the current list survives a failed request.
+  const fetch = useCallback(async ({ silent = false } = {}) => {
     // Wait for auth only when we do not yet have a profile id; if profile is already set (e.g. during TOKEN_REFRESHED), still fetch so lists load without a hard refresh.
     if (authLoading && !profile?.id) {
       setLoading(true);
@@ -21,13 +22,13 @@ export function useTasks() {
       return;
     }
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const { data } = await api.get('/tasks');
       setTasks(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
-      setTasks([]);
+      if (!silent) setTasks([]);
     } finally {
       setLoading(false);
     }

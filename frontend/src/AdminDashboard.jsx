@@ -5,7 +5,7 @@ import CsvImportModal from './components/CsvImportModal';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
-import { useRealtime } from './useRealtime';
+import { useRealtime, useLiveRefresh } from './useRealtime';
 import Sidebar from './components/Sidebar';
 import TaskTable from './components/TaskTable';
 import TaskForm from './components/TaskForm';
@@ -79,6 +79,7 @@ export default function AdminDashboard() {
 
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
+  const refreshTimers = taskTimers.refetch;
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
@@ -129,9 +130,10 @@ export default function AdminDashboard() {
     setShowMeetingForm(true);
   }
 
-  useRealtime('tasks', useCallback(() => refetch(), [refetch]));
+  useRealtime('tasks', useCallback(() => refetch({ silent: true }), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
-  useRealtime('task_assignees', useCallback(() => refetch(), [refetch]));
+  useRealtime('task_assignees', useCallback(() => refetch({ silent: true }), [refetch]));
+  useLiveRefresh(useCallback(() => { void refetch({ silent: true }); void refreshTimers?.(); }, [refetch, refreshTimers]));
   useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {

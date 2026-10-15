@@ -2,7 +2,7 @@
 
 ## Purpose and behavior
 
-After an administrator approves submitted work, the employee's Kanban Done lane keeps the task visible for 60 seconds. The task card displays a small `Clears in M:SS` countdown, then disappears from the employee Kanban board when the time expires. Its task status remains `completed`, so it stays in the employee's task list, completed totals, reports, and history. The administrator board does not auto-hide approved work.
+After an administrator approves submitted work, the employee's Kanban Done lane keeps the task visible for 60 seconds. The task card displays a small `Clears in M:SS` countdown, then disappears from the employee Kanban board when the time expires. Its task status remains `completed`, so it stays in the employee's task list, completed totals, reports, and history. The same countdown now applies on the administrator board. Approved tasks with no `kanban_approved_at` fall back to `updated_at` as the anchor, so older completed cards clear immediately. Hidden tasks remain in the Tasks pages for both roles.
 
 The timer is anchored to the database field `tasks.kanban_approved_at`, written at the approval transition. Existing completed tasks with a null value stay in Done because they were not approved by this new timed flow. The timestamp survives refreshes and is the same for every device.
 

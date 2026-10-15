@@ -9,7 +9,7 @@ import MeetingForm from './components/MeetingForm';
 import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
-import { useRealtime } from './useRealtime';
+import { useRealtime, useLiveRefresh } from './useRealtime';
 import TaskCard from './components/TaskCard';
 import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
@@ -103,6 +103,7 @@ export default function EmployeeDashboard() {
   const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus, submitMeeting, approveMeeting, requestMeetingChanges, getMeetingHistory } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
+  const refreshTimers = taskTimers.refetch;
   const [showAI, setShowAI] = useState(false);
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment;
@@ -156,9 +157,10 @@ export default function EmployeeDashboard() {
     setShowMeetingForm(true);
   }
 
-  useRealtime('tasks', useCallback(() => refetch(), [refetch]));
+  useRealtime('tasks', useCallback(() => refetch({ silent: true }), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
-  useRealtime('task_assignees', useCallback(() => refetch(), [refetch]));
+  useRealtime('task_assignees', useCallback(() => refetch({ silent: true }), [refetch]));
+  useLiveRefresh(useCallback(() => { void refetch({ silent: true }); void refreshTimers?.(); }, [refetch, refreshTimers]));
   useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   const today = new Date().toISOString().split('T')[0];

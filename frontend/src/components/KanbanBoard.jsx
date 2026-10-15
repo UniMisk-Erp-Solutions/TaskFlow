@@ -12,7 +12,8 @@ function assigneeIds(task) {
 const APPROVED_TASK_VISIBLE_MS = 60_000;
 
 function approvedTaskTimeLeft(task, now) {
-  const approvedAt = Date.parse(task.kanban_approved_at || '');
+  // Older approvals have no approval stamp, so fall back to the last update.
+  const approvedAt = Date.parse(task.kanban_approved_at || task.updated_at || '');
   if (!Number.isFinite(approvedAt)) return null;
   return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
 }
@@ -182,7 +183,7 @@ export default function KanbanBoard({
   }, [timerSessions]);
 
   useEffect(() => {
-    const hasActiveCountdown = !isAdmin && tasks.some((task) =>
+    const hasActiveCountdown = tasks.some((task) =>
       task.status === 'completed' && approvedTaskTimeLeft(task, Date.now()) > 0,
     );
     if (!hasActiveCountdown) return undefined;
@@ -194,7 +195,7 @@ export default function KanbanBoard({
       }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isAdmin, tasks]);
+  }, [tasks]);
 
   useEffect(() => {
     if (!reviewTaskId) return undefined;
@@ -221,12 +222,12 @@ export default function KanbanBoard({
     const grouped = Object.fromEntries(KANBAN_COLUMNS.map((column) => [column.id, []]));
     filteredTasks.forEach((task) => {
       const timeLeft = approvedTaskTimeLeft(task, clockNow);
-      if (!isAdmin && task.status === 'completed' && timeLeft !== null && timeLeft <= 0) return;
+      if (task.status === 'completed' && timeLeft !== null && timeLeft <= 0) return;
       grouped[kanbanColumnForTask(task)].push(task);
     });
     Object.values(grouped).forEach((columnTasks) => columnTasks.sort(compareKanbanTasks));
     return grouped;
-  }, [filteredTasks, clockNow, isAdmin]);
+  }, [filteredTasks, clockNow]);
 
   const visibleTaskCount = Object.values(visibleByColumn).reduce((count, columnTasks) => count + columnTasks.length, 0);
   const timerSessionsByTask = useMemo(() => {
@@ -367,13 +368,14 @@ export default function KanbanBoard({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
+      document.body.classList.remove('is-kanban-dragging');
       if (runtime.frameId !== null) window.cancelAnimationFrame(runtime.frameId);
       runtime.frameId = null;
       if (dragRuntimeRef.current === runtime) dragRuntimeRef.current = null;
       if (pointerDragCleanup.current === removeListeners) pointerDragCleanup.current = null;
     };
-    const getDropTarget = (pointerEvent) => {
-      const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+    const getDropTarget = (pointerEvent, hit) => {
+      const target = hit || document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY);
       const lane = target?.closest('[data-kanban-column]');
       const before = target?.closest('[data-kanban-task]');
       let beforeTaskId = before?.getAttribute('data-kanban-task');
@@ -390,22 +392,24 @@ export default function KanbanBoard({
     };
     const animateDrag = () => {
       if (dragRuntimeRef.current !== runtime || !runtime.dragging) return;
+      // Move the preview first so it never lags behind the pointer; the
+      // hit-testing below is the expensive part of each frame.
+      if (dragPreviewRef.current) {
+        if (!runtime.previewSize) {
+          const bounds = dragPreviewRef.current.getBoundingClientRect();
+          runtime.previewSize = { width: bounds.width, height: bounds.height };
+        }
+        const { width, height } = runtime.previewSize;
+        const previewX = runtime.x + width + 24 > window.innerWidth ? runtime.x - width - 14 : runtime.x + 14;
+        const previewY = runtime.y + height + 24 > window.innerHeight ? runtime.y - height - 14 : runtime.y + 14;
+        dragPreviewRef.current.style.transform = `translate3d(${previewX}px, ${previewY}px, 0)`;
+      }
       const target = document.elementFromPoint(runtime.x, runtime.y);
-      const targetPosition = getDropTarget({ clientX: runtime.x, clientY: runtime.y });
+      const targetPosition = getDropTarget({ clientX: runtime.x, clientY: runtime.y }, target);
       const { columnId } = targetPosition;
       setDropColumn(columnId || null);
       setDropPosition(columnId ? targetPosition : null);
       autoScrollAtPointer(target, runtime.y);
-      if (dragPreviewRef.current) {
-        const previewBounds = dragPreviewRef.current.getBoundingClientRect();
-        const previewX = runtime.x + previewBounds.width + 24 > window.innerWidth
-          ? runtime.x - previewBounds.width - 14
-          : runtime.x + 14;
-        const previewY = runtime.y + previewBounds.height + 24 > window.innerHeight
-          ? runtime.y - previewBounds.height - 14
-          : runtime.y + 14;
-        dragPreviewRef.current.style.transform = `translate3d(${previewX}px, ${previewY}px, 0)`;
-      }
       runtime.frameId = window.requestAnimationFrame(animateDrag);
     };
     const onPointerMove = (moveEvent) => {
@@ -415,6 +419,9 @@ export default function KanbanBoard({
       if (!runtime.dragging && Math.hypot(runtime.x - startX, runtime.y - startY) < 4) return;
       if (!runtime.dragging) {
         runtime.dragging = true;
+        // Stop the browser from turning the drag into a text selection.
+        document.body.classList.add('is-kanban-dragging');
+        window.getSelection?.()?.removeAllRanges();
         setDraggedTaskId(task.id);
         setDragPreview({ task, width: runtime.width });
         runtime.frameId = window.requestAnimationFrame(animateDrag);
@@ -526,7 +533,7 @@ export default function KanbanBoard({
                       onPointerDragStart={startPointerDrag}
                       consumeDraggedClick={consumeDraggedClick}
                       isDragging={draggedTaskId === task.id}
-                      completionTimeLeft={!isAdmin && task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
+                      completionTimeLeft={task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
                       timerSessions={timerSessionsByTask.get(task.id) || []}
                       currentUserId={currentUserId}
                       timerNow={clockNow}
