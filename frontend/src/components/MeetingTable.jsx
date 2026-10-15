@@ -4,6 +4,7 @@ import { PriorityBadge } from './StatusBadge';
 import MeetingFilesModal from './MeetingFilesModal';
 import { formatDate as fmt, formatTime12 } from '../lib/dateFormat';
 import StatusSelect from './StatusSelect';
+import Pagination, { usePagination } from './Pagination';
 
 function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   return (
@@ -101,6 +102,8 @@ export default function MeetingTable({
     return 0;
   });
 
+  const paging = usePagination(sorted, { resetKey: `${sort.key}:${sort.dir}` });
+
   async function handleDelete(id) {
     if (!window.confirm('Delete this meeting? This cannot be undone.')) return;
     setDelId(id);
@@ -130,7 +133,7 @@ export default function MeetingTable({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((meeting) => (
+          {paging.pageItems.map((meeting) => (
             <tr key={meeting.id}
               style={{ borderBottom: '1px solid var(--color-divider-soft)', transition: 'background 80ms ease' }}
               onMouseEnter={(e) => {
@@ -239,6 +242,7 @@ export default function MeetingTable({
           ))}
         </tbody>
       </table>
+      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onPage={paging.setPage} />
 
       <MeetingFilesModal
         open={!!filesFor}

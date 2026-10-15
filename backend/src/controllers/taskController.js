@@ -562,10 +562,14 @@ exports.updateStatus = async (req, res) => {
     if (!data) return res.status(404).json({ error: "Task not found or access denied" });
 
     if (statusUpdate.kanban_column === "done") {
-      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
-        .update({ ended_at: new Date().toISOString() })
-        .eq("task_id", id).eq("org_id", req.user.org_id).is("ended_at", null);
-      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+      const closeAt = reportedEnd || new Date().toISOString();
+      const { data: openSessions } = await supabase.from("task_timer_sessions")
+        .select("id, started_at").eq("task_id", id).eq("org_id", req.user.org_id).is("ended_at", null);
+      for (const session of openSessions || []) {
+        const endAt = Date.parse(closeAt) >= Date.parse(session.started_at) ? closeAt : new Date().toISOString();
+        const { error: timerCloseError } = await supabase.from("task_timer_sessions").update({ ended_at: endAt }).eq("id", session.id);
+        if (timerCloseError) console.error("[task timer] Could not close active session on Done:", timerCloseError.message);
+      }
     }
 
     const out = mapTaskRow(data);
@@ -611,6 +615,15 @@ exports.updateBoardPosition = async (req, res) => {
     const current = access.task;
     const previousStatus = String(current.status || "pending");
     const columnChanged = current.kanban_column !== kanban_column;
+    // Optional end-of-work time reported by the employee: may be earlier than now, never in the future.
+    let reportedEnd = null;
+    const rawEnd = (req.body || {}).work_ended_at;
+    if (rawEnd !== undefined && rawEnd !== null && rawEnd !== "") {
+      const parsed = Date.parse(String(rawEnd));
+      if (!Number.isFinite(parsed)) return res.status(400).json({ error: "The end time is not a valid date." });
+      if (parsed > Date.now() + 60_000) return res.status(400).json({ error: "The end time cannot be in the future." });
+      reportedEnd = new Date(parsed).toISOString();
+    }
     if (req.user.role !== "admin" && kanban_column === "done" && current.kanban_column !== "in_progress") {
       return res.status(409).json({ error: "Move this task to In Progress before submitting it for review." });
     }
@@ -635,6 +648,8 @@ exports.updateBoardPosition = async (req, res) => {
       updated_at: new Date().toISOString(),
     };
     if (nextStatus !== previousStatus) updates.status = nextStatus;
+    if (columnChanged && kanban_column === "done") updates.work_ended_at = reportedEnd || updates.updated_at;
+    else if (columnChanged && kanban_column !== "done") updates.work_ended_at = null;
     if (nextStatus === "completed" && previousStatus === "submitted") {
       updates.kanban_approved_at = updates.updated_at;
     } else if (nextStatus !== "completed") {

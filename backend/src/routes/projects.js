@@ -5,5 +5,9 @@ const ctrl = require("../controllers/projectController");
 router.get("/", auth, ctrl.listProjects);
 router.post("/", auth, ctrl.createProject);
 router.get("/:id/progress", auth, ctrl.getProgress);
+router.patch("/:id", auth, ctrl.updateProject);
+router.post("/:id/archive", auth, ctrl.archiveProject);
+router.post("/:id/unarchive", auth, ctrl.unarchiveProject);
+router.delete("/:id", auth, ctrl.deleteProject);
 
 module.exports = router;

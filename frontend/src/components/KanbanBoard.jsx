@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Clock3, GripVertical, Search } from 'lucide-react';
+import { CalendarDays, Clock3, FolderKanban, GripVertical, Search, UserRound } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
@@ -16,6 +16,12 @@ function approvedTaskTimeLeft(task, now) {
   const approvedAt = Date.parse(task.kanban_approved_at || task.updated_at || '');
   if (!Number.isFinite(approvedAt)) return null;
   return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
+}
+
+// Value for <input type="datetime-local"> in the user's local time.
+function localInputValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatCountdown(milliseconds) {
@@ -52,7 +58,7 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, timerNow, onStartTimer, onPauseTimer }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, timerNow, onStartTimer, onPauseTimer, showKind, isProjectTask }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
@@ -93,6 +99,16 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
     >
       <div className="kanban-card-topline">
         <span className="kanban-priority-label"><PriorityBadge priority={task.priority} /></span>
+        {showKind && (
+          <span
+            className={`kanban-kind ${isProjectTask ? 'is-project' : 'is-individual'}`}
+            title={isProjectTask ? `Project task${task.project_name ? ` · ${task.project_name}` : ''}` : 'Individual task'}
+            aria-label={isProjectTask ? 'Project task' : 'Individual task'}
+          >
+            {isProjectTask ? <FolderKanban size={12} aria-hidden="true" /> : <UserRound size={12} aria-hidden="true" />}
+            <span>{isProjectTask ? 'Project' : 'Individual'}</span>
+          </span>
+        )}
         {!locked && <GripVertical
           size={15}
           aria-hidden="true"
@@ -173,6 +189,20 @@ export default function KanbanBoard({
   const dropTargetRef = useRef(null);
   const suppressCardClickRef = useRef(false);
   const reviewDialogRef = useRef(null);
+  const [useCustomEnd, setUseCustomEnd] = useState(false);
+  const [customEnd, setCustomEnd] = useState('');
+  const [endError, setEndError] = useState('');
+  // Employees choose what the board shows: 'individual' = everything assigned to them
+  // (own tasks and project tasks, tagged); 'project' = only tasks that belong to a project.
+  const [scope, setScope] = useState(() => {
+    try { return window.localStorage.getItem('taskflow:kanban-scope') === 'project' ? 'project' : 'individual'; } catch { return 'individual'; }
+  });
+  const projectIds = useMemo(() => new Set((projects || []).map((project) => project.id)), [projects]);
+  const isLinkedProject = (task) => Boolean(task.project_id) && projectIds.has(task.project_id);
+  function changeScope(next) {
+    setScope(next);
+    try { window.localStorage.setItem('taskflow:kanban-scope', next); } catch { /* ignore */ }
+  }
 
   useEffect(() => () => pointerDragCleanup.current?.(), []);
 
@@ -198,6 +228,12 @@ export default function KanbanBoard({
   }, [tasks]);
 
   useEffect(() => {
+    setUseCustomEnd(false);
+    setCustomEnd('');
+    setEndError('');
+  }, [reviewTaskId]);
+
+  useEffect(() => {
     if (!reviewTaskId) return undefined;
     reviewDialogRef.current?.focus();
     const handleKeyDown = (event) => {
@@ -210,13 +246,14 @@ export default function KanbanBoard({
   const filteredTasks = useMemo(() => {
     const search = filters.search.trim().toLowerCase();
     return tasks.filter((task) => {
+      if (!isAdmin && scope === 'project' && !isLinkedProject(task)) return false;
       if (search && !`${task.title || ''} ${task.description || ''} ${task.project_name || ''}`.toLowerCase().includes(search)) return false;
       if (filters.project && task.project_id !== filters.project) return false;
       if (filters.priority && task.priority !== filters.priority) return false;
       if (filters.assignee && !assigneeIds(task).includes(filters.assignee)) return false;
       return true;
     });
-  }, [tasks, filters]);
+  }, [tasks, filters, isAdmin, scope, projectIds]);
 
   const visibleByColumn = useMemo(() => {
     const grouped = Object.fromEntries(KANBAN_COLUMNS.map((column) => [column.id, []]));
@@ -275,12 +312,12 @@ export default function KanbanBoard({
     return (lower + upper) / 2;
   }
 
-  async function persistMove(taskId, columnId, beforeTaskId = null) {
+  async function persistMove(taskId, columnId, beforeTaskId = null, extras = {}) {
     if (!taskId || !columnId) return;
     const order = nextOrder(columnId, beforeTaskId, taskId);
     setError('');
     try {
-      await onMoveTask(taskId, columnId, order);
+      await onMoveTask(taskId, columnId, order, extras);
     } catch (moveError) {
       const apiMessage = moveError?.response?.data?.error || moveError?.message;
       let displayError = apiMessage || 'Could not move this task. Your board was restored.';
@@ -331,9 +368,17 @@ export default function KanbanBoard({
       setError('This task changed before it could be submitted. Refresh the board and try again.');
       return;
     }
+    let workEndedAt = null;
+    if (useCustomEnd) {
+      const picked = Date.parse(customEnd);
+      if (!Number.isFinite(picked)) { setEndError('Choose a valid end date and time.'); return; }
+      if (picked > Date.now()) { setEndError('The end time cannot be in the future.'); return; }
+      workEndedAt = new Date(picked).toISOString();
+    }
+    setEndError('');
     setSubmittingReview(true);
     try {
-      await persistMove(task.id, 'done');
+      await persistMove(task.id, 'done', null, workEndedAt ? { work_ended_at: workEndedAt } : {});
     } finally {
       setSubmittingReview(false);
       setReviewTaskId(null);
@@ -473,6 +518,16 @@ export default function KanbanBoard({
   return (
     <section className="kanban-shell" aria-label="Task Kanban board">
       <div className="kanban-toolbar">
+        {!isAdmin && (
+          <div className="kanban-scope" role="group" aria-label="Board scope">
+            <button type="button" className={scope === 'individual' ? 'is-active' : ''} aria-pressed={scope === 'individual'} onClick={() => changeScope('individual')} title="All your tasks: individual and project">
+              <UserRound size={14} aria-hidden="true" /> Individual
+            </button>
+            <button type="button" className={scope === 'project' ? 'is-active' : ''} aria-pressed={scope === 'project'} onClick={() => changeScope('project')} title="Only tasks that belong to a project">
+              <FolderKanban size={14} aria-hidden="true" /> Project
+            </button>
+          </div>
+        )}
         <label className="kanban-search">
           <Search size={16} aria-hidden="true" />
           <input value={filters.search} onChange={(event) => setFilter('search', event.target.value)} placeholder="Search tasks" aria-label="Search tasks" />
@@ -539,6 +594,8 @@ export default function KanbanBoard({
                       timerNow={clockNow}
                       onStartTimer={onStartTimer}
                       onPauseTimer={onPauseTimer}
+                      showKind={!isAdmin && scope === 'individual'}
+                      isProjectTask={isLinkedProject(task)}
                     />
                   </div>
                 )) : (
@@ -580,6 +637,36 @@ export default function KanbanBoard({
             <p id="kanban-review-description" style={{ margin: '0 0 18px', color: 'var(--tf-muted)', fontSize: 14, lineHeight: 1.6 }}>
               <strong style={{ color: 'var(--tf-text)' }}>{tasks.find((task) => task.id === reviewTaskId)?.title || 'This task'}</strong> will move to Done as <strong style={{ color: 'var(--status-warning)' }}>Under review</strong>. An administrator must approve it before it is marked complete. If it is rejected, it will return to In Progress.
             </p>
+            <div className="kanban-end-time">
+              <label className="kanban-end-toggle">
+                <input
+                  type="checkbox"
+                  checked={useCustomEnd}
+                  disabled={submittingReview}
+                  onChange={(event) => {
+                    setUseCustomEnd(event.target.checked);
+                    setEndError('');
+                    if (event.target.checked && !customEnd) setCustomEnd(localInputValue(new Date()));
+                  }}
+                />
+                <span>Set a different end time</span>
+              </label>
+              {useCustomEnd ? (
+                <>
+                  <input
+                    type="datetime-local"
+                    className="kanban-end-input"
+                    value={customEnd}
+                    max={localInputValue(new Date())}
+                    disabled={submittingReview}
+                    onChange={(event) => { setCustomEnd(event.target.value); setEndError(''); }}
+                    aria-label="Task end date and time"
+                  />
+                  <small>Cannot be in the future. Running timers stop at this time.</small>
+                </>
+              ) : <small>The end time will be recorded as the moment you send it for review.</small>}
+              {endError && <div className="kanban-end-error" role="alert">{endError}</div>}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewTaskId(null)} disabled={submittingReview}>Keep in In Progress</button>
               <button type="button" className="btn btn-primary btn-sm" onClick={confirmReviewSubmission} disabled={submittingReview}>

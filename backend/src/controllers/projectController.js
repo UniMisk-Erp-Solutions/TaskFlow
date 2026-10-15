@@ -8,12 +8,37 @@ const {
 
 exports.listProjects = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("projects")
       .select("*")
       .eq("org_id", req.user.org_id)
       .order("name", { ascending: true });
 
+    if (req.user.role !== "admin") {
+      query = query.is("archived_at", null);
+      // Employees only see projects they are assigned to through tasks or meetings.
+      const uid = req.user.id;
+      const orgId = req.user.org_id;
+      const [taskLinks, meetingLinks, legacyTasks, legacyMeetings] = await Promise.all([
+        supabase.from("task_assignees").select("task_id").eq("profile_id", uid),
+        supabase.from("meeting_assignees").select("meeting_id").eq("profile_id", uid),
+        supabase.from("tasks").select("project_id").eq("org_id", orgId).eq("assignee_id", uid).not("project_id", "is", null),
+        supabase.from("meetings").select("project_id").eq("org_id", orgId).eq("assignee_id", uid).not("project_id", "is", null),
+      ]);
+      const taskIds = (taskLinks.data || []).map((r) => r.task_id);
+      const meetingIds = (meetingLinks.data || []).map((r) => r.meeting_id);
+      const [linkedTasks, linkedMeetings] = await Promise.all([
+        taskIds.length ? supabase.from("tasks").select("project_id").eq("org_id", orgId).in("id", taskIds).not("project_id", "is", null) : { data: [] },
+        meetingIds.length ? supabase.from("meetings").select("project_id").eq("org_id", orgId).in("id", meetingIds).not("project_id", "is", null) : { data: [] },
+      ]);
+      const projectIds = [...new Set([
+        ...(legacyTasks.data || []), ...(legacyMeetings.data || []), ...(linkedTasks.data || []), ...(linkedMeetings.data || []),
+      ].map((r) => r.project_id).filter(Boolean))];
+      if (!projectIds.length) return res.json([]);
+      query = query.in("id", projectIds);
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(400).json({ error: error.message });
     res.json(data || []);
   } catch (err) {
@@ -97,3 +122,50 @@ exports.getProgress = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+exports.updateProject = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+    const { id } = req.params;
+    const patch = {};
+    if (req.body && req.body.name !== undefined) {
+      const name = String(req.body.name || "").trim();
+      if (!name) return res.status(400).json({ error: "Project name is required" });
+      patch.name = name;
+    }
+    if (req.body && req.body.description !== undefined) patch.description = String(req.body.description || "").trim() || null;
+    if (!Object.keys(patch).length) return res.status(400).json({ error: "Nothing to update" });
+    const { data, error } = await supabase.from("projects").update(patch)
+      .eq("id", id).eq("org_id", req.user.org_id).select().maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Project not found" });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.deleteProject = async (_req, res) => {
+  res.status(405).json({ error: "Projects cannot be deleted. Archive the project instead." });
+};
+
+async function setArchived(req, res, archived) {
+  try {
+    if (req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+    const { data, error } = await supabase
+      .from("projects")
+      .update({ archived_at: archived ? new Date().toISOString() : null, archived_by: archived ? req.user.id : null })
+      .eq("id", req.params.id)
+      .eq("org_id", req.user.org_id)
+      .select("*")
+      .maybeSingle();
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: "Project not found" });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+exports.archiveProject = (req, res) => setArchived(req, res, true);
+exports.unarchiveProject = (req, res) => setArchived(req, res, false);

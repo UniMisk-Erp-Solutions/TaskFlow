@@ -7,9 +7,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase env vars. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
 }
 
-const supabase = createClient(
-  supabaseUrl,
-  supabaseAnonKey
-);
+// Keep the session in localStorage and silently renew the short-lived access token with
+// the refresh token, so users stay signed in across browser restarts (up to the
+// server-side session limit, 7 days).
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+});
 
 export default supabase;

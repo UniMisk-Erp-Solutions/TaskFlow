@@ -3,6 +3,7 @@ import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucid
 import { PriorityBadge } from './StatusBadge';
 import { formatDate, formatTime12 } from '../lib/dateFormat';
 import StatusSelect from './StatusSelect';
+import Pagination, { usePagination } from './Pagination';
 
 function RowIconBtn({ children, title, accent, accentBg, onClick, disabled }) {
   return (
@@ -158,8 +159,9 @@ export default function OverviewUnified({
       if (av > bv) return sort.dir === 'asc' ? 1 : -1;
       return 0;
     });
-    return copy.slice(0, limit);
-  }, [rows, sort, limit]);
+    return copy;
+  }, [rows, sort]);
+  const paging = usePagination(sorted, { resetKey: `${sort.key}:${sort.dir}` });
 
   function handleSort(key) {
     setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
@@ -221,7 +223,7 @@ export default function OverviewUnified({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
+          {paging.pageItems.map((row) => (
             <tr
               key={`${row.kind}-${row.id}`}
               style={{ borderBottom: '1px solid var(--color-divider-soft)' }}
@@ -382,6 +384,7 @@ export default function OverviewUnified({
           ))}
         </tbody>
       </table>
+      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onPage={paging.setPage} />
     </div>
   );
 }

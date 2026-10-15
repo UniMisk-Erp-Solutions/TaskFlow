@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, FolderKanban, Plus } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, FolderKanban, Pencil, Plus } from 'lucide-react';
 import OverviewUnified from './OverviewUnified';
 
 function ProgressBar({ pct }) {
@@ -25,6 +25,11 @@ export default function ProjectsPanel({
   getProgress,
   onRefresh,
   canCreate = true,
+  canManage = false,
+  updateProject,
+  archiveProject,
+  restoreProject,
+  archivedProjects = [],
   tasks = [],
   meetings = [],
   profileById = {},
@@ -44,6 +49,65 @@ export default function ProjectsPanel({
   const [err, setErr] = useState('');
   const [progressById, setProgressById] = useState({});
   const [expandedId, setExpandedId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [archiving, setArchiving] = useState(null);
+  const [archiveError, setArchiveError] = useState('');
+  const [busyArchive, setBusyArchive] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
+
+  function openEdit(project) {
+    setEditing(project);
+    setEditName(project.name || '');
+    setEditDescription(project.description || '');
+    setEditError('');
+  }
+
+  async function submitEdit(e) {
+    e.preventDefault();
+    if (!editName.trim()) { setEditError('Name is required'); return; }
+    setSavingEdit(true);
+    try {
+      await updateProject(editing.id, { name: editName.trim(), description: editDescription.trim() });
+      setEditing(null);
+      onRefresh?.();
+    } catch (er) {
+      setEditError(er.response?.data?.error || er.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function confirmArchive() {
+    setBusyArchive(true);
+    setArchiveError('');
+    try {
+      await archiveProject(archiving.id);
+      if (expandedId === archiving.id) setExpandedId(null);
+      setArchiving(null);
+      onRefresh?.();
+    } catch (er) {
+      setArchiveError(er.response?.data?.error || er.message);
+    } finally {
+      setBusyArchive(false);
+    }
+  }
+
+  async function restore(project) {
+    setRestoringId(project.id);
+    try {
+      await restoreProject(project.id);
+      onRefresh?.();
+    } catch (er) {
+      setArchiveError(er.response?.data?.error || er.message);
+    } finally {
+      setRestoringId(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +214,47 @@ export default function ProjectsPanel({
         </div>
       )}
 
+      {editing && (
+        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !savingEdit) setEditing(null); }}>
+          <div className="modal" style={{ maxWidth: 400 }} role="dialog" aria-modal="true" aria-label="Edit project">
+            <h2 style={{ fontSize: 16, marginBottom: 14 }}>Edit project</h2>
+            <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="form-group">
+                <label className="form-label">Name</label>
+                <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description (optional)</label>
+                <textarea className="input" rows={3} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+              </div>
+              {editError && <div className="form-error">{editError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} disabled={savingEdit}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={savingEdit}>{savingEdit ? <span className="spinner" /> : 'Save changes'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {archiving && (
+        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busyArchive) setArchiving(null); }}>
+          <div className="modal" style={{ maxWidth: 420 }} role="alertdialog" aria-modal="true" aria-label="Archive project">
+            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Archive project?</h2>
+            <p style={{ margin: '0 0 16px', color: 'var(--tf-muted)', fontSize: 14, lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--tf-text)' }}>{archiving.name}</strong> will be hidden from the active list. Nothing is deleted: its tasks, meetings and history stay as they are, and you can restore it any time.
+            </p>
+            {archiveError && <div className="form-error" style={{ marginBottom: 10 }}>{archiveError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchiving(null)} disabled={busyArchive}>Cancel</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={confirmArchive} disabled={busyArchive}>
+                {busyArchive ? <span className="spinner" /> : 'Archive project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!projects.length ? (
         <div className="empty" style={{ padding: 32 }}>
           <FolderKanban size={28} color="var(--tf-muted)" style={{ marginBottom: 8 }} />
@@ -180,6 +285,17 @@ export default function ProjectsPanel({
                   overflow: 'hidden',
                 }}
               >
+                <div style={{ position: 'relative' }}>
+                {canManage && (
+                  <div className="project-actions" style={{ position: 'absolute', top: 14, right: 16, display: 'flex', gap: 6, zIndex: 1 }}>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(p)} aria-label={`Edit project ${p.name}`} title="Edit project">
+                      <Pencil size={14} />
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => { setArchiving(p); setArchiveError(''); }} aria-label={`Archive project ${p.name}`} title="Archive project">
+                      <Archive size={14} />
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => toggleExpanded(p.id)}
@@ -189,7 +305,7 @@ export default function ProjectsPanel({
                     border: 'none',
                     background: 'transparent',
                     cursor: 'pointer',
-                    padding: '17px 20px',
+                    padding: canManage ? '17px 96px 17px 20px' : '17px 20px',
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 12,
@@ -216,6 +332,7 @@ export default function ProjectsPanel({
                     {pr && <ProgressBar pct={pct} />}
                   </div>
                 </button>
+                </div>
 
                 {expanded && (
                   <div style={{ padding: '0 14px 16px', borderTop: '1px solid var(--tf-border)', background: 'var(--tf-pearl)' }}>
@@ -269,6 +386,42 @@ export default function ProjectsPanel({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {canManage && archivedProjects.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-expanded={showArchived}
+          >
+            <Archive size={14} /> Archived projects ({archivedProjects.length})
+            {showArchived ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          {archiveError && !archiving && <div className="form-error" style={{ marginTop: 8 }}>{archiveError}</div>}
+          {showArchived && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {archivedProjects.map((p) => (
+                <div
+                  key={p.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: '1px dashed var(--tf-border)', borderRadius: 14, background: 'var(--tf-panel)' }}
+                >
+                  <Archive size={16} color="var(--tf-muted)" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tf-text)' }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+                      Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ''} · history kept
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={restoringId === p.id} onClick={() => restore(p)}>
+                    {restoringId === p.id ? <span className="spinner" /> : <><ArchiveRestore size={14} /> Restore</>}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
