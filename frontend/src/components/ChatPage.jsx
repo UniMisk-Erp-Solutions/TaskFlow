@@ -12,6 +12,28 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const SWIPE_TRIGGER = 56;
 const MSG_COLS = 'id, conversation_id, sender_id, body, created_at, edited_at, kind, reply_to_id, attachment_path, attachment_name, attachment_type, attachment_size';
 
+const GENERIC_NAMES = /^(image|blob|untitled|unnamed)(\.\w+)?$/i;
+
+/** Files in a paste event (screenshots, copied images, copied files). Plain text wins when present. */
+function filesFromPaste(clipboardData) {
+  if (!clipboardData) return [];
+  if ((clipboardData.getData('text/plain') || '').trim()) return [];
+  const out = [];
+  for (const item of Array.from(clipboardData.items || [])) {
+    if (item.kind !== 'file') continue;
+    const f = item.getAsFile();
+    if (!f) continue;
+    if (!f.name || GENERIC_NAMES.test(f.name)) {
+      const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace(/\+.*/, '');
+      const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+      out.push(new File([f], `${f.type.startsWith('image/') ? 'Screenshot' : 'File'} ${stamp}.${ext}`, { type: f.type }));
+    } else {
+      out.push(f);
+    }
+  }
+  return out;
+}
+
 function initials(name) {
   return (name || '?').trim()[0]?.toUpperCase() || '?';
 }
@@ -558,6 +580,24 @@ export default function ChatPage() {
     inputRef.current?.focus();
   }
 
+  // Paste (Ctrl/Cmd+V) screenshots, copied images and files anywhere in the chat -> preview tray.
+  const pasteRef = useRef(null);
+  pasteRef.current = (event) => {
+    if (!activeId || recording || showCreate || showInfo) return;
+    const t = event.target;
+    const isField = t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (isField && t !== inputRef.current) return;
+    const files = filesFromPaste(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    stageFiles(files);
+  };
+  useEffect(() => {
+    const onPaste = (e) => pasteRef.current?.(e);
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
   function removePending(id) {
     setPending((list) => {
       const hit = list.find((p) => p.id === id);
@@ -903,7 +943,7 @@ export default function ChatPage() {
         {pending.length > 0 && (
           <div style={{ padding: 12, borderTop: '1px solid var(--tf-border)', background: 'var(--tf-pearl)' }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', marginBottom: 8 }}>
-              Ready to send {pending.length} {pending.length === 1 ? 'attachment' : 'attachments'} — add a caption below, then press Send
+              Ready to send {pending.length} {pending.length === 1 ? 'attachment' : 'attachments'} — add a caption below, then press Send (tip: you can also paste with Ctrl+V)
             </div>
             <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
               {pending.map((p) => {

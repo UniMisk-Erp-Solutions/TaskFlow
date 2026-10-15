@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ChevronDown, ChevronRight, FolderKanban, Pencil, Plus } from 'lucide-react';
 import OverviewUnified from './OverviewUnified';
 
 function ProgressBar({ pct }) {
@@ -27,7 +27,9 @@ export default function ProjectsPanel({
   canCreate = true,
   canManage = false,
   updateProject,
-  deleteProject,
+  archiveProject,
+  restoreProject,
+  archivedProjects = [],
   tasks = [],
   meetings = [],
   profileById = {},
@@ -52,9 +54,11 @@ export default function ProjectsPanel({
   const [editDescription, setEditDescription] = useState('');
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
-  const [deleting, setDeleting] = useState(null);
-  const [deleteError, setDeleteError] = useState('');
-  const [busyDelete, setBusyDelete] = useState(false);
+  const [archiving, setArchiving] = useState(null);
+  const [archiveError, setArchiveError] = useState('');
+  const [busyArchive, setBusyArchive] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [restoringId, setRestoringId] = useState(null);
 
   function openEdit(project) {
     setEditing(project);
@@ -78,18 +82,30 @@ export default function ProjectsPanel({
     }
   }
 
-  async function confirmDelete() {
-    setBusyDelete(true);
-    setDeleteError('');
+  async function confirmArchive() {
+    setBusyArchive(true);
+    setArchiveError('');
     try {
-      await deleteProject(deleting.id);
-      if (expandedId === deleting.id) setExpandedId(null);
-      setDeleting(null);
+      await archiveProject(archiving.id);
+      if (expandedId === archiving.id) setExpandedId(null);
+      setArchiving(null);
       onRefresh?.();
     } catch (er) {
-      setDeleteError(er.response?.data?.error || er.message);
+      setArchiveError(er.response?.data?.error || er.message);
     } finally {
-      setBusyDelete(false);
+      setBusyArchive(false);
+    }
+  }
+
+  async function restore(project) {
+    setRestoringId(project.id);
+    try {
+      await restoreProject(project.id);
+      onRefresh?.();
+    } catch (er) {
+      setArchiveError(er.response?.data?.error || er.message);
+    } finally {
+      setRestoringId(null);
     }
   }
 
@@ -221,18 +237,18 @@ export default function ProjectsPanel({
         </div>
       )}
 
-      {deleting && (
-        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busyDelete) setDeleting(null); }}>
-          <div className="modal" style={{ maxWidth: 420 }} role="alertdialog" aria-modal="true" aria-label="Delete project">
-            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Delete project?</h2>
+      {archiving && (
+        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busyArchive) setArchiving(null); }}>
+          <div className="modal" style={{ maxWidth: 420 }} role="alertdialog" aria-modal="true" aria-label="Archive project">
+            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Archive project?</h2>
             <p style={{ margin: '0 0 16px', color: 'var(--tf-muted)', fontSize: 14, lineHeight: 1.6 }}>
-              <strong style={{ color: 'var(--tf-text)' }}>{deleting.name}</strong> will be removed. Its tasks and meetings are kept and become individual items (no project). This cannot be undone.
+              <strong style={{ color: 'var(--tf-text)' }}>{archiving.name}</strong> will be hidden from the active list. Nothing is deleted: its tasks, meetings and history stay as they are, and you can restore it any time.
             </p>
-            {deleteError && <div className="form-error" style={{ marginBottom: 10 }}>{deleteError}</div>}
+            {archiveError && <div className="form-error" style={{ marginBottom: 10 }}>{archiveError}</div>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeleting(null)} disabled={busyDelete}>Cancel</button>
-              <button type="button" className="btn btn-sm" onClick={confirmDelete} disabled={busyDelete} style={{ background: 'var(--status-danger)', color: '#fff' }}>
-                {busyDelete ? <span className="spinner" /> : 'Delete project'}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setArchiving(null)} disabled={busyArchive}>Cancel</button>
+              <button type="button" className="btn btn-primary btn-sm" onClick={confirmArchive} disabled={busyArchive}>
+                {busyArchive ? <span className="spinner" /> : 'Archive project'}
               </button>
             </div>
           </div>
@@ -275,8 +291,8 @@ export default function ProjectsPanel({
                     <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(p)} aria-label={`Edit project ${p.name}`} title="Edit project">
                       <Pencil size={14} />
                     </button>
-                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => { setDeleting(p); setDeleteError(''); }} aria-label={`Delete project ${p.name}`} title="Delete project" style={{ color: 'var(--status-danger)' }}>
-                      <Trash2 size={14} />
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => { setArchiving(p); setArchiveError(''); }} aria-label={`Archive project ${p.name}`} title="Archive project">
+                      <Archive size={14} />
                     </button>
                   </div>
                 )}
@@ -370,6 +386,42 @@ export default function ProjectsPanel({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {canManage && archivedProjects.length > 0 && (
+        <div style={{ marginTop: 22 }}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowArchived((v) => !v)}
+            aria-expanded={showArchived}
+          >
+            <Archive size={14} /> Archived projects ({archivedProjects.length})
+            {showArchived ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          {archiveError && !archiving && <div className="form-error" style={{ marginTop: 8 }}>{archiveError}</div>}
+          {showArchived && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+              {archivedProjects.map((p) => (
+                <div
+                  key={p.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', border: '1px dashed var(--tf-border)', borderRadius: 14, background: 'var(--tf-panel)' }}
+                >
+                  <Archive size={16} color="var(--tf-muted)" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tf-text)' }}>{p.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+                      Archived {p.archived_at ? new Date(p.archived_at).toLocaleDateString() : ''} · history kept
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm" disabled={restoringId === p.id} onClick={() => restore(p)}>
+                    {restoringId === p.id ? <span className="spinner" /> : <><ArchiveRestore size={14} /> Restore</>}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

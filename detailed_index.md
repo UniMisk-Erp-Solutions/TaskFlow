@@ -222,3 +222,13 @@ Explains the new Files feature end to end: the dedicated private taskflow-files 
 **Document:** [docs/pagination-35-records.md](docs/pagination-35-records.md)
 
 Describes the reusable usePagination hook and Pagination control (35 records per page), which lists use it (tasks, meetings, overview/project table, Files, Timer person rows), why the Kanban board is excluded, and how page state resets on sort/filter/search changes and clamps after deletes. It also records that the old 40-row cap in the unified overview table was replaced by real paging.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents the admin-only file Properties dialog (created/modified/accessed, owner, size, path), the Export details CSV, and the access-tracking columns that back the Accessed timestamp.
+
+---
+
+**Document:** [docs/file-activity-log.md](docs/file-activity-log.md)
+
+Explains the Files audit trail: the events recorded and their details, the drive_activity table and its public_at_event flag, and the visibility rules (owner sees all of their own history; administrators see only events that were public at the time for items that are public now or were public when deleted; nobody else sees other people's activity). It also covers the Activity log tab, per-item History action, and how the feature relates to the admin Properties/Export tools and the private/public model.

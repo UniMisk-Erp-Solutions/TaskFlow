@@ -27,3 +27,4 @@
 - [Server Migrations Applied on 2026-10-15](docs/server-migrations-applied-2026-10-15.md) — Records the production database changes applied through SSH and what remains to deploy.
 - [File Explorer (Files) with Multi-Tenant Storage and Private/Public Visibility](docs/file-explorer-multi-tenant-storage.md) — Documents the Files page for admin and employee portals: folders, uploads, private/public visibility, the dedicated storage bucket, API endpoints and rollout.
 - [Pagination (35 Records per Page)](docs/pagination-35-records.md) — Documents the shared pagination hook/control that splits task, meeting, overview, file and timer lists into pages of 35 records.
+- [File Activity Log (Audit Trail)](docs/file-activity-log.md) — Documents the detailed file/folder audit log (uploads, renames, access changes, opens, deletes) and the rules that keep private activity hidden from administrators.

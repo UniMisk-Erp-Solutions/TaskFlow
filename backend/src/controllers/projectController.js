@@ -15,6 +15,7 @@ exports.listProjects = async (req, res) => {
       .order("name", { ascending: true });
 
     if (req.user.role !== "admin") {
+      query = query.is("archived_at", null);
       // Employees only see projects they are assigned to through tasks or meetings.
       const uid = req.user.id;
       const orgId = req.user.org_id;
@@ -144,21 +145,27 @@ exports.updateProject = async (req, res) => {
   }
 };
 
-exports.deleteProject = async (req, res) => {
+exports.deleteProject = async (_req, res) => {
+  res.status(405).json({ error: "Projects cannot be deleted. Archive the project instead." });
+};
+
+async function setArchived(req, res, archived) {
   try {
     if (req.user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
-    const { id } = req.params;
-    const { data: existing } = await supabase.from("projects").select("id").eq("id", id).eq("org_id", req.user.org_id).maybeSingle();
-    if (!existing) return res.status(404).json({ error: "Project not found" });
-    // Tasks and meetings stay; they only lose the project link.
-    const unlinkTasks = await supabase.from("tasks").update({ project_id: null }).eq("project_id", id).eq("org_id", req.user.org_id);
-    if (unlinkTasks.error) return res.status(400).json({ error: unlinkTasks.error.message });
-    const unlinkMeetings = await supabase.from("meetings").update({ project_id: null }).eq("project_id", id).eq("org_id", req.user.org_id);
-    if (unlinkMeetings.error) return res.status(400).json({ error: unlinkMeetings.error.message });
-    const { error } = await supabase.from("projects").delete().eq("id", id).eq("org_id", req.user.org_id);
+    const { data, error } = await supabase
+      .from("projects")
+      .update({ archived_at: archived ? new Date().toISOString() : null, archived_by: archived ? req.user.id : null })
+      .eq("id", req.params.id)
+      .eq("org_id", req.user.org_id)
+      .select("*")
+      .maybeSingle();
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ ok: true });
+    if (!data) return res.status(404).json({ error: "Project not found" });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-};
+}
+
+exports.archiveProject = (req, res) => setArchived(req, res, true);
+exports.unarchiveProject = (req, res) => setArchived(req, res, false);

@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 
 export function useProjects() {
   const { profile, loading: authLoading } = useAuth();
-  const [projects, setProjects] = useState([]);
+  const [allProjects, setAllProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -15,18 +15,18 @@ export function useProjects() {
     }
     if (!profile?.id) {
       setLoading(false);
-      setProjects([]);
+      setAllProjects([]);
       setError(null);
       return;
     }
     try {
       if (!silent) setLoading(true);
       const { data } = await api.get('/projects');
-      setProjects(Array.isArray(data) ? data : []);
+      setAllProjects(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
-      if (!silent) setProjects([]);
+      if (!silent) setAllProjects([]);
     } finally {
       setLoading(false);
     }
@@ -38,19 +38,25 @@ export function useProjects() {
 
   async function createProject({ name, description }) {
     const { data } = await api.post('/projects', { name, description });
-    setProjects((prev) => [data, ...prev]);
+    setAllProjects((prev) => [data, ...prev]);
     return data;
   }
 
   async function updateProject(projectId, { name, description }) {
     const { data } = await api.patch(`/projects/${projectId}`, { name, description });
-    setProjects((prev) => prev.map((project) => (project.id === projectId ? { ...project, ...data } : project)));
+    setAllProjects((prev) => prev.map((project) => (project.id === projectId ? { ...project, ...data } : project)));
     return data;
   }
 
-  async function deleteProject(projectId) {
-    await api.delete(`/projects/${projectId}`);
-    setProjects((prev) => prev.filter((project) => project.id !== projectId));
+  // Projects are never deleted: archiving keeps the project and all its history.
+  async function archiveProject(projectId) {
+    const { data } = await api.post(`/projects/${projectId}/archive`);
+    setAllProjects((prev) => prev.map((project) => (project.id === projectId ? { ...project, ...data } : project)));
+  }
+
+  async function restoreProject(projectId) {
+    const { data } = await api.post(`/projects/${projectId}/unarchive`);
+    setAllProjects((prev) => prev.map((project) => (project.id === projectId ? { ...project, ...data, archived_at: null } : project)));
   }
 
   async function getProgress(projectId) {
@@ -58,5 +64,9 @@ export function useProjects() {
     return data;
   }
 
-  return { projects, loading, error, refetch: fetch, createProject, updateProject, deleteProject, getProgress };
+  // `projects` only holds active projects so selects and boards never offer archived ones.
+  const projects = allProjects.filter((p) => !p.archived_at);
+  const archivedProjects = allProjects.filter((p) => p.archived_at);
+
+  return { projects, archivedProjects, loading, error, refetch: fetch, createProject, updateProject, archiveProject, restoreProject, getProgress };
 }

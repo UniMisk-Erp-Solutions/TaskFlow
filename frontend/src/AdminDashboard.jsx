@@ -82,7 +82,7 @@ export default function AdminDashboard() {
     getMeetingHistory,
   } = useMeetings();
 
-  const { projects, refetch: refetchProjects, createProject, updateProject, deleteProject, getProgress, loading: projectsLoading } = useProjects();
+  const { projects, archivedProjects, refetch: refetchProjects, createProject, updateProject, archiveProject, restoreProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
   const refreshTimers = taskTimers.refetch;
 
@@ -653,7 +653,9 @@ export default function AdminDashboard() {
               createProject={createProject}
               canManage
               updateProject={updateProject}
-              deleteProject={deleteProject}
+              archiveProject={archiveProject}
+              restoreProject={restoreProject}
+              archivedProjects={archivedProjects}
               getProgress={getProgress}
               onRefresh={() => { void refetchProjects({ silent: true }); void refetch({ silent: true }); }}
               canCreate

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const PAGE_SIZE = 35;
+export const PAGE_SIZE = 5;
 
 /** Client-side paging. Resets to page 1 when `resetKey` changes and clamps when the list shrinks. */
 export function usePagination(items, { pageSize = PAGE_SIZE, resetKey = '' } = {}) {

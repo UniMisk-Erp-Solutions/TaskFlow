@@ -67,3 +67,11 @@ A shared file explorer for every user (admin and employee) with folder navigatio
 - The legacy multipart `POST /drive/files` still exists for small files but no longer enforces a size.
 - Deployed with backup `index.ts.bak-pre-nolimit-20261015`.
 
+## Update: admin-only file properties and export
+
+- Administrators get an **Info (Properties)** button on each item and an **Export details** button that downloads a CSV for the items currently listed. Employees never receive this data: the API only attaches the `details` object when the caller is an admin, and the UI hides the controls for everyone else.
+- Properties dialog (Windows-style): type, exact size (human and bytes), location, owner and e-mail, access (public/private), **Created**, **Modified**, **Accessed** (with seconds, plus who opened it), times opened, storage path and file id.
+- Access tracking: `drive_files.last_accessed_at`, `last_accessed_by`, `access_count` (migration `20261015250000_drive_access_tracking.sql`) are updated whenever a file's signed URL is issued (open or download).
+- Privacy is unchanged: private items of other people are not listed to admins, so their properties are not available either.
+- Deployed with backup `index.ts.bak-pre-filedetails-20261015`.
+
