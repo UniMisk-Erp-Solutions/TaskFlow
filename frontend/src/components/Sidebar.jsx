@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
@@ -11,6 +11,7 @@ const ADMIN_NAV = [
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
   { id: 'users', icon: Users, label: 'Users' },
+  { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
@@ -22,6 +23,7 @@ const EMPLOYEE_NAV = [
   { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
   { id: 'projects', icon: FolderKanban, label: 'Projects' },
+  { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
 ];
@@ -30,12 +32,38 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
   const isEmployee = role === 'employee';
   const navItems = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return window.localStorage.getItem('taskflow:sidebar-collapsed') === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((current) => {
+      const next = !current;
+      try { window.localStorage.setItem('taskflow:sidebar-collapsed', next ? '1' : '0'); } catch { /* storage unavailable */ }
+      return next;
+    });
+  }, []);
+
+  // Ctrl/Cmd + B toggles the sidebar, unless the user is typing in a field.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'b') return;
+      const tag = event.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || event.target?.isContentEditable) return;
+      event.preventDefault();
+      toggleCollapsed();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleCollapsed]);
 
   return (
     <aside
-      className="taskflow-sidebar"
+      className={`taskflow-sidebar${collapsed ? ' is-collapsed' : ''}`}
+      data-collapsed={collapsed}
       style={{
-        width: 220,
+        width: collapsed ? 68 : 220,
+        transition: 'width 200ms ease',
+        overflow: 'hidden',
         flexShrink: 0,
         background: 'var(--tf-panel)',
         borderRight: '1px solid var(--tf-border)',
@@ -55,7 +83,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
           gap: 8,
         }}
       >
-        <Zap size={16} color="var(--color-primary)" strokeWidth={2} />
+        <Zap className="taskflow-sidebar-logo" size={16} color="var(--color-primary)" strokeWidth={2} />
         <span className="taskflow-sidebar-brand" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
           TaskFlow
         </span>
@@ -71,6 +99,16 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
         >
           {isEmployee ? 'Employee' : 'Admin'}
         </span>
+        <button
+          type="button"
+          className="taskflow-sidebar-toggle"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          title={`${collapsed ? 'Expand' : 'Collapse'} sidebar (Ctrl+B)`}
+        >
+          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        </button>
       </div>
 
       <nav style={{ flex: 1, padding: '10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -81,6 +119,8 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
               key={id}
               type="button"
               onClick={() => onNav(id)}
+              title={collapsed ? label : undefined}
+              aria-label={label}
               style={{
                 display: 'flex',
                 alignItems: 'center',

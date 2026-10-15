@@ -6,6 +6,7 @@ import { useAuth } from './AuthContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime, useLiveRefresh } from './useRealtime';
+import AiFab from './components/AiFab';
 import Sidebar from './components/Sidebar';
 import TaskTable from './components/TaskTable';
 import TaskForm from './components/TaskForm';
@@ -26,6 +27,7 @@ import { useProjects } from './useProjects';
 import { useTaskTimers } from './useTaskTimers';
 import api from './api';
 import ProfilePage from './components/ProfilePage';
+import ChatPage from './components/ChatPage';
 
 const FILTERS_DEFAULT = { search: '', status: '', priority: '', type: '', assignee_id: '' };
 
@@ -77,13 +79,13 @@ export default function AdminDashboard() {
     getMeetingHistory,
   } = useMeetings();
 
-  const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
+  const { projects, refetch: refetchProjects, createProject, updateProject, deleteProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
   const refreshTimers = taskTimers.refetch;
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
-  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'notifications', 'email', 'profile'];
+  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'notifications', 'email', 'profile'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -133,7 +135,7 @@ export default function AdminDashboard() {
   useRealtime('tasks', useCallback(() => refetch({ silent: true }), [refetch]));
   useRealtime('meetings', useCallback(() => refetchMeetings(), [refetchMeetings]));
   useRealtime('task_assignees', useCallback(() => refetch({ silent: true }), [refetch]));
-  useLiveRefresh(useCallback(() => { void refetch({ silent: true }); void refreshTimers?.(); }, [refetch, refreshTimers]));
+  useLiveRefresh(useCallback(() => { void refetch({ silent: true }); void refetchProjects({ silent: true }); void refreshTimers?.(); }, [refetch, refetchProjects, refreshTimers]));
   useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
   useEffect(() => {
@@ -284,6 +286,8 @@ export default function AdminDashboard() {
                       ? 'Projects'
                       : page === 'users'
                         ? 'User Management'
+                        : page === 'chat'
+                          ? 'Chat'
                         : page === 'notifications'
                           ? 'Notifications'
                             : page === 'profile'
@@ -640,8 +644,11 @@ export default function AdminDashboard() {
               projects={projects}
               loading={projectsLoading}
               createProject={createProject}
+              canManage
+              updateProject={updateProject}
+              deleteProject={deleteProject}
               getProgress={getProgress}
-              onRefresh={refetchProjects}
+              onRefresh={() => { void refetchProjects({ silent: true }); void refetch({ silent: true }); }}
               canCreate
               tasks={tasks}
               meetings={meetings}
@@ -679,6 +686,7 @@ export default function AdminDashboard() {
           )}
 
           {page === 'profile' && <ProfilePage />}
+          {page === 'chat' && <ChatPage />}
 
           {/* ── REMINDERS ── */}
           {page === 'email' && (
@@ -722,16 +730,7 @@ export default function AdminDashboard() {
       </main>
 
       {/* Floating AI button */}
-      {!showAI && (
-        <button
-          type="button"
-          className="tf-fab"
-          onClick={() => setShowAI(true)}
-          title="AI Assistant"
-        >
-          <Sparkles size={20} color="#ffffff" strokeWidth={1.8} />
-        </button>
-      )}
+      {!showAI && <AiFab onOpen={() => setShowAI(true)} />}
 
       {showAI   && <AiChat  onClose={() => setShowAI(false)} />}
 

@@ -48,3 +48,7 @@ The migration and API source are checked into the feature branch; they are not a
 ## Verification
 
 The frontend production build completed with Vite. The Express task controller and route passed Node syntax checks. The Supabase migration was reviewed but not executed against a hosted database, and no live database or cross-account realtime test was run in this workspace.
+
+## Later updates
+
+The dotted graph and flat table described above were superseded by bar charts, period/person filters, per-person cards and session history. See `timer-analytics-filters-and-charts.md`, `timer-task-dates-and-session-history.md` and `kanban-review-end-time.md`.

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, FolderKanban, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderKanban, Pencil, Plus, Trash2 } from 'lucide-react';
 import OverviewUnified from './OverviewUnified';
 
 function ProgressBar({ pct }) {
@@ -25,6 +25,9 @@ export default function ProjectsPanel({
   getProgress,
   onRefresh,
   canCreate = true,
+  canManage = false,
+  updateProject,
+  deleteProject,
   tasks = [],
   meetings = [],
   profileById = {},
@@ -44,6 +47,51 @@ export default function ProjectsPanel({
   const [err, setErr] = useState('');
   const [progressById, setProgressById] = useState({});
   const [expandedId, setExpandedId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editError, setEditError] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [busyDelete, setBusyDelete] = useState(false);
+
+  function openEdit(project) {
+    setEditing(project);
+    setEditName(project.name || '');
+    setEditDescription(project.description || '');
+    setEditError('');
+  }
+
+  async function submitEdit(e) {
+    e.preventDefault();
+    if (!editName.trim()) { setEditError('Name is required'); return; }
+    setSavingEdit(true);
+    try {
+      await updateProject(editing.id, { name: editName.trim(), description: editDescription.trim() });
+      setEditing(null);
+      onRefresh?.();
+    } catch (er) {
+      setEditError(er.response?.data?.error || er.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function confirmDelete() {
+    setBusyDelete(true);
+    setDeleteError('');
+    try {
+      await deleteProject(deleting.id);
+      if (expandedId === deleting.id) setExpandedId(null);
+      setDeleting(null);
+      onRefresh?.();
+    } catch (er) {
+      setDeleteError(er.response?.data?.error || er.message);
+    } finally {
+      setBusyDelete(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +198,47 @@ export default function ProjectsPanel({
         </div>
       )}
 
+      {editing && (
+        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !savingEdit) setEditing(null); }}>
+          <div className="modal" style={{ maxWidth: 400 }} role="dialog" aria-modal="true" aria-label="Edit project">
+            <h2 style={{ fontSize: 16, marginBottom: 14 }}>Edit project</h2>
+            <form onSubmit={submitEdit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="form-group">
+                <label className="form-label">Name</label>
+                <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} autoFocus />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description (optional)</label>
+                <textarea className="input" rows={3} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+              </div>
+              {editError && <div className="form-error">{editError}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} disabled={savingEdit}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={savingEdit}>{savingEdit ? <span className="spinner" /> : 'Save changes'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleting && (
+        <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !busyDelete) setDeleting(null); }}>
+          <div className="modal" style={{ maxWidth: 420 }} role="alertdialog" aria-modal="true" aria-label="Delete project">
+            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Delete project?</h2>
+            <p style={{ margin: '0 0 16px', color: 'var(--tf-muted)', fontSize: 14, lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--tf-text)' }}>{deleting.name}</strong> will be removed. Its tasks and meetings are kept and become individual items (no project). This cannot be undone.
+            </p>
+            {deleteError && <div className="form-error" style={{ marginBottom: 10 }}>{deleteError}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDeleting(null)} disabled={busyDelete}>Cancel</button>
+              <button type="button" className="btn btn-sm" onClick={confirmDelete} disabled={busyDelete} style={{ background: 'var(--status-danger)', color: '#fff' }}>
+                {busyDelete ? <span className="spinner" /> : 'Delete project'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!projects.length ? (
         <div className="empty" style={{ padding: 32 }}>
           <FolderKanban size={28} color="var(--tf-muted)" style={{ marginBottom: 8 }} />
@@ -180,6 +269,17 @@ export default function ProjectsPanel({
                   overflow: 'hidden',
                 }}
               >
+                <div style={{ position: 'relative' }}>
+                {canManage && (
+                  <div className="project-actions" style={{ position: 'absolute', top: 14, right: 16, display: 'flex', gap: 6, zIndex: 1 }}>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => openEdit(p)} aria-label={`Edit project ${p.name}`} title="Edit project">
+                      <Pencil size={14} />
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => { setDeleting(p); setDeleteError(''); }} aria-label={`Delete project ${p.name}`} title="Delete project" style={{ color: 'var(--status-danger)' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => toggleExpanded(p.id)}
@@ -189,7 +289,7 @@ export default function ProjectsPanel({
                     border: 'none',
                     background: 'transparent',
                     cursor: 'pointer',
-                    padding: '17px 20px',
+                    padding: canManage ? '17px 96px 17px 20px' : '17px 20px',
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 12,
@@ -216,6 +316,7 @@ export default function ProjectsPanel({
                     {pr && <ProgressBar pct={pct} />}
                   </div>
                 </button>
+                </div>
 
                 {expanded && (
                   <div style={{ padding: '0 14px 16px', borderTop: '1px solid var(--tf-border)', background: 'var(--tf-pearl)' }}>

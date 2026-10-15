@@ -978,7 +978,7 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
 .timer-person-chevron { color: var(--tf-muted); transition: transform 160ms ease; }
 .timer-person-card.is-open .timer-person-chevron { transform: rotate(180deg); }
 .timer-task-list { list-style: none; margin: 0; padding: 4px 14px 10px 68px; border-top: 1px solid var(--tf-border); }
-.timer-task-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 70px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--tf-border); font-size: 13px; }
+.timer-task-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px 150px 150px 96px; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--tf-border); font-size: 13px; }
 .timer-task-row:last-child { border-bottom: 0; }
 .timer-task-title { overflow-wrap: anywhere; color: var(--tf-text); }
 .timer-status { justify-self: start; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--tf-page); color: var(--tf-muted); }
@@ -1040,3 +1040,74 @@ main { padding-bottom: 96px; }
 .timer-ghost-btn { padding: 6px 11px; border: 1px solid var(--tf-border); border-radius: 9px; background: var(--tf-panel); color: var(--tf-muted); font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
 .timer-ghost-btn:hover { color: var(--tf-text); border-color: color-mix(in srgb, var(--color-primary) 40%, var(--tf-border)); }
 .timer-panel-actions { display: flex; gap: 6px; }
+
+/* Collapsible sidebar */
+.taskflow-sidebar-toggle { margin-left: 4px; display: inline-grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: var(--tf-muted); cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.taskflow-sidebar-toggle:hover { background: var(--tf-pearl); color: var(--color-primary); }
+.taskflow-sidebar-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.taskflow-sidebar-label, .taskflow-sidebar-brand, .taskflow-sidebar-role { white-space: nowrap; }
+.taskflow-sidebar nav button:hover { color: var(--tf-text); }
+.taskflow-sidebar.is-collapsed > div:first-child { justify-content: center !important; padding: 17px 8px !important; }
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-logo,
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-brand,
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-role,
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-label,
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-user-copy { display: none !important; }
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-toggle { margin-left: 0; }
+.taskflow-sidebar.is-collapsed nav { padding: 10px 6px !important; }
+.taskflow-sidebar.is-collapsed nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
+.taskflow-sidebar.is-collapsed > div:last-child { padding: 8px 5px !important; }
+.taskflow-sidebar.is-collapsed > div:last-child > div { justify-content: center !important; padding: 8px 0 !important; flex-direction: column; gap: 6px; }
+.taskflow-sidebar.is-collapsed > div:last-child > button { justify-content: center !important; padding: 10px 6px !important; }
+@media (max-width: 760px) { .taskflow-sidebar-toggle { display: none; } }
+
+/* Review dialog: optional end time */
+.kanban-end-time { display: grid; gap: 8px; margin: 0 0 18px; padding: 12px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-page); }
+.kanban-end-toggle { display: flex; align-items: center; gap: 8px; color: var(--tf-text); font-size: 14px; cursor: pointer; }
+.kanban-end-input { padding: 8px 10px; border: 1px solid var(--tf-border); border-radius: 8px; background: var(--tf-panel); color: var(--tf-text); font: inherit; font-size: 14px; }
+.kanban-end-time small { color: var(--tf-muted); font-size: 12px; }
+.kanban-end-error { padding: 7px 10px; border-radius: 8px; background: var(--status-danger-bg); color: var(--status-danger); font-size: 12px; }
+
+.timer-task-when { color: var(--tf-muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 960px) {
+  .timer-task-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+  .timer-task-title { grid-column: 1 / -1; }
+  .timer-task-when::before { content: attr(data-label) ': '; }
+}
+
+.timer-task-head { padding-top: 4px; color: var(--tf-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+@media (max-width: 960px) { .timer-task-head { display: none; } }
+
+/* Timer rows: session history */
+.timer-task-item { border-bottom: 1px solid var(--tf-border); }
+.timer-task-item:last-child { border-bottom: 0; }
+.timer-task-item > .timer-task-row { border-bottom: 0; }
+.timer-session-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: var(--tf-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; flex-wrap: wrap; }
+.timer-session-toggle svg { color: var(--tf-muted); transform: rotate(-90deg); transition: transform 140ms ease; }
+.timer-session-toggle svg.is-open { transform: rotate(0deg); }
+.timer-session-toggle small { color: var(--tf-muted); font-size: 11px; }
+.timer-task-when { display: grid; line-height: 1.35; }
+.timer-task-when em, .timer-segments em { font-style: normal; color: var(--color-primary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.timer-segments { list-style: none; margin: 0 0 10px; padding: 8px 10px; display: grid; gap: 6px; border-radius: 8px; background: var(--tf-page); font-size: 12px; color: var(--tf-muted); }
+.timer-segments li { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center; border: 0; padding: 0; }
+.timer-segments b { color: var(--tf-text); font-weight: 600; }
+.timer-segment-index { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--tf-panel); border: 1px solid var(--tf-border); font-size: 10px; }
+@media (max-width: 960px) { .timer-segments li { grid-template-columns: 22px minmax(0, 1fr); } }
+
+.tf-fab { cursor: grab; user-select: none; -webkit-user-select: none; transition: transform var(--t), background var(--t), box-shadow var(--t); }
+.tf-fab.is-dragging { cursor: grabbing; transform: scale(1.08); box-shadow: 0 12px 28px -8px rgba(86, 69, 212, 0.65); transition: none; }
+
+.timer-task-time { display: grid; justify-items: end; line-height: 1.35; }
+.timer-task-time strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.timer-task-time small { color: var(--tf-muted); font-size: 11px; }
+
+/* Kanban: individual vs project scope (employee) */
+.kanban-scope { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-panel); flex-shrink: 0; }
+.kanban-scope button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--tf-muted); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.kanban-scope button:hover { color: var(--tf-text); }
+.kanban-scope button.is-active { background: var(--color-primary); color: #fff; }
+.kanban-kind { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 2px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+.kanban-kind.is-project { background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-primary); }
+.kanban-kind.is-individual { background: rgba(100, 116, 139, .16); color: var(--tf-muted); }
+.kanban-card-topline { gap: 4px; }
+.kanban-card-topline .kanban-grip { margin-left: auto; }

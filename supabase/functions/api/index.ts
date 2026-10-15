@@ -2709,6 +2709,15 @@ async function handleTasks(req: Request, path: string) {
 
     const previousStatus = String(current.status || "pending");
     const columnChanged = current.kanban_column !== column;
+    // Optional end-of-work time reported by the employee. It can be earlier than now
+    // but never in the future.
+    let reportedEnd: string | null = null;
+    if (body.work_ended_at !== undefined && body.work_ended_at !== null && body.work_ended_at !== "") {
+      const parsed = Date.parse(String(body.work_ended_at));
+      if (!Number.isFinite(parsed)) return json({ error: "The end time is not a valid date." }, 400);
+      if (parsed > Date.now() + 60_000) return json({ error: "The end time cannot be in the future." }, 400);
+      reportedEnd = new Date(parsed).toISOString();
+    }
     if (user.role !== "admin" && column === "done" && current.kanban_column !== "in_progress") {
       return json({ error: "Move this task to In Progress before submitting it for review." }, 409);
     }
@@ -2733,6 +2742,8 @@ async function handleTasks(req: Request, path: string) {
       updated_at: new Date().toISOString(),
     };
     if (nextStatus !== previousStatus) patch.status = nextStatus;
+    if (columnChanged && column === "done") patch.work_ended_at = reportedEnd ?? patch.updated_at;
+    else if (columnChanged && column !== "done") patch.work_ended_at = null;
     if (nextStatus === "completed" && previousStatus === "submitted") {
       patch.kanban_approved_at = patch.updated_at;
     } else if (nextStatus !== "completed") {
@@ -2752,10 +2763,15 @@ async function handleTasks(req: Request, path: string) {
     const out = (await shapeTasksWithJoins([updated]))[0];
 
     if (column === "done" && current.kanban_column !== "done") {
-      const { error: timerCloseError } = await supabase.from("task_timer_sessions")
-        .update({ ended_at: new Date().toISOString() })
-        .eq("task_id", id).eq("org_id", user.org_id).is("ended_at", null);
-      if (timerCloseError) console.error("[task timer] Could not close active sessions on Done:", timerCloseError.message);
+      // Close running timers at the reported end time (never before they started).
+      const closeAt = reportedEnd ?? new Date().toISOString();
+      const { data: openSessions } = await supabase.from("task_timer_sessions")
+        .select("id, started_at").eq("task_id", id).eq("org_id", user.org_id).is("ended_at", null);
+      for (const session of openSessions ?? []) {
+        const endAt = Date.parse(closeAt) >= Date.parse(session.started_at) ? closeAt : new Date().toISOString();
+        const { error: timerCloseError } = await supabase.from("task_timer_sessions").update({ ended_at: endAt }).eq("id", session.id);
+        if (timerCloseError) console.error("[task timer] Could not close active session on Done:", timerCloseError.message);
+      }
     }
 
     if (nextStatus !== previousStatus) {
@@ -4062,13 +4078,67 @@ async function handleProjects(req: Request, path: string) {
 
   if (req.method === "GET" && path === "/projects") {
     if (!user.org_id) return json([]);
-    const { data, error } = await supabase
+    let query = supabase
       .from("projects")
       .select("id, name, description, created_at")
       .eq("org_id", user.org_id)
       .order("created_at", { ascending: false });
+    if (user.role !== "admin") {
+      // Employees only see projects they are actually assigned to (via tasks or meetings).
+      const [{ data: taskLinks }, { data: meetingLinks }, { data: legacyTasks }, { data: legacyMeetings }] = await Promise.all([
+        supabase.from("task_assignees").select("task_id").eq("profile_id", user.id),
+        supabase.from("meeting_assignees").select("meeting_id").eq("profile_id", user.id),
+        supabase.from("tasks").select("project_id").eq("org_id", user.org_id).eq("assignee_id", user.id).not("project_id", "is", null),
+        supabase.from("meetings").select("project_id").eq("org_id", user.org_id).eq("assignee_id", user.id).not("project_id", "is", null),
+      ]);
+      const taskIds = (taskLinks ?? []).map((row: { task_id: string }) => row.task_id);
+      const meetingIds = (meetingLinks ?? []).map((row: { meeting_id: string }) => row.meeting_id);
+      const [{ data: linkedTasks }, { data: linkedMeetings }] = await Promise.all([
+        taskIds.length ? supabase.from("tasks").select("project_id").eq("org_id", user.org_id).in("id", taskIds).not("project_id", "is", null) : Promise.resolve({ data: [] as any[] }),
+        meetingIds.length ? supabase.from("meetings").select("project_id").eq("org_id", user.org_id).in("id", meetingIds).not("project_id", "is", null) : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const projectIds = [...new Set([
+        ...(legacyTasks ?? []), ...(legacyMeetings ?? []), ...(linkedTasks ?? []), ...(linkedMeetings ?? []),
+      ].map((row: { project_id: string }) => row.project_id).filter(Boolean))];
+      if (!projectIds.length) return json([]);
+      query = query.in("id", projectIds);
+    }
+    const { data, error } = await query;
     if (error) return json({ error: error.message }, 400);
     return json(data ?? []);
+  }
+
+  // PATCH /projects/:id: admin edits name / description.
+  // DELETE /projects/:id: admin removes a project; its tasks and meetings stay but become unlinked.
+  const projectIdMatch = path.match(/^\/projects\/([^/]+)$/);
+  if (projectIdMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+    const adminErr = requireAdmin(user);
+    if (adminErr) return adminErr;
+    const projectId = projectIdMatch[1];
+    const { data: existing } = await supabase.from("projects").select("id").eq("id", projectId).eq("org_id", user.org_id).maybeSingle();
+    if (!existing) return json({ error: "Project not found" }, 404);
+    if (req.method === "PATCH") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const patch: Record<string, unknown> = {};
+      if (body.name !== undefined) {
+        const name = String(body.name ?? "").trim();
+        if (!name) return json({ error: "Project name is required" }, 400);
+        patch.name = name;
+      }
+      if (body.description !== undefined) patch.description = String(body.description ?? "").trim() || null;
+      if (!Object.keys(patch).length) return json({ error: "Nothing to update" }, 400);
+      const { data, error } = await supabase.from("projects").update(patch)
+        .eq("id", projectId).eq("org_id", user.org_id).select("id, name, description, created_at").single();
+      if (error) return json({ error: error.message }, 400);
+      return json(data);
+    }
+    const { error: unlinkTasksError } = await supabase.from("tasks").update({ project_id: null }).eq("project_id", projectId).eq("org_id", user.org_id);
+    if (unlinkTasksError) return json({ error: unlinkTasksError.message }, 400);
+    const { error: unlinkMeetingsError } = await supabase.from("meetings").update({ project_id: null }).eq("project_id", projectId).eq("org_id", user.org_id);
+    if (unlinkMeetingsError) return json({ error: unlinkMeetingsError.message }, 400);
+    const { error } = await supabase.from("projects").delete().eq("id", projectId).eq("org_id", user.org_id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
   }
 
   const progressMatch = path.match(/^\/projects\/([^/]+)\/progress$/);

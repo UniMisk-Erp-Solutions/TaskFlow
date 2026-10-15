@@ -50,7 +50,7 @@ export function useTasks() {
     return data;
   }
 
-  async function moveTaskBoard(id, kanban_column, kanban_order) {
+  async function moveTaskBoard(id, kanban_column, kanban_order, extras = {}) {
     const previous = tasks.find((task) => task.id === id);
     if (!previous) throw new Error('This task is no longer on the board. Refresh and try again.');
     const columnChanged = previous.kanban_column !== kanban_column;
@@ -60,10 +60,10 @@ export function useTasks() {
       else if (kanban_column === 'in_progress') status = 'in_progress';
       else status = 'pending';
     }
-    const optimistic = { ...previous, kanban_column, kanban_order, status };
+    const optimistic = { ...previous, kanban_column, kanban_order, status, ...(extras.work_ended_at ? { work_ended_at: extras.work_ended_at } : {}) };
     setTasks((current) => current.map((task) => (task.id === id ? optimistic : task)));
     try {
-      const { data } = await api.patch(`/tasks/${id}/board`, { kanban_column, kanban_order });
+      const { data } = await api.patch(`/tasks/${id}/board`, { kanban_column, kanban_order, ...(extras.work_ended_at ? { work_ended_at: extras.work_ended_at } : {}) });
       setTasks((current) => current.map((task) => (task.id === id ? data : task)));
       return data;
     } catch (err) {

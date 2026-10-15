@@ -1,6 +1,31 @@
 import React, { useMemo, useState } from 'react';
 import { Activity, ChevronDown, Clock3, ListChecks, Users } from 'lucide-react';
-import { elapsedSecondsForSession, formatElapsedSeconds } from '../lib/taskTimer';
+import { elapsedSecondsForSession } from '../lib/taskTimer';
+
+// One unit for the whole page, always whole numbers.
+//  Hours: "193h 53m"     Days: "8d 1h" (a day is 24 h; under a day it reads "9h 21m")
+const UnitContext = React.createContext('hour');
+
+function useDuration(override) {
+  const contextUnit = React.useContext(UnitContext);
+  const unit = override || contextUnit;
+  return (seconds) => {
+    const total = Math.max(0, Math.round(seconds || 0));
+    const minutesTotal = Math.floor(total / 60);
+    if (unit === 'day') {
+      const days = Math.floor(minutesTotal / 1440);
+      const hours = Math.floor((minutesTotal % 1440) / 60);
+      const minutes = minutesTotal % 60;
+      if (days) return hours ? `${days}d ${hours}h` : `${days}d`;
+      if (hours) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+      return `${minutes}m`;
+    }
+    const hours = Math.floor(minutesTotal / 60);
+    const minutes = minutesTotal % 60;
+    if (hours) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    return `${minutes}m`;
+  };
+}
 
 const PERIODS = [
   { key: 'all', label: 'All time' },
@@ -35,15 +60,6 @@ function periodStart(period, now) {
     return day.getTime();
   }
   return null;
-}
-
-function shortDuration(seconds) {
-  const total = Math.max(0, Math.round(seconds || 0));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  if (hours) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
-  if (minutes) return `${minutes}m`;
-  return total ? `${total}s` : '0m';
 }
 
 /** Splits sessions at midnight and sums seconds per bucket start (day or week). */
@@ -119,16 +135,17 @@ function hourBuckets(sessions, now) {
 }
 
 function HorizontalBars({ rows, limit = 12 }) {
+  const fmt = useDuration();
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? rows : rows.slice(0, limit);
   const max = Math.max(1, ...rows.map((row) => row.seconds));
   return (
     <div className="timer-hbars">
       {shown.map((row) => (
-        <div className="timer-hbar" key={row.id} title={`${row.label}: ${formatElapsedSeconds(row.seconds)}`}>
+        <div className="timer-hbar" key={row.id} title={`${row.label}: ${fmt(row.seconds)}`}>
           <span className="timer-hbar-label">{row.label}</span>
           <span className="timer-hbar-track"><span className="timer-hbar-fill" style={{ width: `${Math.max(2, (row.seconds / max) * 100)}%` }} /></span>
-          <span className="timer-hbar-value">{shortDuration(row.seconds)}</span>
+          <span className="timer-hbar-value">{fmt(row.seconds)}</span>
         </div>
       ))}
       {rows.length > limit && (
@@ -141,17 +158,18 @@ function HorizontalBars({ rows, limit = 12 }) {
 }
 
 function ColumnChart({ buckets }) {
+  const fmt = useDuration();
   const max = Math.max(1, ...buckets.map((bucket) => bucket.seconds));
   const dense = buckets.length > 16;
   return (
     <div className="timer-columns" role="img" aria-label="Tracked time over time">
       <div className="timer-columns-axis" aria-hidden="true">
-        <span>{shortDuration(max)}</span><span>{shortDuration(max / 2)}</span><span>0</span>
+        <span>{fmt(max)}</span><span>{fmt(max / 2)}</span><span>0</span>
       </div>
       <div className={`timer-columns-plot${dense ? ' is-dense' : ''}`}>
         {buckets.map((bucket, index) => (
-          <div className="timer-column" key={bucket.id} title={`${bucket.title}: ${formatElapsedSeconds(bucket.seconds)}`}>
-            <span className="timer-column-value">{bucket.seconds && !dense ? shortDuration(bucket.seconds) : ''}</span>
+          <div className="timer-column" key={bucket.id} title={`${bucket.title}: ${fmt(bucket.seconds)}`}>
+            <span className="timer-column-value">{bucket.seconds && !dense ? fmt(bucket.seconds) : ''}</span>
             <span className="timer-column-bar-wrap">
               <span className="timer-column-bar" style={{ height: `${bucket.seconds ? Math.max(3, (bucket.seconds / max) * 100) : 0}%` }} />
             </span>
@@ -184,12 +202,34 @@ const STATUS_FILTERS = [
   { key: 'completed', label: 'Completed', rank: 3 },
 ];
 
+// Stopwatch-style reading, e.g. 0:00, 10:00, 1:05:30.
+function clock(seconds) {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function formatWhen(value) {
+  const ms = Date.parse(value || '');
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, expandCommand }) {
+  const fmt = useDuration();
   const [open, setOpen] = useState(defaultOpen);
   React.useEffect(() => {
     if (expandCommand.version) setOpen(expandCommand.open);
   }, [expandCommand]);
   const [filter, setFilter] = useState('all');
+  const [openRows, setOpenRows] = useState(() => new Set());
+  const toggleRow = (id) => setOpenRows((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const name = person.full_name || person.email || 'Team member';
   const count = (rank) => rows.filter((row) => row.group.rank === rank).length;
   const totalSeconds = rows.reduce((sum, row) => sum + row.seconds, 0);
@@ -212,8 +252,8 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
             {running && <span className="timer-chip is-running">Running</span>}
           </span>
         </span>
-        <span className="timer-person-stat"><small>Total tracked</small><strong>{formatElapsedSeconds(totalSeconds)}</strong></span>
-        <span className="timer-person-stat"><small>Avg / completed</small><strong>{averageSeconds ? formatElapsedSeconds(averageSeconds) : '—'}</strong></span>
+        <span className="timer-person-stat"><small>Total tracked</small><strong>{fmt(totalSeconds)}</strong></span>
+        <span className="timer-person-stat"><small>Avg / completed</small><strong>{averageSeconds ? fmt(averageSeconds) : '—'}</strong></span>
         <ChevronDown size={18} className="timer-person-chevron" aria-hidden="true" />
       </button>
       {open && (
@@ -230,13 +270,52 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
           </div>
           {visibleRows.length ? (
             <ul className="timer-task-list">
-              {visibleRows.map((row) => (
-                <li key={row.id} className="timer-task-row">
-                  <span className="timer-task-title">{row.task.title}</span>
-                  <span className={`timer-status is-rank-${row.group.rank}`}>{row.group.label}</span>
-                  <span className="timer-task-time">{row.group.tracked ? formatElapsedSeconds(row.seconds) : ''}</span>
-                </li>
-              ))}
+              <li className="timer-task-row timer-task-head" aria-hidden="true">
+                <span>Task</span><span>Status</span><span>Started</span><span>Ended</span><span className="timer-task-time">Time worked</span>
+              </li>
+              {visibleRows.map((row) => {
+                const hasSegments = row.segments.length > 0;
+                const expanded = openRows.has(row.id);
+                const endTimer = row.segments.length ? row.segments[row.segments.length - 1].toSec : 0;
+                return (
+                  <li key={row.id} className="timer-task-item">
+                    <div className="timer-task-row">
+                      <span className="timer-task-title">
+                        {hasSegments ? (
+                          <button type="button" className="timer-session-toggle" aria-expanded={expanded} onClick={() => toggleRow(row.id)} title="Show start / pause history">
+                            <ChevronDown size={14} className={expanded ? 'is-open' : ''} aria-hidden="true" />
+                            <span>{row.task.title}</span>
+                            <small>{row.segments.length} session{row.segments.length === 1 ? '' : 's'}</small>
+                          </button>
+                        ) : row.task.title}
+                      </span>
+                      <span className={`timer-status is-rank-${row.group.rank}`}>{row.group.label}</span>
+                      <span className="timer-task-when" data-label="Started">
+                        {row.startedAt ? <>{formatWhen(row.startedAt)}<em>timer {clock(0)}</em></> : '—'}
+                      </span>
+                      <span className="timer-task-when" data-label="Ended">
+                        {row.active ? 'Running'
+                          : row.endedAt ? <>{formatWhen(row.endedAt)}<em>timer {clock(endTimer)}</em></>
+                            : (row.group.tracked && row.group.rank === 0 ? 'Ongoing' : '—')}
+                      </span>
+                      <span className="timer-task-time">
+                        {row.group.tracked ? <><strong>{clock(row.seconds)}</strong><small>{fmt(row.seconds)}</small></> : ''}
+                      </span>
+                    </div>
+                    {hasSegments && expanded && (
+                      <ol className="timer-segments">
+                        {row.segments.map((segment, index) => (
+                          <li key={segment.id}>
+                            <span className="timer-segment-index">{index + 1}</span>
+                            <span><b>Started</b> {formatWhen(segment.start)} <em>timer {clock(segment.fromSec)}</em></span>
+                            <span><b>{segment.end ? (index === row.segments.length - 1 && row.endedAt ? 'Ended' : 'Paused') : 'Running'}</b> {segment.end ? formatWhen(segment.end) : 'now'} <em>timer {clock(segment.toSec)}</em></span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           ) : <div className="timer-empty">No tasks with this status.</div>}
         </div>
@@ -250,7 +329,8 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
   const [period, setPeriod] = useState('all');
   const [personFilter, setPersonFilter] = useState('all');
   const [chartView, setChartView] = useState('task');
-  const [granularity, setGranularity] = useState('day');
+  const [granularity, setGranularity] = useState('hour');
+  const fmt = useDuration(granularity);
   const [expandCommand, setExpandCommand] = useState({ version: 0, open: false });
   React.useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
@@ -337,6 +417,38 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
     personTaskRows.sort((a, b) => a.group.rank - b.group.rank
       || String(a.person.full_name || a.person.email || '').localeCompare(String(b.person.full_name || b.person.email || ''))
       || String(a.task.title).localeCompare(String(b.task.title)));
+    const firstStart = new Map();
+    const lastEnd = new Map();
+    for (const session of allSessions) {
+      const key = `${session.task_id}:${session.user_id}`;
+      const start = Date.parse(session.started_at || '');
+      if (Number.isFinite(start) && (!firstStart.has(key) || start < firstStart.get(key))) firstStart.set(key, start);
+      const end = session.ended_at ? Date.parse(session.ended_at) : NaN;
+      if (Number.isFinite(end) && (!lastEnd.has(key) || end > lastEnd.get(key))) lastEnd.set(key, end);
+    }
+    const segmentsByKey = new Map();
+    [...allSessions].sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at)).forEach((session) => {
+      const key = `${session.task_id}:${session.user_id}`;
+      const list = segmentsByKey.get(key) || [];
+      const fromSec = list.length ? list[list.length - 1].toSec : 0;
+      list.push({
+        id: session.id,
+        start: session.started_at,
+        end: session.ended_at,
+        fromSec,
+        toSec: fromSec + elapsedSecondsForSession(session, now),
+      });
+      segmentsByKey.set(key, list);
+    });
+    personTaskRows.forEach((row) => {
+      const key = `${row.task.id}:${row.person.id}`;
+      row.segments = segmentsByKey.get(key) || [];
+      row.startedAt = firstStart.has(key) ? new Date(firstStart.get(key)).toISOString() : null;
+      const finished = row.task.status === 'completed' || row.task.status === 'submitted';
+      row.endedAt = finished
+        ? (row.task.work_ended_at || (lastEnd.has(key) ? new Date(lastEnd.get(key)).toISOString() : null))
+        : null;
+    });
     const byPerson = new Map();
     personTaskRows.forEach((row) => {
       if (!byPerson.has(row.person.id)) byPerson.set(row.person.id, []);
@@ -350,7 +462,7 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
       .filter((row) => row.seconds > 0)
       .sort((a, b) => b.seconds - a.seconds);
     return { totalSeconds, activeCount, taskRows, peopleCards, personBars };
-  }, [tasks, sessions, people, directoryProfiles, profile, isAdmin, now, period, personFilter, personOptions]);
+  }, [tasks, sessions, allSessions, people, directoryProfiles, profile, isAdmin, now, period, personFilter, personOptions]);
 
   const topTaskRows = analytics.taskRows.filter((task) => task.seconds > 0);
   const buckets = useMemo(
@@ -365,6 +477,7 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
   const chartHasData = activeView === 'task' ? topTaskRows.length > 0 : activeView === 'person' ? analytics.personBars.length > 0 : buckets.some((bucket) => bucket.seconds > 0);
 
   return (
+    <UnitContext.Provider value={granularity}>
     <section className="timer-analytics" aria-label="Task timer analytics">
       {error && <div className="timer-error" role="alert">{error}</div>}
 
@@ -392,7 +505,7 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
       </div>
 
       <div className="timer-summary-grid">
-        <div className="timer-summary-card"><Clock3 size={18} /><span>Total tracked</span><strong>{formatElapsedSeconds(analytics.totalSeconds)}</strong></div>
+        <div className="timer-summary-card"><Clock3 size={18} /><span>Total tracked</span><strong>{fmt(analytics.totalSeconds)}</strong></div>
         <div className="timer-summary-card"><Activity size={18} /><span>Running now</span><strong>{analytics.activeCount}</strong></div>
         <div className="timer-summary-card"><ListChecks size={18} /><span>Tasks tracked</span><strong>{topTaskRows.length}</strong></div>
         {isAdmin && <div className="timer-summary-card"><Users size={18} /><span>People tracked</span><strong>{new Set(sessions.map((session) => session.user_id)).size}</strong></div>}
@@ -432,5 +545,6 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
         ) : <div className="timer-empty">No assigned tasks to show.</div>}
       </section>
     </section>
+    </UnitContext.Provider>
   );
 }
