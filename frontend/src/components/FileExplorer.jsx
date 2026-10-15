@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toPublicStorageUrl } from '../lib/storageUrl';
 import {
   ChevronRight, Download, File as FileIcon, FileImage, FileText, FileArchive, FileVideo, FileAudio, FolderPlus,
   Folder, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History,
@@ -155,7 +156,7 @@ export default function FileExplorer() {
   async function openFile(item, download = false) {
     try {
       const { data: signed } = await api.get(`/drive/files/${item.id}/url`, { params: download ? { download: 1 } : {} });
-      window.open(signed.url, '_blank', 'noopener');
+      window.open(toPublicStorageUrl(signed.url), '_blank', 'noopener');
     } catch (err) {
       setError(err.response?.data?.error || 'Could not open the file.');
     }

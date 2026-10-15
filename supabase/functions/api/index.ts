@@ -328,6 +328,45 @@ function createAuthClient() {
   });
 }
 
+// Signed storage URLs are minted against the internal address (http://supabase-kong:8000), which
+// browsers cannot resolve. Re-point them at the public origin the caller used to reach this API.
+function isInternalHost(host: string): boolean {
+  const h = host.split(":")[0].toLowerCase();
+  return !h || h === "localhost" || h.startsWith("127.") || h === "supabase-kong" || !h.includes(".");
+}
+
+function signedUrlResponse(req: Request, url: string): Response {
+  if ((req.headers.get("accept") || "").includes("application/json")) return json({ url });
+  return Response.redirect(url, 302);
+}
+
+function publicStorageUrl(signedUrl: string, req: Request): string {
+  try {
+    const explicit = Deno.env.get("PUBLIC_API_ORIGIN");
+    let origin = explicit && explicit.trim() ? explicit.trim().replace(/\/+$/, "") : "";
+    if (!origin) {
+      const hostHeader = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").split(",")[0].trim();
+      if (hostHeader && !isInternalHost(hostHeader)) {
+        const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim()
+          || (/^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(hostHeader) || hostHeader.endsWith(".sslip.io") ? "http" : "https");
+        origin = `${proto}://${hostHeader}`;
+      }
+    }
+    if (!origin) {
+      const fallback = Deno.env.get("SUPABASE_PUBLIC_URL");
+      if (fallback) origin = fallback.replace(/\/+$/, "");
+    }
+    if (!origin) return signedUrl;
+    const u = new URL(signedUrl);
+    const o = new URL(origin);
+    u.protocol = o.protocol;
+    u.host = o.host;
+    return u.toString();
+  } catch {
+    return signedUrl;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // OpenWA (self-hosted WhatsApp) — auto-notify the ASSIGNEE(S) on task/meeting
 // creation. One message per assigned user who has a phone number, sent once at
@@ -3424,7 +3463,7 @@ async function handleTasks(req: Request, path: string) {
     if (deny) return deny;
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
     if (sErr) return json({ error: sErr.message }, 400);
-    return Response.redirect(signed.signedUrl, 302);
+    return signedUrlResponse(req, publicStorageUrl(signed.signedUrl, req));
   }
 
   const delMatch = path.match(/^\/tasks\/([^/]+)$/);
@@ -4065,7 +4104,7 @@ async function handleMeetings(req: Request, path: string) {
 
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
     if (sErr) return json({ error: sErr.message }, 400);
-    return Response.redirect(signed.signedUrl, 302);
+    return signedUrlResponse(req, publicStorageUrl(signed.signedUrl, req));
   }
 
   return null;
@@ -4419,7 +4458,7 @@ async function handleDrive(req: Request, path: string) {
       if (error) return json({ error: error.message }, 400);
       await driveLog(user, { kind: "file", id: file.id, name: file.name, ownerId: file.owner_id,
         action: download ? "downloaded" : "opened", details: {}, publicAtEvent: file.visibility === "public" });
-      return json({ url: signed.signedUrl, name: file.name });
+      return json({ url: publicStorageUrl(signed.signedUrl, req), name: file.name });
     }
 
     // PATCH /drive/files/:id | /drive/folders/:id  { name?, visibility? } — owner only.

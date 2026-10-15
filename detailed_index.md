@@ -221,7 +221,7 @@ Explains the new Files feature end to end: the dedicated private taskflow-files 
 
 **Document:** [docs/pagination-35-records.md](docs/pagination-35-records.md)
 
-Describes the reusable usePagination hook and Pagination control (35 records per page), which lists use it (tasks, meetings, overview/project table, Files, Timer person rows), why the Kanban board is excluded, and how page state resets on sort/filter/search changes and clamps after deletes. It also records that the old 40-row cap in the unified overview table was replaced by real paging.
+Describes the reusable usePagination hook and Pagination control (5 records per page), which lists use it (tasks, meetings, overview/project table, Files, Timer person rows), why the Kanban board is excluded, and how page state resets on sort/filter/search changes and clamps after deletes. It also records that the old 40-row cap in the unified overview table was replaced by real paging.
 
 ---
 
@@ -232,3 +232,39 @@ Describes the reusable usePagination hook and Pagination control (35 records per
 **Document:** [docs/file-activity-log.md](docs/file-activity-log.md)
 
 Explains the Files audit trail: the events recorded and their details, the drive_activity table and its public_at_event flag, and the visibility rules (owner sees all of their own history; administrators see only events that were public at the time for items that are public now or were public when deleted; nobody else sees other people's activity). It also covers the Activity log tab, per-item History action, and how the feature relates to the admin Properties/Export tools and the private/public model.
+
+---
+
+**Document:** [docs/mobile-android-app.md](docs/mobile-android-app.md)
+
+Describes the mobile client in the mobile/ folder: the Expo/React Native technology choice, how it reuses the existing Supabase backend and Edge API without changes, the screens and features mapped to each web feature (tasks, board, timers, files with private/public and audit log, chat, projects, calendar, team management), configuration through environment variables, how to run it with Expo Go or build an APK with EAS, and the honest status and remaining gaps (device testing, whiteboard editing, native push, Google sign-in).
+
+---
+
+**Document:** [docs/chat-feature.md](docs/chat-feature.md)
+
+Explains conversation types and access rules, the group admin role and the history-visibility choice enforced by row level security, messaging features (realtime delivery, swipe/double-click replies, edit, unread counters), the attachment flow (paperclip, drag and drop, paste, voice recording, preview tray) and the migrations, buckets and known limits.
+
+---
+
+**Document:** [docs/whiteboard-feature.md](docs/whiteboard-feature.md)
+
+Explains the Excalidraw-based infinite canvas, how changes are broadcast and merged in real time, how scenes and images are persisted (database JSON and the S3-backed whiteboard-files bucket), the screens/tabs feature, the migrations and known limits.
+
+---
+
+**Document:** [docs/project-archive-instead-of-delete.md](docs/project-archive-instead-of-delete.md)
+
+Explains the Archive button and Archived projects section, the archive/unarchive endpoints, the blocked DELETE endpoint, the archived_at columns and which lists exclude archived projects.
+
+---
+
+**Document:** [docs/signed-storage-url-fix.md](docs/signed-storage-url-fix.md)
+
+Explains the cause (signed URLs minted against the internal supabase-kong address), the public-origin rewrite in the Edge Function and frontend helper, the JSON download mode and how the fix was deployed and rolled back.
+
+---
+
+**Document:** [docs/office-lan-fast-path-plan.md](docs/office-lan-fast-path-plan.md)
+
+Records the read-only findings (server LAN address, Cloudflare Tunnel into Traefik), the split-DNS and trusted certificate approach, the rollback and the current blocked status.

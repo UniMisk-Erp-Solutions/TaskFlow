@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { toPublicStorageUrl } from '../lib/storageUrl';
 import { Paperclip, FileAudio, FileText, File as FileIcon, Download, Trash2, Upload } from 'lucide-react';
 import api from '../api';
 import { getApiAccessToken } from '../sessionAccess';
@@ -90,11 +91,18 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
       // open the final (public, tokenised) URL in a new tab.
       const token = getApiAccessToken();
       const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        redirect: 'follow',
+        headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
-      if (res.ok && res.url) window.open(res.url, '_blank', 'noopener');
-      else setError('Could not open the file.');
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        const body = await res.json();
+        if (body?.url) window.open(toPublicStorageUrl(body.url), '_blank', 'noopener');
+        else setError('Could not open the file.');
+      } else if (res.ok && res.url) {
+        window.open(toPublicStorageUrl(res.url), '_blank', 'noopener');
+      } else {
+        setError('Could not open the file.');
+      }
     } catch (e) {
       setError(e.message || 'Download failed');
     }

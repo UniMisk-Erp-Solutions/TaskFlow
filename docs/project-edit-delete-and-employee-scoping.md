@@ -1,5 +1,7 @@
 # Project Edit/Delete and Employee Project Scoping
 
+> **Superseded (2026-10-15):** project deletion was removed; projects are now archived and can be restored. See [project-archive-instead-of-delete.md](project-archive-instead-of-delete.md).
+
 
 ## Admin
 

@@ -1,8 +1,8 @@
-# Pagination (35 Records per Page)
+# Pagination (5 Records per Page)
 
 ## Purpose
 
-Long lists no longer need endless scrolling: every record list is split into pages of **35 records**.
+Long lists no longer need endless scrolling: every record list is split into pages of **5 records** (changed from 35 on 2026-10-15; the size lives in one constant, `PAGE_SIZE` in `Pagination.jsx`).
 
 ## Where it applies
 
@@ -15,8 +15,8 @@ The Kanban board is not paged because its columns are drag targets.
 
 ## Behavior
 
-- `frontend/src/components/Pagination.jsx` exports `usePagination(items, { pageSize = 35, resetKey })` and a `<Pagination>` control.
-- The control shows "Showing 1-35 of N", previous/next buttons and a windowed page list (first, last, current and neighbours with ellipses). It is hidden when there are 35 records or fewer.
+- `frontend/src/components/Pagination.jsx` exports `usePagination(items, { pageSize = PAGE_SIZE (5), resetKey })` and a `<Pagination>` control.
+- The control shows "Showing 1-5 of N", previous/next buttons and a windowed page list (first, last, current and neighbours with ellipses). It is hidden when there are 5 records or fewer.
 - Paging resets to page 1 when the sort, filter, folder or search changes, and clamps when the list shrinks (for example after a delete).
 - Paging is client-side over the already loaded list; sorting applies to the whole list before it is split.
 - Styles: `.pager*` in `frontend/src/index.css`.
