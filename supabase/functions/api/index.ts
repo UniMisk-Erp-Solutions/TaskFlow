@@ -2135,7 +2135,27 @@ async function handleAIQuery(req: Request): Promise<Response> {
 async function runAiAssistant(user: AppUser & { email?: string }, question: string): Promise<string> {
   const key = await openrouterKey();
   const model = await openrouterModel();
-  if (!key || !model) return "⚠️ The AI assistant isn't configured yet.";
+  // Self-hosted AI (services/taskflow-ai): preferred when LOCAL_AI_URL is set; OpenRouter is the fallback.
+  const localUrl = (Deno.env.get("LOCAL_AI_URL") || "").replace(/\/+$/, "");
+  const localToken = Deno.env.get("LOCAL_AI_TOKEN") || "";
+  if (!localUrl && (!key || !model)) return "⚠️ The AI assistant isn't configured yet.";
+
+  // Cheap local router: greetings/thanks are answered without spending the model's CPU.
+  if (localUrl) {
+    const r = await fetchTimeout(`${localUrl}/v1/route`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text: question }),
+    }, 2500);
+    if (r?.ok) {
+      try {
+        const route = await r.json();
+        if (route?.intent === "smalltalk" && Number(route.confidence) >= 0.8) {
+          return "Hi! I can answer questions about your tasks, meetings and projects, or create and update them. What would you like to do?";
+        }
+      } catch { /* fall through to the model */ }
+    }
+  }
 
   const org = user.org_id;
   const [membersRes, projectsRes, tasksRes, meetingsRes] = await Promise.all([
@@ -2200,6 +2220,18 @@ Ops:
 {"op":"set_password","target":"<member name>","password?"}
 {"op":"delete_user","target":"<member name>"}`;
 
+  const callLocal = async (ms: number): Promise<string | null> => {
+    const r = await fetchTimeout(`${localUrl}/v1/chat`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${localToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ system: systemPrompt, user: `DATA:
+${JSON.stringify(ctx)}
+
+User: ${question}`, max_tokens: 400 }),
+    }, ms);
+    if (!r || !r.ok) return null;
+    try { return stripThinkTags((await r.json())?.content || ""); } catch { return null; }
+  };
   const callModel = async (m: string, ms: number): Promise<string | null> => {
     const r = await fetchTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -2212,9 +2244,10 @@ Ops:
   // Free models get rate-limited often, so try the configured model and then several other free ones.
   const fallbackModels = ["google/gemma-4-31b-it:free", "thinkingmachines/inkling-small:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"]
     .filter((m) => m !== model);
-  let raw = await callModel(model, 15000);
+  let raw: string | null = localUrl ? await callLocal(45000) : null;
+  if (!raw && key && model) raw = await callModel(model, 15000);
   for (const m of fallbackModels) {
-    if (raw) break;
+    if (raw || !key) break;
     raw = await callModel(m, 9000);
   }
   if (!raw) return "⚠️ The AI is busy right now. Please try again in a moment.";
