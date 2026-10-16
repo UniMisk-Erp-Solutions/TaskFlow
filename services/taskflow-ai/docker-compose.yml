@@ -10,15 +10,24 @@ services:
     build: ./llm
     image: taskflow-ai-llm:local
     command:
-      - --model=/models/${LLM_GGUF:-Qwen3-0.6B-Q8_0.gguf}
-      - --alias=qwen3-0.6b
-      - --host=0.0.0.0
-      - --port=8081
-      - --threads=2
-      - --threads-batch=2
-      - --parallel=1
-      - --ctx-size=4096
-      - --api-key=${LLAMA_API_KEY:?set LLAMA_API_KEY}
+      - --model
+      - /models/${LLM_GGUF:-Qwen3-0.6B-Q8_0.gguf}
+      - --alias
+      - qwen3-0.6b
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8081"
+      - --threads
+      - "2"
+      - --threads-batch
+      - "2"
+      - --parallel
+      - "1"
+      - --ctx-size
+      - "4096"
+      - --api-key
+      - ${LLAMA_API_KEY:?set LLAMA_API_KEY}
       - --no-webui
     cpuset: ${AI_CPUSET:?set AI_CPUSET to exactly 2 logical CPU ids, e.g. 2,3}
     cpus: 1.6

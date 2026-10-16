@@ -2,7 +2,10 @@
 
 Date: 16/10/2026. Based on `REUSABLE_LOCAL_AI_SETUP_AGENT_PROMPT.md` (ServiceWise pattern), adapted to TaskFlow.
 
-**Status: code and deployment files are written; the stack was NOT deployed and NOT run.** This machine has no Docker and the server work was out of scope of the allowed access (only the TaskFlow project in Coolify and its Supabase DB). Everything under "Verified" below is limited to syntax checks.
+**Status (16/10/2026): deployed on the Olympus server in `~/taskflow-ai`, running on logical CPUs `3,23` only.**
+Verified on the server: both containers report `Cpus_allowed_list: 3,23`; `/readyz` ok; `/v1/route` returns `smalltalk` for "hello"/"thanks", `list_tasks` for "show my pending tasks"; `/v1/chat` returned a correct JSON answer in 5.5 s for a small prompt. llama.cpp `v0.7.0` was built AVX-only (the host CPU has no AVX2). Models pinned: Qwen3-0.6B GGUF rev `23749fef...`, multilingual-e5-small rev `614241f6...`, sha256 in `models.lock` on the server.
+Wiring: TaskFlow's `app_settings` has `local_ai_url` (`http://taskflow-ai-planner:8090`) and `local_ai_token`. Model order in the assistant: OpenRouter configured model, then the local model, then other free OpenRouter models.
+NOT verified: an end-to-end chat from the web app falling back to the local model, and latency/accuracy with the full TaskFlow prompt.
 
 ## What exists in TaskFlow (audit)
 - The assistant already lives in the Edge Function (`runAiAssistant` in `supabase/functions/api/index.ts`, `POST /ai/query` and WhatsApp). The model only returns a small JSON op; all execution and permission checks stay in the existing handlers via `aiDispatch` as the same user. That trusted gateway is kept unchanged.
