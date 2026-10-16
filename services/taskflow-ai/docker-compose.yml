@@ -67,7 +67,7 @@ services:
       LLM_TIMEOUT_SECONDS: "40"
     cpuset: ${AI_CPUSET}
     cpus: 0.4
-    mem_limit: 768m
+    mem_limit: 1280m
     pids_limit: 64
     volumes:
       - ${MODELS_DIR:-./models}/e5:/models/e5:ro

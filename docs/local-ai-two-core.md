@@ -29,7 +29,7 @@ services/taskflow-ai/
 - One shared `AI_CPUSET` (exactly two logical CPU ids) is applied to **both** containers. Quotas add up to 2.0 (`llm` 1.6 + `planner` 0.4).
 - Thread caps: llama.cpp `--threads 2 --threads-batch 2 --parallel 1`; ONNX intra/inter-op 1 thread; `OMP_NUM_THREADS` 2 (llm) / 1 (planner).
 - Pick the CPU ids on the real host with `lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE` (ideally the two hyperthreads of one core, or two free cores). Do not reuse CPUs used by other workloads. Do not assume any id exists.
-- Hardening: RAM limits (1 GB / 768 MB), pids limits, read-only root, tmpfs `/tmp`, `cap_drop: ALL`, `no-new-privileges`, non-root planner user, models mounted read-only, no published ports; the LLM sits on an internal-only network.
+- Hardening: RAM limits (1 GB / 1.25 GB), pids limits, read-only root, tmpfs `/tmp`, `cap_drop: ALL`, `no-new-privileges`, non-root planner user, models mounted read-only, no published ports; the LLM sits on an internal-only network.
 
 ## Setup (Linux host, requires Docker)
 ```bash
