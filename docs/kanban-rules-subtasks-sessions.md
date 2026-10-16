@@ -34,3 +34,6 @@ Date: 16/10/2026. Applies to the web app, the Supabase Edge API, the Express bac
 
 ## 7. Dead-end "workspace profile could not be loaded" screen
 - If `/auth/me` returns 401 (session revoked/expired, e.g. signed out by the old global sign-out in another browser), the app now tries one token refresh and otherwise clears only the local session and returns to the login page instead of showing that error screen.
+
+## 8. AI assistant model fallbacks
+- The assistant used to try one model plus one backup, so rate-limited free models showed "The AI is busy". It now tries the configured model, then several other OpenRouter free models in turn (gemma-4-31b, inkling-small, nemotron-3-super, nemotron-3-ultra).

@@ -2209,7 +2209,14 @@ Ops:
     if (!r || !r.ok) return null;
     try { return stripThinkTags((await r.json())?.choices?.[0]?.message?.content || ""); } catch { return null; }
   };
-  const raw = (await callModel(model, 15000)) || (await callModel("nvidia/nemotron-3-ultra-550b-a55b:free", 7000));
+  // Free models get rate-limited often, so try the configured model and then several other free ones.
+  const fallbackModels = ["google/gemma-4-31b-it:free", "thinkingmachines/inkling-small:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"]
+    .filter((m) => m !== model);
+  let raw = await callModel(model, 15000);
+  for (const m of fallbackModels) {
+    if (raw) break;
+    raw = await callModel(m, 9000);
+  }
   if (!raw) return "⚠️ The AI is busy right now. Please try again in a moment.";
 
   const act = aiExtractJson(raw);
