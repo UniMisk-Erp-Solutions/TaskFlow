@@ -335,6 +335,38 @@ function isInternalHost(host: string): boolean {
   return !h || h === "localhost" || h.startsWith("127.") || h === "supabase-kong" || !h.includes(".");
 }
 
+/**
+ * Streams a stored object through the API so the browser never needs to reach the storage host
+ * directly (signed URLs are minted against the internal address and popup blockers kill window.open).
+ * `disposition` is "inline" for in-app preview and "attachment" for downloads.
+ */
+async function streamStoredFile(
+  bucket: string,
+  objectPath: string,
+  name: string,
+  mime: string | null | undefined,
+  disposition: "inline" | "attachment",
+): Promise<Response> {
+  const { data: signed, error } = await supabase.storage.from(bucket).createSignedUrl(objectPath, 120);
+  if (error || !signed) return json({ error: error?.message || "Could not read the file." }, 400);
+  let upstream: Response;
+  try {
+    upstream = await fetch(signed.signedUrl);
+  } catch (e) {
+    return json({ error: `Storage is unreachable: ${(e as Error).message}` }, 502);
+  }
+  if (!upstream.ok || !upstream.body) return json({ error: "The file could not be read from storage." }, 502);
+  const headers = new Headers({ ...corsHeaders, "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length" });
+  headers.set("Content-Type", mime || upstream.headers.get("content-type") || "application/octet-stream");
+  const length = upstream.headers.get("content-length");
+  if (length) headers.set("Content-Length", length);
+  const ascii = name.replace(/[^\x20-\x7e]+/g, "_").replace(/["\\]/g, "_");
+  headers.set("Content-Disposition", `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`);
+  headers.set("Cache-Control", "private, no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(upstream.body, { status: 200, headers });
+}
+
 function signedUrlResponse(req: Request, url: string): Response {
   if ((req.headers.get("accept") || "").includes("application/json")) return json({ url });
   return Response.redirect(url, 302);
@@ -3454,13 +3486,17 @@ async function handleTasks(req: Request, path: string) {
     const attId = taskDownMatch[1];
     const { data: att, error } = await supabase
       .from("task_attachments")
-      .select("id, task_id, org_id, bucket, path")
+      .select("id, task_id, org_id, bucket, path, original_name, content_type")
       .eq("id", attId)
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
     if (!att) return json({ error: "Attachment not found" }, 404);
     const deny = await assertTaskAccess(user, att.task_id);
     if (deny) return deny;
+    if (new URL(req.url).searchParams.get("stream")) {
+      const asDownload = new URL(req.url).searchParams.get("stream") === "download";
+      return streamStoredFile(att.bucket, att.path, att.original_name || "file", att.content_type, asDownload ? "attachment" : "inline");
+    }
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
     if (sErr) return json({ error: sErr.message }, 400);
     return signedUrlResponse(req, publicStorageUrl(signed.signedUrl, req));
@@ -4094,7 +4130,7 @@ async function handleMeetings(req: Request, path: string) {
     const attId = downMatch[1];
     const { data: att, error } = await supabase
       .from("meeting_attachments")
-      .select("id, meeting_id, org_id, assignee_id, bucket, path")
+      .select("id, meeting_id, org_id, assignee_id, bucket, path, original_name, content_type")
       .eq("id", attId)
       .maybeSingle();
     if (error) return json({ error: error.message }, 400);
@@ -4102,6 +4138,10 @@ async function handleMeetings(req: Request, path: string) {
     const meeting = await fetchMeetingWithAssignees(att.meeting_id, null);
     if (!meetingCanBeAccessedBy(user, meeting)) return json({ error: "Access denied" }, 403);
 
+    if (new URL(req.url).searchParams.get("stream")) {
+      const asDownload = new URL(req.url).searchParams.get("stream") === "download";
+      return streamStoredFile(att.bucket, att.path, att.original_name || "file", att.content_type, asDownload ? "attachment" : "inline");
+    }
     const { data: signed, error: sErr } = await supabase.storage.from(att.bucket).createSignedUrl(att.path, 600);
     if (sErr) return json({ error: sErr.message }, 400);
     return signedUrlResponse(req, publicStorageUrl(signed.signedUrl, req));
@@ -4431,6 +4471,33 @@ async function handleDrive(req: Request, path: string) {
         created.push({ ...data, kind: "file", is_owner: true });
       }
       return json(created, 201);
+    }
+
+    // GET /drive/files/:id/content[?download=1] — streams the file after the same visibility check as /url.
+    const contentMatch = path.match(/^\/drive\/files\/([^/]+)\/content$/);
+    if (req.method === "GET" && contentMatch) {
+      const { data: file } = await supabase.from("drive_files")
+        .select("id, org_id, folder_id, owner_id, name, bucket, path, visibility, content_type")
+        .eq("id", contentMatch[1]).eq("org_id", user.org_id).maybeSingle();
+      if (!file) return json({ error: "File not found" }, 404);
+      if (file.owner_id !== user.id) {
+        if (file.visibility !== "public") return json({ error: "File not found" }, 404);
+        if (file.folder_id) {
+          const { visible } = await driveLoadFolders(user);
+          if (!visible(file.folder_id)) return json({ error: "File not found" }, 404);
+        }
+      }
+      const download = url.searchParams.get("download") === "1";
+      const response = await streamStoredFile(file.bucket, file.path, file.name, file.content_type, download ? "attachment" : "inline");
+      if (response.ok) {
+        const { data: counter } = await supabase.from("drive_files").select("access_count").eq("id", file.id).maybeSingle();
+        await supabase.from("drive_files").update({
+          last_accessed_at: new Date().toISOString(), last_accessed_by: user.id, access_count: (counter?.access_count ?? 0) + 1,
+        }).eq("id", file.id).eq("org_id", user.org_id);
+        await driveLog(user, { kind: "file", id: file.id, name: file.name, ownerId: file.owner_id,
+          action: download ? "downloaded" : "opened", details: {}, publicAtEvent: file.visibility === "public" });
+      }
+      return response;
     }
 
     // GET /drive/files/:id/url[?download=1] — short-lived signed URL after a visibility check.

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Pencil } from 'lucide-react';
 import api from '../api';
 import supabase from '../supabaseClient';
@@ -125,15 +125,21 @@ export default function MeetingDetailModal({
     });
   }, []);
 
+  // Keep the latest callback in a ref so a re-rendering parent never retriggers the load effect
+  // (that used to drop people out of edit mode while they were typing).
+  const historyFnRef = useRef(getMeetingHistory);
+  historyFnRef.current = getMeetingHistory;
+
   const loadHistory = useCallback(async (meetingId) => {
-    if (!getMeetingHistory || !meetingId) return;
+    const fn = historyFnRef.current;
+    if (!fn || !meetingId) return;
     try {
-      const rows = await getMeetingHistory(meetingId);
+      const rows = await fn(meetingId);
       setHistory(Array.isArray(rows) ? rows : []);
     } catch {
       setHistory([]);
     }
-  }, [getMeetingHistory]);
+  }, []);
 
   useEffect(() => {
     if (!open || !meeting?.id) {

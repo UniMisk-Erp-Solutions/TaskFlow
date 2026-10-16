@@ -346,6 +346,8 @@ export default function EmployeeDashboard() {
         approveTask={approveTask}
         requestTaskChanges={requestTaskChanges}
         getTaskHistory={getTaskHistory}
+        onTasksChanged={() => refetch({ silent: true })}
+        refreshSignal={tasks.length}
         onClose={() => setDetailTask(null)}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api';
+import { downloadFromApi, fileErrorMessage, previewKind } from '../lib/fileAccess';
+import FilePreviewModal from './FilePreviewModal';
 import { formatDateTime } from '../lib/dateFormat';
 
 function fmtSize(bytes) {
@@ -22,6 +24,16 @@ export default function MeetingFilesModal({ open, meeting, isAdmin, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [uploadType, setUploadType] = useState('audio');
   const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+
+  async function downloadItem(it) {
+    setError('');
+    try {
+      await downloadFromApi(`/meetings/attachments/${it.id}/download`, it.original_name || 'file', { stream: 'download' });
+    } catch (err) {
+      setError(await fileErrorMessage(err, 'Download failed.'));
+    }
+  }
 
   const title = useMemo(() => meeting?.title || 'Meeting files', [meeting]);
 
@@ -145,14 +157,18 @@ export default function MeetingFilesModal({ open, meeting, isAdmin, onClose }) {
                       <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tf-muted)' }}>{fmtSize(it.size_bytes)}</td>
                       <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tf-muted)' }}>{fmtDate(it.created_at)}</td>
                       <td style={{ padding: '10px 12px' }}>
-                        <a
-                          className="btn btn-ghost btn-sm"
-                          href={`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/meetings/attachments/${it.id}/download`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        {previewKind(it.content_type, it.original_name, it.size_bytes) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setPreview({ path: `/meetings/attachments/${it.id}/download`, params: { stream: 'inline' }, name: it.original_name || 'file', contentType: it.content_type, size: it.size_bytes })}
+                          >
+                            Preview
+                          </button>
+                        )}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadItem(it)}>
                           Download
-                        </a>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -162,6 +178,7 @@ export default function MeetingFilesModal({ open, meeting, isAdmin, onClose }) {
           )}
         </div>
       </div>
+      <FilePreviewModal source={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }
