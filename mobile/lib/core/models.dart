@@ -49,6 +49,7 @@ class Task {
   String? get dueDate => _s(json['due_date']);
   String? get dueTime => _s(json['due_time']);
   String? get projectId => _s(json['project_id']);
+  String? get parentTaskId => _s(json['parent_task_id']);
   String? get projectName => _s(json['project_name']);
   String? get kanbanColumn => _s(json['kanban_column']);
   double get kanbanOrder => (json['kanban_order'] is num) ? (json['kanban_order'] as num).toDouble() : 0;

@@ -379,8 +379,10 @@ function publicStorageUrl(signedUrl: string, req: Request): string {
     if (!origin) {
       const hostHeader = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").split(",")[0].trim();
       if (hostHeader && !isInternalHost(hostHeader)) {
-        const proto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim()
-          || (/^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(hostHeader) || hostHeader.endsWith(".sslip.io") ? "http" : "https");
+        const plainHost = /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(hostHeader) || hostHeader.endsWith(".sslip.io") || hostHeader.startsWith("localhost");
+        // Behind Cloudflare/Traefik the forwarded proto is often "http" even for https sites,
+        // so a real domain is always served over https.
+        const proto = plainHost ? ((req.headers.get("x-forwarded-proto") || "").split(",")[0].trim() || "http") : "https";
         origin = `${proto}://${hostHeader}`;
       }
     }
@@ -2791,6 +2793,9 @@ async function handleTasks(req: Request, path: string) {
     }
     if (user.role !== "admin" && column === "done" && current.kanban_column !== "in_progress") {
       return json({ error: "Move this task to In Progress before submitting it for review." }, 409);
+    }
+    if (user.role !== "admin" && columnChanged && current.kanban_column === "in_progress" && (column === "to_do" || column === "backlog")) {
+      return json({ error: "A task that is In Progress cannot be moved back to To Do or Backlog." }, 409);
     }
     if (columnChanged && (previousStatus === "completed" || previousStatus === "submitted") && column !== "done") {
       return json({

@@ -67,6 +67,10 @@ class _BoardScreenState extends State<BoardScreen> {
 
   Future<void> _requestMove(DataController data, Task task, String target, bool isAdmin) async {
     if (columnFor(task) == target) return;
+    if (!isAdmin && columnFor(task) == 'in_progress' && (target == 'to_do' || target == 'backlog')) {
+      setState(() => _error = 'A task that is In Progress cannot be moved back to To Do or Backlog.');
+      return;
+    }
     if (!isAdmin && target == 'done') {
       if (columnFor(task) != 'in_progress') {
         setState(() => _error = 'Move this task to In Progress before sending it for review.');
@@ -148,7 +152,7 @@ class _BoardScreenState extends State<BoardScreen> {
         for (final c in kanbanColumns)
           ListTile(
             contentPadding: EdgeInsets.zero,
-            enabled: columnFor(task) != c.id,
+            enabled: columnFor(task) != c.id && (isAdmin || columnFor(task) != 'in_progress' || (c.id != 'to_do' && c.id != 'backlog')),
             title: Text(c.label, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: Text(c.id == 'done' && !isAdmin ? 'Sends the task for admin review' : c.hint),
             trailing: columnFor(task) == c.id ? Icon(Icons.check, color: ctx.cs.primary) : const Icon(Icons.arrow_forward),
@@ -183,8 +187,11 @@ class _BoardScreenState extends State<BoardScreen> {
     final paged = Paged<Task>(inColumn, _page);
 
     final buildTime = DateTime.now();
-    int secondsFor(Task t) => data.sessions.where((s) => s.taskId == t.id && s.userId == me.id).fold<int>(0, (a, s) => a + s.seconds(buildTime));
-    bool runningFor(Task t) => data.sessions.any((s) => s.taskId == t.id && s.userId == me.id && s.endedAt == null);
+    // Admins see everyone's tracked time on a task; employees see their own.
+    bool tracked(Task t, dynamic s) => s.taskId == t.id && (isAdmin || s.userId == me.id);
+    int secondsFor(Task t) => data.sessions.where((s) => tracked(t, s)).fold<int>(0, (a, s) => a + s.seconds(buildTime));
+    bool runningFor(Task t) => data.sessions.any((s) => tracked(t, s) && s.endedAt == null);
+    String runnersFor(Task t) => data.sessions.where((s) => s.taskId == t.id && s.endedAt == null).map((s) => data.nameOf(s.userId)).toSet().join(', ');
 
     return RefreshIndicator(
       onRefresh: () => data.load(),
@@ -235,6 +242,7 @@ class _BoardScreenState extends State<BoardScreen> {
                   names: task.assigneeIds.map(data.nameOf).join(', '),
                   seconds: secondsFor(task),
                   running: runningFor(task),
+                  runners: isAdmin ? runnersFor(task) : '',
                   mine: task.assigneeIds.contains(me.id),
                   expiry: approvedExpiry(task),
                   onExpired: () {
@@ -272,6 +280,7 @@ class _BoardCard extends StatelessWidget {
     required this.expiry,
     required this.onExpired,
     required this.onMove,
+    this.runners = '',
     required this.onTimer,
   });
 
@@ -286,6 +295,7 @@ class _BoardCard extends StatelessWidget {
   final DateTime? expiry;
   final VoidCallback onExpired;
   final VoidCallback onMove;
+  final String runners;
   final VoidCallback onTimer;
 
   @override
@@ -301,6 +311,7 @@ class _BoardCard extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Wrap(spacing: 6, runSpacing: 4, children: [
                 PriorityPill(task.priority),
+                if (task.parentTaskId != null) const Pill('Subtask', tone: Tone.neutral, icon: Icons.subdirectory_arrow_right),
                 if (showKind) Pill(isProject ? 'Project' : 'Individual', tone: isProject ? Tone.primary : Tone.neutral, icon: isProject ? Icons.folder_outlined : Icons.person_outline),
                 if (task.status == 'submitted') const Pill('Under review', tone: Tone.warning),
                 if (const ['rejected', 'changes_requested', 'blocked'].contains(task.status)) StatusPill(task.status),
@@ -332,7 +343,27 @@ class _BoardCard extends StatelessWidget {
             ]),
           ),
         ],
-        if (lane == 'in_progress' && mine) ...[
+        if (lane == 'in_progress' && isAdmin) ...[
+          const Gap(10),
+          Row(children: [
+            Icon(Icons.timer_outlined, size: 16, color: context.cs.primary),
+            const SizedBox(width: 6),
+            LiveSeconds(
+              base: seconds,
+              running: running,
+              builder: (context, s) => Text(clock(s), style: TextStyle(fontWeight: FontWeight.w800, color: context.cs.primary, fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(runners.isEmpty ? 'Not running' : '$runners working',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: TextStyle(fontSize: 12, fontWeight: runners.isEmpty ? FontWeight.w500 : FontWeight.w700, color: runners.isEmpty ? context.app.muted : context.app.success)),
+            ),
+          ]),
+        ],
+        if (lane == 'in_progress' && mine && !isAdmin) ...[
           const Gap(10),
           Row(children: [
             Icon(Icons.timer_outlined, size: 16, color: context.cs.primary),

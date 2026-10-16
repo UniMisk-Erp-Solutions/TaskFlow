@@ -791,6 +791,7 @@ export default function AdminDashboard() {
           projects={projects}
           defaultProjectId={taskFormCtx.projectId}
           parentTaskId={taskFormCtx.parentTaskId}
+          parentOptions={tasks}
           initialAssigneeIds={[]}
           onSubmit={createTask}
           onClose={() => {

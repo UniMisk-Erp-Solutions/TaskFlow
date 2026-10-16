@@ -76,7 +76,7 @@ class AuthController extends ChangeNotifier {
     await _sb.auth.setSession('${s['refresh_token']}');
     session = _sb.auth.currentSession;
     if (!await _loadProfile()) {
-      await _sb.auth.signOut();
+      await _sb.auth.signOut(scope: SignOutScope.local);
       session = null;
       throw Exception('Signed in, but your profile could not be loaded. Check your connection and try again.');
     }
@@ -105,7 +105,7 @@ class AuthController extends ChangeNotifier {
     profile = null;
     session = null;
     notifyListeners();
-    await _sb.auth.signOut();
+    await _sb.auth.signOut(scope: SignOutScope.local);
   }
 
   @override

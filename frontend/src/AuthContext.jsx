@@ -166,7 +166,7 @@ export function AuthProvider({ children }) {
         const profileOk = await fetchProfile(data.session);
         if (!profileOk) {
           setApiAccessToken(null);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           setUser(null);
           setProfile(null);
           window.cachedSession = null;
@@ -216,7 +216,7 @@ export function AuthProvider({ children }) {
         const profileOk = await fetchProfile(data.session);
         if (!profileOk) {
           setApiAccessToken(null);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           setUser(null);
           setProfile(null);
           window.cachedSession = null;
@@ -255,7 +255,7 @@ export function AuthProvider({ children }) {
     hydratedUserIdRef.current = null;
     setApiAccessToken(null);
     window.cachedSession = null;
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     setProfile(null);
   }
 

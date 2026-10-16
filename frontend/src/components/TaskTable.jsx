@@ -158,7 +158,7 @@ export default function TaskTable({
                   title={onOpenTask ? 'View details' : undefined}
                 >
                   <div style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: 15, marginBottom: task.description ? 2 : 0 }}>
-                    {task.title}
+                    {task.title}{task.parent_task_id && <span className="subtask-badge" title="Subtask of another task">Subtask</span>}
                   </div>
                   {task.description && (
                     <div style={{ fontSize: 13, color: 'var(--tf-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>

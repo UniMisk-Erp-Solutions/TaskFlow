@@ -58,13 +58,17 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, timerNow, onStartTimer, onPauseTimer, showKind, isProjectTask }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, isAdmin, timerNow, onStartTimer, onPauseTimer, showKind, isProjectTask }) {
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
   const activeSession = timerSessions.find((session) => session.task_id === task.id && session.user_id === currentUserId && !session.ended_at);
   const ownTaskSeconds = timerSessions.filter((session) => session.task_id === task.id && session.user_id === currentUserId)
     .reduce((total, session) => total + elapsedSecondsForSession(session, timerNow), 0);
+  // Admins don't run timers: they see everyone's tracked time on the card and who is running now.
+  const taskSessions = timerSessions.filter((session) => session.task_id === task.id);
+  const teamSeconds = taskSessions.reduce((total, session) => total + elapsedSecondsForSession(session, timerNow), 0);
+  const runningNames = [...new Set(taskSessions.filter((session) => !session.ended_at).map((session) => profileById?.[session.user_id] || 'Someone'))];
 
   return (
     <article
@@ -109,6 +113,9 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
             <span>{isProjectTask ? 'Project' : 'Individual'}</span>
           </span>
         )}
+        {task.parent_task_id && (
+          <span className="subtask-badge" title="This task is a subtask of another task" aria-label="Subtask">Subtask</span>
+        )}
         {!locked && <GripVertical
           size={15}
           aria-hidden="true"
@@ -143,6 +150,14 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
         </div>
       )}
       {lane === 'in_progress' && (
+        isAdmin ? (
+          <div className="kanban-task-timer" title={runningNames.length ? `Running now: ${runningNames.join(', ')}` : 'No timer running'}>
+            <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(teamSeconds)}</span>
+            <span className={`kanban-timer-state${runningNames.length ? ' is-running' : ''}`}>
+              {runningNames.length ? `${runningNames.join(', ')} working` : 'Not running'}
+            </span>
+          </div>
+        ) : (
         <div className="kanban-task-timer">
           <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(ownTaskSeconds)}</span>
           <button type="button" className="kanban-task-timer-button" onClick={(event) => {
@@ -152,6 +167,7 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
             {activeSession ? 'Pause' : 'Start'}
           </button>
         </div>
+        )
       )}
 
     </article>
@@ -339,6 +355,15 @@ export default function KanbanBoard({
     if (!taskId || !columnId) return;
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
+
+    if (!isAdmin && kanbanColumnForTask(task) === 'in_progress' && (columnId === 'to_do' || columnId === 'backlog')) {
+      setError('A task that is In Progress cannot be moved back to To Do or Backlog.');
+      setDraggedTaskId(null);
+      setDragPreview(null);
+      setDropColumn(null);
+      setDropPosition(null);
+      return;
+    }
 
     if (!isAdmin && columnId === 'done') {
       if (kanbanColumnForTask(task) !== 'in_progress') {
@@ -591,6 +616,7 @@ export default function KanbanBoard({
                       completionTimeLeft={task.status === 'completed' ? approvedTaskTimeLeft(task, clockNow) : null}
                       timerSessions={timerSessionsByTask.get(task.id) || []}
                       currentUserId={currentUserId}
+                      isAdmin={isAdmin}
                       timerNow={clockNow}
                       onStartTimer={onStartTimer}
                       onPauseTimer={onPauseTimer}

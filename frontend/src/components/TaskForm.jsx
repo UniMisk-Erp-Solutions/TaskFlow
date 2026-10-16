@@ -22,6 +22,7 @@ export default function TaskForm({
   projects = [],
   defaultProjectId = '',
   parentTaskId = '',
+  parentOptions = [],
   initialAssigneeIds = [],
 }) {
   const [form, setForm] = useState({
@@ -32,6 +33,9 @@ export default function TaskForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [files, setFiles] = useState([]);
+  const [parentId, setParentId] = useState(parentTaskId || '');
+  // Only top-level, still-open tasks can take subtasks (no nesting, matches the API rule).
+  const parentChoices = parentOptions.filter((t) => !t.parent_task_id && t.status !== 'completed');
 
   const set = (k, v) => setForm((ff) => ({ ...ff, [k]: v }));
 
@@ -55,7 +59,7 @@ export default function TaskForm({
         due_time: form.due_date ? (form.due_time || null) : null,
         project_id: form.project_id || null,
         assignee_ids: form.assignee_ids,
-        parent_task_id: parentTaskId || null,
+        parent_task_id: parentId || null,
       });
       // Upload staged files to the new task (needs its id).
       if (files.length && created?.id) {
@@ -79,14 +83,14 @@ export default function TaskForm({
     <div className="overlay" role="presentation">
       <div className="modal" role="dialog" aria-modal="true">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2>{parentTaskId ? 'New subtask' : 'New Task'}</h2>
+          <h2>{parentId ? 'New subtask' : 'New Task'}</h2>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-ink-muted-48)', display: 'flex', padding: 4 }}>
             <X size={16} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {parentTaskId && (
+          {parentId && (
             <div style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.5 }}>
               This task will be linked under the selected parent task.
             </div>
@@ -96,6 +100,33 @@ export default function TaskForm({
             <label className="form-label">Title</label>
             <input className="input" placeholder="e.g. Prepare Q3 report" value={form.title} onChange={(e) => set('title', e.target.value)} />
           </div>
+
+          {(parentChoices.length > 0 || parentId) && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="task-parent">Subtask of (optional)</label>
+              <select
+                id="task-parent"
+                className="select"
+                value={parentId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setParentId(next);
+                  const parent = parentChoices.find((t) => t.id === next);
+                  if (parent) {
+                    setForm((ff) => ({
+                      ...ff,
+                      project_id: ff.project_id || parent.project_id || '',
+                      assignee_ids: ff.assignee_ids?.length ? ff.assignee_ids : (parent.assignee_ids || []),
+                    }));
+                  }
+                }}
+              >
+                <option value="">Not a subtask — standalone task</option>
+                {parentChoices.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+                {parentId && !parentChoices.some((t) => t.id === parentId) && <option value={parentId}>Selected parent task</option>}
+              </select>
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Description</label>
