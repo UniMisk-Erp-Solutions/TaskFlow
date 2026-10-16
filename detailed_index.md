@@ -260,3 +260,9 @@ Root-cause analysis and fixes for four reported problems: files not downloading/
 **Document:** [docs/kanban-rules-subtasks-sessions.md](docs/kanban-rules-subtasks-sessions.md)
 
 Five fixes from 16/10/2026: employees cannot move an In Progress task back to To Do/Backlog (web, Edge API, Express and Flutter), admin Kanban cards now show the combined tracked time and who is running instead of 0, a "Subtask of" parent picker on the New Task form with a Subtask badge across tables, cards and the detail modal, multiple simultaneous logins per user (sign-out now uses local scope instead of global, which revoked every session), and https storage URLs behind Cloudflare so file downloads work. Includes Vitest coverage and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/local-ai-two-core.md](docs/local-ai-two-core.md)
+
+Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGUF plus a FastAPI planner using multilingual-e5-small ONNX) pinned to one shared two-logical-CPU cpuset, private network, hardened containers, model fetch script with checksum lock. The Edge Function assistant now prefers the local model when LOCAL_AI_URL is set, answers greetings via the local router without the LLM, and falls back to OpenRouter. Records the audit, setup commands, post-deploy checks and the fact that nothing has been deployed or benchmarked yet.
