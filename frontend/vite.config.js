@@ -20,6 +20,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, '.'),
     },
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: false,
+  },
   build: {
     rollupOptions: {
       output: {

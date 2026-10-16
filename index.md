@@ -35,3 +35,4 @@
 - [Fix: Files and Attachments Would Not Open or Download](docs/signed-storage-url-fix.md) — Documents the internal-hostname signed URL bug that broke opening and downloading files, and the server and frontend fix.
 - [Office LAN Fast Path (Plan and Findings)](docs/office-lan-fast-path-plan.md) — Documents the plan and server findings for letting office users reach the backend over the 1 Gbps LAN instead of Cloudflare, using split DNS.
 - [Production Data Reset (2026-10-16)](docs/production-data-reset-2026-10-16.md) — Documents the pre-launch cleanup that removed all test data and files while keeping users and organizations, with backups and rollback.
+- [Files Preview/Download, 40-Record Pagination, Task Edit Fix and Subtasks](docs/files-preview-pagination-edit-subtasks.md) — Documents the four fixes from 16/10/2026: working file download and in-app preview, 40 records per page, the task edit blink bug, and subtask adding.

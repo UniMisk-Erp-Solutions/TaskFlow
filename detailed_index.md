@@ -244,3 +244,13 @@ Describes the Flutter mobile client in the mobile/ folder: the technology stack 
 **Document:** [docs/production-data-reset-2026-10-16.md](docs/production-data-reset-2026-10-16.md)
 
 Explains which data was kept (users, organizations, settings, notification preferences) and removed (all work, chat, whiteboard, file and log data plus stored files) before production launch, how it was done safely with backups and an abort-on-change transaction, and how to roll back.
+
+---
+
+**Update note (2026-10-16):** [docs/mobile-android-app.md](docs/mobile-android-app.md) now also covers the mobile performance design (isolated tickers, change-detecting refresh, optimistic controls, skeleton loaders), the 14-test suite, the launcher icon, and release signing with a private keystore.
+
+---
+
+**Document:** [docs/files-preview-pagination-edit-subtasks.md](docs/files-preview-pagination-edit-subtasks.md)
+
+Root-cause analysis and fixes for four reported problems: files not downloading/previewing (pop-up blocking and internal storage URLs, fixed with an authenticated streaming endpoint, a blob download helper and an in-app preview modal used by Files, task attachments and meeting files), pagination restored to 40 records per page (also on the Users table, with scroll-to-list), the task edit screen that blinked and closed (an unstable callback re-running the load effect in the task and meeting detail modals), and subtask adding (always-visible subtasks panel with quick add for admins and assignees, refresh after creation, mobile parity). It also records the Vitest regression tests and the Edge Function redeploy.

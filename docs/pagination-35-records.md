@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Long lists no longer need endless scrolling: every record list is split into pages of **5 records** (changed from 35 on 2026-10-15; the size lives in one constant, `PAGE_SIZE` in `Pagination.jsx`).
+Long lists no longer need endless scrolling: every record list is split into pages of **5 records** (changed from 40 on 2026-10-15; the size lives in one constant, `PAGE_SIZE` in `Pagination.jsx`).
 
 ## Where it applies
 

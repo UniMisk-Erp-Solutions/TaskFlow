@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { toPublicStorageUrl } from '../lib/storageUrl';
+import { downloadFromApi, fileErrorMessage, previewKind } from '../lib/fileAccess';
+import FilePreviewModal from './FilePreviewModal';
 import {
   ChevronRight, Download, File as FileIcon, FileImage, FileText, FileArchive, FileVideo, FileAudio, FolderPlus,
-  Folder, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History,
+  Folder, Eye, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History,
 } from 'lucide-react';
 import api from '../api';
 import supabase from '../supabaseClient';
@@ -102,6 +103,7 @@ export default function FileExplorer() {
   const [editVisibility, setEditVisibility] = useState('public');
   const [savingEdit, setSavingEdit] = useState(false);
   const [properties, setProperties] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [view, setView] = useState('files'); // files | activity
   const [activity, setActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -153,12 +155,28 @@ export default function FileExplorer() {
 
   const paging = usePagination(items, { resetKey: `${folderId}|${filter}|${query.trim()}` });
 
-  async function openFile(item, download = false) {
+  // Click a file: preview it in the app when the type allows it, otherwise download it.
+  function openFile(item) {
+    if (previewKind(item.content_type, item.name, item.size_bytes)) {
+      setPreview({ path: `/drive/files/${item.id}/content`, name: item.name, contentType: item.content_type, size: item.size_bytes });
+    } else {
+      void downloadFile(item);
+    }
+  }
+
+  function previewOnly(item) {
+    setPreview({ path: `/drive/files/${item.id}/content`, name: item.name, contentType: item.content_type, size: item.size_bytes });
+  }
+
+  async function downloadFile(item) {
+    setError('');
+    setBusy(`Downloading ${item.name}…`);
     try {
-      const { data: signed } = await api.get(`/drive/files/${item.id}/url`, { params: download ? { download: 1 } : {} });
-      window.open(toPublicStorageUrl(signed.url), '_blank', 'noopener');
+      await downloadFromApi(`/drive/files/${item.id}/content`, item.name, { download: 1 });
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not open the file.');
+      setError(await fileErrorMessage(err, 'Could not download the file.'));
+    } finally {
+      setBusy('');
     }
   }
 
@@ -440,7 +458,8 @@ export default function FileExplorer() {
                 <span role="cell" className="fx-col-actions">
                   {(item.is_owner || isAdmin) && <button type="button" className="fx-icon-btn" onClick={() => showHistory(item)} aria-label={`History of ${item.name}`} title="History"><History size={15} /></button>}
                   {isAdmin && item.details && <button type="button" className="fx-icon-btn" onClick={() => setProperties(item)} aria-label={`Properties of ${item.name}`} title="Properties"><Info size={15} /></button>}
-                  {item.kind === 'file' && <button type="button" className="fx-icon-btn" onClick={() => openFile(item, true)} aria-label={`Download ${item.name}`} title="Download"><Download size={15} /></button>}
+                  {item.kind === 'file' && previewKind(item.content_type, item.name, item.size_bytes) && <button type="button" className="fx-icon-btn" onClick={() => previewOnly(item)} aria-label={`Preview ${item.name}`} title="Preview"><Eye size={15} /></button>}
+                  {item.kind === 'file' && <button type="button" className="fx-icon-btn" onClick={() => downloadFile(item)} aria-label={`Download ${item.name}`} title="Download"><Download size={15} /></button>}
                   {item.is_owner && <button type="button" className="fx-icon-btn" onClick={() => openEdit(item)} aria-label={`Edit ${item.name}`} title="Edit name and access"><Pencil size={15} /></button>}
                   {(item.is_owner || (profile?.role === 'admin' && item.visibility === 'public')) && (
                     <button type="button" className="fx-icon-btn is-danger" onClick={() => removeItem(item)} aria-label={`Delete ${item.name}`} title="Delete"><Trash2 size={15} /></button>
@@ -457,6 +476,7 @@ export default function FileExplorer() {
           )}
         </div>
       )}
+      <FilePreviewModal source={preview} onClose={() => setPreview(null)} />
       {properties && (
         <div className="overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setProperties(null); }}>
           <div className="modal fx-props" role="dialog" aria-modal="true" aria-label={`Properties of ${properties.name}`}>

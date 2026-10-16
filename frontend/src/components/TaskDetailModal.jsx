@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { X, Pencil } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Pencil, Plus } from 'lucide-react';
 import api from '../api';
 import supabase from '../supabaseClient';
 import MultiEmployeeSelect from './MultiEmployeeSelect';
@@ -87,8 +87,17 @@ export default function TaskDetailModal({
   getTaskHistory,
   onNavigateTask,
   onAddSubtask,
+  onTasksChanged,
+  refreshSignal,
 }) {
   const [record, setRecord] = useState(null);
+  const [subtaskTitle, setSubtaskTitle] = useState('');
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  // The parent re-renders constantly (live refresh, timers); keep the latest callbacks in refs so
+  // they never retrigger the load effect below (that used to kick people out of edit mode).
+  const historyFnRef = useRef(getTaskHistory);
+  historyFnRef.current = getTaskHistory;
+  const editModeRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -124,14 +133,15 @@ export default function TaskDetailModal({
   }, []);
 
   const loadHistory = useCallback(async (taskId) => {
-    if (!getTaskHistory || !taskId) return;
+    const fn = historyFnRef.current;
+    if (!fn || !taskId) return;
     try {
-      const rows = await getTaskHistory(taskId);
+      const rows = await fn(taskId);
       setHistory(Array.isArray(rows) ? rows : []);
     } catch {
       setHistory([]);
     }
-  }, [getTaskHistory]);
+  }, []);
 
   useEffect(() => {
     if (!open || !task?.id) {
@@ -191,6 +201,20 @@ export default function TaskDetailModal({
     };
   }, [open, task?.id]);
 
+  useEffect(() => { editModeRef.current = editMode; }, [editMode]);
+
+  // Quietly refresh the record (e.g. after a subtask was added elsewhere) without touching edit mode.
+  useEffect(() => {
+    if (!open || !task?.id || refreshSignal === undefined) return undefined;
+    let cancelled = false;
+    api.get(`/tasks/${task.id}`).then(({ data }) => {
+      if (cancelled) return;
+      setRecord(data);
+      if (!editModeRef.current) hydrateDraft(data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, task?.id, refreshSignal, hydrateDraft]);
+
   if (!open || !task?.id) return null;
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
@@ -202,14 +226,45 @@ export default function TaskDetailModal({
     && (status === 'pending' || status === 'in_progress' || status === 'rejected' || status === 'changes_requested' || status === 'blocked');
   const canReview = isAdmin && !!approveTask && !!requestTaskChanges && status === 'submitted';
   const canReopen = isAdmin && !!requestTaskChanges && (status === 'completed' || status === 'changes_requested');
+  const canAddSubtask = !!record && (isAdmin || isMyTask);
 
   async function refetchRecord() {
     try {
       const { data } = await api.get(`/tasks/${task.id}`);
       setRecord(data);
-      hydrateDraft(data);
+      if (!editModeRef.current) hydrateDraft(data);
     } catch {
       /* keep existing */
+    }
+  }
+
+  async function handleQuickSubtask(e) {
+    e.preventDefault();
+    const title = subtaskTitle.trim();
+    if (!title || !record) return;
+    setAddingSubtask(true);
+    setError('');
+    try {
+      const parentAssignees = record.assignee_ids?.length ? record.assignee_ids : record.assignee_id ? [record.assignee_id] : [];
+      // Admins pass the parent's team on; employees add subtasks for themselves.
+      const assignees = isAdmin && parentAssignees.length ? parentAssignees : [profile?.id].filter(Boolean);
+      await api.post('/tasks', {
+        title,
+        description: '',
+        assignee_ids: assignees,
+        priority: record.priority || 'medium',
+        project_id: record.project_id || null,
+        parent_task_id: record.id,
+        due_date: null,
+        due_time: null,
+      });
+      setSubtaskTitle('');
+      await refetchRecord();
+      onTasksChanged?.();
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Could not add the subtask.');
+    } finally {
+      setAddingSubtask(false);
     }
   }
 
@@ -390,23 +445,55 @@ export default function TaskDetailModal({
               </div>
             )}
 
-            {subtasks.length > 0 && (
+            {(subtasks.length > 0 || canAddSubtask) && (
               <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Subtasks</div>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: 'var(--tf-text)' }}>
-                  {subtasks.map((s) => (
-                    <li key={s.id} style={{ marginBottom: 6 }}>
-                      {onNavigateTask ? (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ padding: 0, height: 'auto', fontSize: 13 }} onClick={() => onNavigateTask(s)}>
-                          {s.title}
-                        </button>
-                      ) : (
-                        s.title
-                      )}
-                      <span style={{ color: 'var(--tf-muted)', marginLeft: 8 }}>{s.status}</span>
-                    </li>
-                  ))}
-                </ul>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.4px' }}>
+                  Subtasks {subtasks.length > 0 ? `(${subtasks.filter((x) => x.status === 'completed').length}/${subtasks.length} done)` : ''}
+                </div>
+                {subtasks.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--tf-muted)', marginBottom: 8 }}>No subtasks yet.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                    {subtasks.map((st) => (
+                      <button
+                        type="button"
+                        key={st.id}
+                        onClick={() => onNavigateTask && onNavigateTask(st)}
+                        disabled={!onNavigateTask}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', width: '100%',
+                          padding: '8px 10px', border: '1px solid var(--tf-border)', borderRadius: 8,
+                          background: 'var(--tf-pearl)', cursor: onNavigateTask ? 'pointer' : 'default', color: 'var(--tf-text)', fontFamily: 'inherit',
+                        }}
+                      >
+                        <span style={{ flex: 1, fontSize: 13, textDecoration: st.status === 'completed' ? 'line-through' : 'none', opacity: st.status === 'completed' ? 0.7 : 1 }}>{st.title}</span>
+                        {st.due_date && <span style={{ fontSize: 11, color: 'var(--tf-muted)' }}>{fmtDate(st.due_date)}</span>}
+                        <StatusBadge status={st.status} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {canAddSubtask && (
+                  <form onSubmit={handleQuickSubtask} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      className="input"
+                      style={{ flex: 1, minWidth: 160 }}
+                      value={subtaskTitle}
+                      onChange={(e) => setSubtaskTitle(e.target.value)}
+                      placeholder="Add a subtask and press Enter"
+                      aria-label="New subtask title"
+                      maxLength={200}
+                    />
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={addingSubtask || !subtaskTitle.trim()}>
+                      {addingSubtask ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><Plus size={14} /> Add</>}
+                    </button>
+                    {onAddSubtask && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => onAddSubtask(record.id, { projectId: record.project_id || '' })}>
+                        With details…
+                      </button>
+                    )}
+                  </form>
+                )}
               </div>
             )}
 

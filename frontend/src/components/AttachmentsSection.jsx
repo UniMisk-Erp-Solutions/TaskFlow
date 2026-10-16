@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { toPublicStorageUrl } from '../lib/storageUrl';
-import { Paperclip, FileAudio, FileText, File as FileIcon, Download, Trash2, Upload } from 'lucide-react';
+import { downloadFromApi, fileErrorMessage, previewKind } from '../lib/fileAccess';
+import FilePreviewModal from './FilePreviewModal';
+import { Paperclip, FileAudio, FileText, File as FileIcon, Download, Eye, Trash2, Upload } from 'lucide-react';
 import api from '../api';
-import { getApiAccessToken } from '../sessionAccess';
 import { formatDateTime } from '../lib/dateFormat';
 
 /**
@@ -43,6 +43,7 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
+  const [preview, setPreview] = useState(null);
 
   const base = kind === 'task' ? `/tasks/${itemId}/attachments` : `/meetings/${itemId}/attachments`;
   const downloadBase = kind === 'task' ? '/tasks/attachments' : '/meetings/attachments';
@@ -83,29 +84,23 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
     }
   }
 
-  async function handleDownload(attId) {
-    const url = `${api.defaults.baseURL}${downloadBase}/${attId}/download`;
+  async function handleDownload(att) {
+    setError('');
     try {
-      // The endpoint requires auth and 302-redirects to a short-lived signed
-      // Storage URL. Fetch it with the Bearer token, follow the redirect, then
-      // open the final (public, tokenised) URL in a new tab.
-      const token = getApiAccessToken();
-      const res = await fetch(url, {
-        headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const body = await res.json();
-        if (body?.url) window.open(toPublicStorageUrl(body.url), '_blank', 'noopener');
-        else setError('Could not open the file.');
-      } else if (res.ok && res.url) {
-        window.open(toPublicStorageUrl(res.url), '_blank', 'noopener');
-      } else {
-        setError('Could not open the file.');
-      }
-    } catch (e) {
-      setError(e.message || 'Download failed');
+      await downloadFromApi(`${downloadBase}/${att.id}/download`, att.original_name || 'file', { stream: 'download' });
+    } catch (err) {
+      setError(await fileErrorMessage(err, 'Download failed.'));
     }
+  }
+
+  function handlePreview(att) {
+    setPreview({
+      path: `${downloadBase}/${att.id}/download`,
+      params: { stream: 'inline' },
+      name: att.original_name || 'file',
+      contentType: att.content_type,
+      size: att.size_bytes,
+    });
   }
 
   return (
@@ -157,10 +152,22 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
               </span>
               <span style={{ fontSize: 11, color: 'var(--tf-muted)' }}>{fmtSize(a.size_bytes)}</span>
               <span style={{ fontSize: 11, color: 'var(--tf-muted)' }}>{formatDateTime(a.created_at)}</span>
+              {previewKind(a.content_type, a.original_name, a.size_bytes) && (
+                <button
+                  type="button"
+                  onClick={() => handlePreview(a)}
+                  title="Preview"
+                  aria-label={`Preview ${a.original_name || 'file'}`}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tf-muted)', display: 'flex', padding: 4 }}
+                >
+                  <Eye size={14} />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => handleDownload(a.id)}
+                onClick={() => handleDownload(a)}
                 title="Download"
+                aria-label={`Download ${a.original_name || 'file'}`}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tf-muted)', display: 'flex', padding: 4 }}
               >
                 <Download size={14} />
@@ -171,6 +178,7 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
       )}
 
       {error && <div style={{ fontSize: 12, color: 'var(--status-danger)', marginTop: 6 }}>{error}</div>}
+      <FilePreviewModal source={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

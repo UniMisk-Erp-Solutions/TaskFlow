@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const PAGE_SIZE = 5;
+export const PAGE_SIZE = 40;
 
 /** Client-side paging. Resets to page 1 when `resetKey` changes and clamps when the list shrinks. */
 export function usePagination(items, { pageSize = PAGE_SIZE, resetKey = '' } = {}) {
@@ -32,11 +32,20 @@ function windowedPages(page, pageCount) {
 }
 
 export default function Pagination({ page, pageCount, total, pageSize = PAGE_SIZE, onPage }) {
+  const navRef = useRef(null);
+  const firstRender = useRef(true);
+
+  // After the user flips pages, bring the top of the list back into view.
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    navRef.current?.parentElement?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [page]);
+
   if (total <= pageSize) return null;
   const from = (page - 1) * pageSize + 1;
   const to = Math.min(total, page * pageSize);
   return (
-    <nav className="pager" aria-label="Pagination">
+    <nav className="pager" aria-label="Pagination" ref={navRef}>
       <span className="pager-info">Showing {from}–{to} of {total}</span>
       <div className="pager-controls">
         <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page"><ChevronLeft size={15} /></button>

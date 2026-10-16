@@ -3,6 +3,7 @@ import { Plus, RefreshCw, Trash2, KeyRound, Pencil } from 'lucide-react';
 import api from '../api';
 import { formatDate } from '../lib/dateFormat';
 import JoinRequests from './JoinRequests';
+import Pagination, { usePagination } from './Pagination';
 
 // Country dial codes for the mobile-number picker (India first / default).
 const COUNTRY_CODES = [
@@ -68,6 +69,7 @@ function PhoneInput({ code, setCode, number, setNumber }) {
 }
 
 function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
+  const paging = usePagination(users);
   if (!users.length) {
     return (
       <div className="empty">
@@ -90,7 +92,7 @@ function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
           </tr>
         </thead>
         <tbody>
-          {users.map((u) => (
+          {paging.pageItems.map((u) => (
             <tr key={u.id} style={{ borderBottom: '1px solid var(--tf-border)' }}>
               <td style={{ padding: '9px 14px', fontSize: 13, color: 'var(--tf-text)' }}>
                 {u.full_name || '—'}
@@ -143,6 +145,7 @@ function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
           ))}
         </tbody>
       </table>
+      <Pagination page={paging.page} pageCount={paging.pageCount} total={paging.total} pageSize={paging.pageSize} onPage={paging.setPage} />
     </div>
   );
 }
