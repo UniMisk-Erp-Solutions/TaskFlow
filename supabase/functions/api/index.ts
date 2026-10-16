@@ -2135,7 +2135,7 @@ async function handleAIQuery(req: Request): Promise<Response> {
 async function runAiAssistant(user: AppUser & { email?: string }, question: string): Promise<string> {
   const key = await openrouterKey();
   const model = await openrouterModel();
-  // Self-hosted AI (services/taskflow-ai): preferred when LOCAL_AI_URL is set; OpenRouter is the fallback.
+  // Self-hosted AI (services/taskflow-ai): the fallback when OpenRouter's configured model fails.
   // Settings come from env or public.app_settings ('local_ai_url' / 'local_ai_token'), like the OpenRouter key.
   const localUrl = (Deno.env.get("LOCAL_AI_URL") || (await getAppSetting("local_ai_url")) || "").replace(/\/+$/, "");
   const localToken = Deno.env.get("LOCAL_AI_TOKEN") || (await getAppSetting("local_ai_token")) || "";
@@ -2245,8 +2245,9 @@ User: ${question}`, max_tokens: 400 }),
   // Free models get rate-limited often, so try the configured model and then several other free ones.
   const fallbackModels = ["google/gemma-4-31b-it:free", "thinkingmachines/inkling-small:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"]
     .filter((m) => m !== model);
-  let raw: string | null = localUrl ? await callLocal(45000) : null;
-  if (!raw && key && model) raw = await callModel(model, 15000);
+  // Order: OpenRouter (configured model) first, then the self-hosted local model, then other free models.
+  let raw: string | null = key && model ? await callModel(model, 15000) : null;
+  if (!raw && localUrl) raw = await callLocal(45000);
   for (const m of fallbackModels) {
     if (raw || !key) break;
     raw = await callModel(m, 9000);

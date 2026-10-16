@@ -19,7 +19,7 @@ services/taskflow-ai/
 ```
 - **Embeddings:** `intfloat/multilingual-e5-small`, ONNX Runtime CPU, 1 thread, mean pooling, normalised; intent centroids built from the example phrases in `tools.py` (English plus Hindi/Gujarati in Roman script).
 - **LLM:** `Qwen/Qwen3-0.6B` GGUF (Q8_0) through llama.cpp `llama-server`, thinking disabled, single generation slot, 4096 context, max 400 output tokens.
-- **Gateway change:** when `LOCAL_AI_URL` is set the Edge Function (1) calls `/v1/route` and answers greetings/thanks itself without the model, (2) sends the existing prompt to `/v1/chat` (45 s limit), (3) falls back to the OpenRouter chain only if the local model fails and a key exists. If `LOCAL_AI_URL` is unset nothing changes.
+- **Gateway change:** when `LOCAL_AI_URL` is set the Edge Function (1) calls `/v1/route` and answers greetings/thanks itself without the model, (2) the model order is OpenRouter (configured model) first, then the local model, then the other free OpenRouter models. If `LOCAL_AI_URL` is unset nothing changes.
 - The planner has no database access and no SQL. The model never executes anything.
 
 ## CPU budget: 2 logical CPUs total
