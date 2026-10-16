@@ -35,6 +35,15 @@ services:
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /sw-push.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
     routes:
       - type: redirect
         source: /*

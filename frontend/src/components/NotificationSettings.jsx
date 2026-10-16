@@ -83,7 +83,7 @@ export default function NotificationSettings() {
       if (!key) throw new Error('Push is not configured on the server.');
       let reg = await navigator.serviceWorker.getRegistration('/');
       if (!reg) {
-        await navigator.serviceWorker.register('/sw-push.js', { scope: '/' });
+        await navigator.serviceWorker.register('/sw.js', { scope: '/' });
         reg = await navigator.serviceWorker.ready;
       } else {
         await reg.update();
