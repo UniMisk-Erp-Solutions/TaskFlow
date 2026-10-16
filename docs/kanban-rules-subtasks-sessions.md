@@ -31,3 +31,6 @@ Date: 16/10/2026. Applies to the web app, the Supabase Edge API, the Express bac
 
 ## Tests
 - `TaskForm.test.jsx` covers the parent picker; existing detail-modal and file tests still pass. `flutter analyze` shows no new issues.
+
+## 7. Dead-end "workspace profile could not be loaded" screen
+- If `/auth/me` returns 401 (session revoked/expired, e.g. signed out by the old global sign-out in another browser), the app now tries one token refresh and otherwise clears only the local session and returns to the login page instead of showing that error screen.
