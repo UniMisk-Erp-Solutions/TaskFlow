@@ -2136,8 +2136,9 @@ async function runAiAssistant(user: AppUser & { email?: string }, question: stri
   const key = await openrouterKey();
   const model = await openrouterModel();
   // Self-hosted AI (services/taskflow-ai): preferred when LOCAL_AI_URL is set; OpenRouter is the fallback.
-  const localUrl = (Deno.env.get("LOCAL_AI_URL") || "").replace(/\/+$/, "");
-  const localToken = Deno.env.get("LOCAL_AI_TOKEN") || "";
+  // Settings come from env or public.app_settings ('local_ai_url' / 'local_ai_token'), like the OpenRouter key.
+  const localUrl = (Deno.env.get("LOCAL_AI_URL") || (await getAppSetting("local_ai_url")) || "").replace(/\/+$/, "");
+  const localToken = Deno.env.get("LOCAL_AI_TOKEN") || (await getAppSetting("local_ai_token")) || "";
   if (!localUrl && (!key || !model)) return "⚠️ The AI assistant isn't configured yet.";
 
   // Cheap local router: greetings/thanks are answered without spending the model's CPU.

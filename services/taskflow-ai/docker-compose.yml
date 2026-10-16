@@ -2,11 +2,13 @@
 # Both containers share ONE cpuset (AI_CPUSET, exactly 2 logical CPU ids); the quotas below add up to 2.0.
 # Nothing is published on the host: attach the external network `taskflow_ai` to the Supabase
 # edge-functions container so only it can reach the planner.
+# (The planner joins TaskFlow's Supabase network under the alias `taskflow-ai-planner`.)
 name: taskflow-ai
 
 services:
   llm:
-    image: ${LLAMA_IMAGE:?pin a llama.cpp server image digest in .env}
+    build: ./llm
+    image: taskflow-ai-llm:local
     command:
       - --model=/models/${LLM_GGUF:-Qwen3-0.6B-Q8_0.gguf}
       - --alias=qwen3-0.6b
@@ -32,7 +34,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -60,7 +62,10 @@ services:
     pids_limit: 64
     volumes:
       - ${MODELS_DIR:-./models}/e5:/models/e5:ro
-    networks: [ai_internal, taskflow_ai]
+    networks:
+      ai_internal: {}
+      taskflow_net:
+        aliases: [taskflow-ai-planner]
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
@@ -73,5 +78,7 @@ services:
 networks:
   ai_internal:
     internal: true
-  taskflow_ai:
+  # TaskFlow's own Supabase network, so only its edge function can reach the planner by name.
+  taskflow_net:
     external: true
+    name: ${TASKFLOW_NET:?set TASKFLOW_NET}
