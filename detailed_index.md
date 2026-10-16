@@ -254,3 +254,9 @@ Explains which data was kept (users, organizations, settings, notification prefe
 **Document:** [docs/files-preview-pagination-edit-subtasks.md](docs/files-preview-pagination-edit-subtasks.md)
 
 Root-cause analysis and fixes for four reported problems: files not downloading/previewing (pop-up blocking and internal storage URLs, fixed with an authenticated streaming endpoint, a blob download helper and an in-app preview modal used by Files, task attachments and meeting files), pagination restored to 40 records per page (also on the Users table, with scroll-to-list), the task edit screen that blinked and closed (an unstable callback re-running the load effect in the task and meeting detail modals), and subtask adding (always-visible subtasks panel with quick add for admins and assignees, refresh after creation, mobile parity). It also records the Vitest regression tests and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/kanban-rules-subtasks-sessions.md](docs/kanban-rules-subtasks-sessions.md)
+
+Five fixes from 16/10/2026: employees cannot move an In Progress task back to To Do/Backlog (web, Edge API, Express and Flutter), admin Kanban cards now show the combined tracked time and who is running instead of 0, a "Subtask of" parent picker on the New Task form with a Subtask badge across tables, cards and the detail modal, multiple simultaneous logins per user (sign-out now uses local scope instead of global, which revoked every session), and https storage URLs behind Cloudflare so file downloads work. Includes Vitest coverage and the Edge Function redeploy.

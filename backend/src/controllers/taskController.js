@@ -627,6 +627,9 @@ exports.updateBoardPosition = async (req, res) => {
     if (req.user.role !== "admin" && kanban_column === "done" && current.kanban_column !== "in_progress") {
       return res.status(409).json({ error: "Move this task to In Progress before submitting it for review." });
     }
+    if (req.user.role !== "admin" && columnChanged && current.kanban_column === "in_progress" && ["to_do", "backlog"].includes(kanban_column)) {
+      return res.status(409).json({ error: "A task that is In Progress cannot be moved back to To Do or Backlog." });
+    }
     if (columnChanged && ["completed", "submitted"].includes(previousStatus) && kanban_column !== "done") {
       return res.status(409).json({
         error: previousStatus === "submitted"

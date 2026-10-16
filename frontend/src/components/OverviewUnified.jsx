@@ -118,6 +118,7 @@ export default function OverviewUnified({
     const tRows = tasks.map((t) => ({
       kind: 'task',
       id: t.id,
+      parent_task_id: t.parent_task_id || null,
       title: t.title,
       description: t.description,
       priority: t.priority,
@@ -256,7 +257,7 @@ export default function OverviewUnified({
                 onClick={() => (onOpenTaskDetail || onOpenMeetingDetail) && openRowDetail(row)}
                 title={onOpenTaskDetail || onOpenMeetingDetail ? 'View details' : undefined}
               >
-                <div style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: 15 }}>{row.title}</div>
+                <div style={{ fontWeight: 600, color: 'var(--tf-text)', fontSize: 15 }}>{row.title}{row.kind === 'task' && row.parent_task_id && <span className="subtask-badge" title="Subtask of another task">Subtask</span>}</div>
                 {row.description && (
                   <div
                     style={{

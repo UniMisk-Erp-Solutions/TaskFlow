@@ -380,6 +380,7 @@ export default function EmployeeDashboard() {
           projects={projects}
           defaultProjectId={taskFormCtx.projectId}
           parentTaskId={taskFormCtx.parentTaskId}
+          parentOptions={tasks}
           initialAssigneeIds={selfAssigneePreset}
           onSubmit={createTask}
           onClose={() => {

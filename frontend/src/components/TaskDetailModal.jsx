@@ -409,7 +409,7 @@ export default function TaskDetailModal({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Title</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tf-text)', lineHeight: 1.4 }}>{record.title}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--tf-text)', lineHeight: 1.4 }}>{record.title}{record.parent_task_id && <span className="subtask-badge" title="Subtask of another task">Subtask</span>}</div>
             </div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 6 }}>Description</div>

@@ -33,6 +33,23 @@ export function AuthProvider({ children }) {
         return true;
       } catch (err) {
         console.warn('AuthContext - fetchProfile attempt failed:', attempt + 1, err?.message || err);
+        if (err?.response?.status === 401) {
+          // The session was revoked or expired (e.g. signed out elsewhere): try a refresh once, else
+          // drop only this browser's session so the person lands on the login page, not a dead end.
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError && refreshed?.session && attempt === 0) {
+            session = refreshed.session;
+            setApiAccessToken(session.access_token);
+            continue;
+          }
+          hydratedUserIdRef.current = null;
+          setApiAccessToken(null);
+          window.cachedSession = null;
+          await supabase.auth.signOut({ scope: 'local' });
+          setUser(null);
+          setProfile(null);
+          return false;
+        }
         if (attempt < 2) await new Promise((r) => setTimeout(r, 250));
       }
     }
@@ -166,7 +183,7 @@ export function AuthProvider({ children }) {
         const profileOk = await fetchProfile(data.session);
         if (!profileOk) {
           setApiAccessToken(null);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           setUser(null);
           setProfile(null);
           window.cachedSession = null;
@@ -216,7 +233,7 @@ export function AuthProvider({ children }) {
         const profileOk = await fetchProfile(data.session);
         if (!profileOk) {
           setApiAccessToken(null);
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: 'local' });
           setUser(null);
           setProfile(null);
           window.cachedSession = null;
@@ -255,7 +272,7 @@ export function AuthProvider({ children }) {
     hydratedUserIdRef.current = null;
     setApiAccessToken(null);
     window.cachedSession = null;
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     setProfile(null);
   }
 
