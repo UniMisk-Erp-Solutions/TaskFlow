@@ -284,3 +284,9 @@ Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Ba
 **Document:** [docs/ai-chat-esc-close.md](docs/ai-chat-esc-close.md)
 
 The AI Assistant panel now also closes when Esc is pressed (document keydown listener added on open and removed on unmount, ignoring already-handled keys), with a unit test.
+
+---
+
+**Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
+
+Stacks the profile and theme buttons vertically in the 68px sidebar rail used on narrow screens and in the installed PWA (they previously overlapped), removes a dead CSS rule, and adds standalone-mode safe-area and 100dvh handling for the sidebar.
