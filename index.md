@@ -40,3 +40,4 @@
 - [Local CPU-Only AI Assistant (2 logical CPUs)](docs/local-ai-two-core.md) — Documents the self-hosted Qwen3-0.6B + multilingual-E5 AI stack capped to two logical CPUs, the planner service, gateway integration, setup steps and what is not yet verified.
 - [Progressive Web App (Install on Android, iOS and Desktop)](docs/pwa-installable-app.md) — Documents the PWA setup: manifest and icons, service worker with offline page, install banner and iOS steps, update prompt, hosting headers and limits.
 - [Files: Drag and Drop to Move Items](docs/files-drag-drop-move.md) — Documents dragging files/folders onto folders, breadcrumbs or the Back row to move them, plus the new move option in the drive PATCH API.
+- [AI Assistant: Close with Esc](docs/ai-chat-esc-close.md) — Documents closing the AI Assistant panel with the Esc key.
