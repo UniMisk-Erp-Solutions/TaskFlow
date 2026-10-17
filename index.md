@@ -40,3 +40,5 @@
 - [Local CPU-Only AI Assistant (2 logical CPUs)](docs/local-ai-two-core.md) — Documents the self-hosted Qwen3-0.6B + multilingual-E5 AI stack capped to two logical CPUs, the planner service, gateway integration, setup steps and what is not yet verified.
 - [Progressive Web App (Install on Android, iOS and Desktop)](docs/pwa-installable-app.md) — Documents the PWA setup: manifest and icons, service worker with offline page, install banner and iOS steps, update prompt, hosting headers and limits.
 - [GitHub Integration](docs/github-integration.md) — Documents the GitHub App integration: connecting accounts, linking commits/branches/PRs to tasks, automatic In Progress to Done (pending approval) submission, admin notification, webhook security, setup, API routes and testing.
+
+- [Files: Drag and Drop to Move Items](docs/files-drag-drop-move.md) — Documents dragging files/folders onto folders, breadcrumbs or the Back row to move them, plus the new move option in the drive PATCH API.

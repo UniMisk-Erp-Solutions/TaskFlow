@@ -42,7 +42,7 @@ function csvCell(value) {
 }
 
 const ACTION_LABELS = {
-  uploaded: 'Uploaded', created: 'Folder created', renamed: 'Renamed', visibility_changed: 'Access changed',
+  uploaded: 'Uploaded', created: 'Folder created', renamed: 'Renamed', moved: 'Moved', visibility_changed: 'Access changed',
   opened: 'Opened', downloaded: 'Downloaded', deleted: 'Deleted',
 };
 
@@ -50,6 +50,7 @@ function describeActivity(entry) {
   const d = entry.details || {};
   switch (entry.action) {
     case 'renamed': return `"${d.from}" → "${d.to}"`;
+    case 'moved': return d.to_folder ? 'Moved into a folder' : 'Moved to My files';
     case 'visibility_changed': return `${d.from === 'public' ? 'Public' : 'Private'} → ${d.to === 'public' ? 'Public' : 'Private'}`;
     case 'uploaded': return [d.size_bytes ? formatSize(d.size_bytes) : '', d.content_type || '', d.visibility ? (d.visibility === 'public' ? 'Public' : 'Private') : ''].filter(Boolean).join(' · ');
     case 'created': return d.visibility ? (d.visibility === 'public' ? 'Public' : 'Private') : '';
@@ -165,6 +166,8 @@ export default function FileExplorer() {
       document.removeEventListener('keydown', onKeyDown);
     };
   }, [menuOpen]);
+  const draggedRef = useRef(null); // { kind, id, name } while an item is dragged inside the explorer
+  const [dropTarget, setDropTarget] = useState(null); // folder id, '__root__' or null
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -228,6 +231,51 @@ export default function FileExplorer() {
       await downloadFromApi(`/drive/files/${item.id}/content`, item.name, { download: 1 });
     } catch (err) {
       setError(await fileErrorMessage(err, 'Could not download the file.'));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  // Drag an item you own onto a folder (row, breadcrumb or the "Back" row) to move it there.
+  const isInternalDrag = (e) => Boolean(draggedRef.current) && !e.dataTransfer?.types?.includes('Files');
+
+  function dropProps(targetId) {
+    const key = targetId ?? '__root__';
+    return {
+      onDragOver: (e) => {
+        const dragged = draggedRef.current;
+        if (!isInternalDrag(e) || (dragged.kind === 'folder' && dragged.id === targetId)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        if (dropTarget !== key) setDropTarget(key);
+      },
+      onDragLeave: (e) => {
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        setDropTarget((current) => (current === key ? null : current));
+      },
+      onDrop: (e) => {
+        if (!isInternalDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const dragged = draggedRef.current;
+        draggedRef.current = null;
+        setDropTarget(null);
+        void moveItem(dragged, targetId);
+      },
+    };
+  }
+
+  async function moveItem(item, targetFolderId) {
+    if (!item || (item.kind === 'folder' && item.id === targetFolderId)) return;
+    if (item.parentId !== undefined && (item.parentId ?? null) === (targetFolderId ?? null)) return;
+    setBusy(`Moving ${item.name}…`);
+    setError('');
+    try {
+      await api.patch(`/drive/${item.kind === 'folder' ? 'folders' : 'files'}/${item.id}`, { folder_id: targetFolderId });
+      await load({ silent: true });
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Could not move the item.');
     } finally {
       setBusy('');
     }
@@ -469,11 +517,11 @@ export default function FileExplorer() {
     >
       <div className="fx-toolbar">
         <nav className="fx-breadcrumbs" aria-label="Folder path">
-          <button type="button" onClick={() => enterFolder(null)} className={!inFolder ? 'is-current' : ''}><Home size={14} aria-hidden="true" /> My files</button>
+          <button type="button" onClick={() => enterFolder(null)} className={`${!inFolder ? 'is-current' : ''}${dropTarget === '__root__' ? ' is-drop-target' : ''}`} {...dropProps(null)}><Home size={14} aria-hidden="true" /> My files</button>
           {data.breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.id}>
               <ChevronRight size={14} aria-hidden="true" />
-              <button type="button" onClick={() => enterFolder(crumb.id)} className={index === data.breadcrumbs.length - 1 ? 'is-current' : ''}>{crumb.name}</button>
+              <button type="button" onClick={() => enterFolder(crumb.id)} className={`${index === data.breadcrumbs.length - 1 ? 'is-current' : ''}${dropTarget === crumb.id ? ' is-drop-target' : ''}`} {...dropProps(crumb.id)}>{crumb.name}</button>
             </React.Fragment>
           ))}
         </nav>
@@ -586,14 +634,27 @@ export default function FileExplorer() {
             <span role="columnheader">Size</span><span role="columnheader">Modified</span><span role="columnheader" className="fx-col-actions">Actions</span>
           </div>
           {inFolder && !searchResults && (
-            <button type="button" className="fx-row fx-up" onClick={() => enterFolder(parentCrumb)}>
+            <button type="button" className={`fx-row fx-up${dropTarget === (parentCrumb ?? '__root__') ? ' is-drop-target' : ''}`} onClick={() => enterFolder(parentCrumb)} {...dropProps(parentCrumb)}>
               <span className="fx-name"><ArrowUp size={16} aria-hidden="true" /> Back to {parentCrumb ? 'parent folder' : 'My files'}</span>
             </button>
           )}
           {paging.pageItems.map((item) => {
             const Icon = iconFor(item);
             return (
-              <div className="fx-row" role="row" key={`${item.kind}-${item.id}`}>
+              <div
+                className={`fx-row${item.is_owner ? ' is-draggable' : ''}${item.kind === 'folder' && dropTarget === item.id ? ' is-drop-target' : ''}`}
+                role="row"
+                key={`${item.kind}-${item.id}`}
+                draggable={Boolean(item.is_owner)}
+                onDragStart={(e) => {
+                  if (!item.is_owner) return;
+                  draggedRef.current = { kind: item.kind, id: item.id, name: item.name, parentId: searchResults ? undefined : folderId };
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', item.name);
+                }}
+                onDragEnd={() => { draggedRef.current = null; setDropTarget(null); }}
+                {...(item.kind === 'folder' ? dropProps(item.id) : {})}
+              >
                 <span className="fx-name" role="cell">
                   <Icon size={18} aria-hidden="true" className={item.kind === 'folder' ? 'is-folder' : ''} />
                   <button type="button" className="fx-open" onClick={() => (item.kind === 'folder' ? enterFolder(item.id) : openFile(item))} title={item.name}>{item.name}</button>

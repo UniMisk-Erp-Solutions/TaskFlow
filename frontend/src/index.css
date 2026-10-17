@@ -2265,3 +2265,6 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 }
 .tf-refresh-spin svg { animation: tf-refresh-spin 0.8s linear infinite; }
 @keyframes tf-refresh-spin { to { transform: rotate(360deg); } }
+.fx-row.is-draggable { cursor: grab; }
+.fx-row.is-draggable:active { cursor: grabbing; }
+.fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }
