@@ -272,3 +272,9 @@ Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGU
 **Document:** [docs/pwa-installable-app.md](docs/pwa-installable-app.md)
 
 Explains how TaskFlow is installable on Android, iOS and desktop: the web manifest and generated icons (including maskable and Apple icons), the single service worker shared with web push, what is and is not cached (API and storage traffic never), the offline page, the install banner with iOS Add-to-Home-Screen steps, the update prompt, hosting cache headers, testing, limits and rollback.
+
+---
+
+**Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
+
+Stacks the profile and theme buttons vertically in the 68px sidebar rail used on narrow screens and in the installed PWA (they previously overlapped), removes a dead CSS rule, and adds standalone-mode safe-area and 100dvh handling for the sidebar.
