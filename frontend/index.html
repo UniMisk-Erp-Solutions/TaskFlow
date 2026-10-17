@@ -2,9 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="icon" type="image/png" href="/task-logo.png" />
-    <link rel="apple-touch-icon" href="/task-logo.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- PWA: installable on Android (Chrome/Edge/Samsung) and iOS (Safari -> Add to Home Screen). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#5645d4" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="TaskFlow" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="application-name" content="TaskFlow" />
+    <meta name="format-detection" content="telephone=no" />
     <meta name="google-site-verification" content="google0ae38d60af7ae322" />
     <title>TaskFlow — AI Task Manager</title>
     <!-- Aggressive no-store hints so a stale CDN edge / browser cache can never

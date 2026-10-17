@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import MaintenanceGate from './MaintenanceGate';
+import { registerServiceWorker } from './pwa/registerSW';
 
 // Log the build timestamp on every boot so you can verify the exact deployed
 // version from the browser console (handy when CDN / Coolify caching is suspect).
@@ -20,6 +21,8 @@ console.log(
 if (window.location.pathname !== '/' && !window.location.pathname.includes('.')) {
   console.log('SPA: Handling route:', window.location.pathname);
 }
+
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

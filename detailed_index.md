@@ -266,3 +266,9 @@ Five fixes from 16/10/2026: employees cannot move an In Progress task back to To
 **Document:** [docs/local-ai-two-core.md](docs/local-ai-two-core.md)
 
 Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGUF plus a FastAPI planner using multilingual-e5-small ONNX) pinned to one shared two-logical-CPU cpuset, private network, hardened containers, model fetch script with checksum lock. The Edge Function assistant now prefers the local model when LOCAL_AI_URL is set, answers greetings via the local router without the LLM, and falls back to OpenRouter. Records the audit, setup commands, post-deploy checks and the fact that nothing has been deployed or benchmarked yet.
+
+---
+
+**Document:** [docs/pwa-installable-app.md](docs/pwa-installable-app.md)
+
+Explains how TaskFlow is installable on Android, iOS and desktop: the web manifest and generated icons (including maskable and Apple icons), the single service worker shared with web push, what is and is not cached (API and storage traffic never), the offline page, the install banner with iOS Add-to-Home-Screen steps, the update prompt, hosting cache headers, testing, limits and rollback.

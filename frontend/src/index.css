@@ -1229,3 +1229,10 @@ main { padding-bottom: 96px; }
 .kanban-card-topline .subtask-badge { margin-left: 0; }
 .kanban-timer-state { font-size: 11px; color: var(--tf-muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kanban-timer-state.is-running { color: #1a7f4b; font-weight: 600; }
+
+/* ── PWA / installed-app polish ───────────────────────────────────────────── */
+html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+button, a, input, select, textarea { touch-action: manipulation; }
+@media (display-mode: standalone) {
+  body { overscroll-behavior-y: none; }
+}
