@@ -22,6 +22,15 @@ export default function AiChat({ onClose }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Esc closes the panel (same as the X button).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) onClose?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   async function send(q) {
     q = q.trim();
     if (!q || loading) return;
