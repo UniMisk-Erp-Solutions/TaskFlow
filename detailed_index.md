@@ -441,3 +441,9 @@ Describes the GitHub App integration in the Supabase Edge API: per-user GitHub c
 **Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
 
 Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged) and a folder_id move option on the drive PATCH endpoints with ownership and cycle checks.
+
+---
+
+**Document:** [docs/ai-chat-esc-close.md](docs/ai-chat-esc-close.md)
+
+Pressing Esc closes the AI assistant panel, the same as its X button; the listener is removed when the panel unmounts.
