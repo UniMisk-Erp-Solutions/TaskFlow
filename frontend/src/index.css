@@ -1236,3 +1236,7 @@ button, a, input, select, textarea { touch-action: manipulation; }
 @media (display-mode: standalone) {
   body { overscroll-behavior-y: none; }
 }
+
+.fx-row.is-draggable { cursor: grab; }
+.fx-row.is-draggable:active { cursor: grabbing; }
+.fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }
