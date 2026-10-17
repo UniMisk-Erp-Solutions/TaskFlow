@@ -845,8 +845,10 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
   .taskflow-sidebar nav { padding: 10px 6px !important; }
   .taskflow-sidebar nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
   .taskflow-sidebar > div:last-child { padding: 8px 5px !important; }
-  .taskflow-sidebar > div:last-child > div { justify-content: center !important; padding: 8px 0 !important; }
-  .taskflow-sidebar > div:last-child > div > div:first-child { display: none !important; }
+  /* Profile + theme toggle stack vertically in the narrow rail instead of overlapping. */
+  .taskflow-sidebar > div:last-child > div { flex-direction: column; justify-content: center !important; align-items: center; gap: 8px !important; padding: 8px 0 !important; }
+  .taskflow-sidebar > div:last-child > div > button:first-child { flex: 0 0 auto !important; width: auto !important; justify-content: center; }
+  .taskflow-sidebar > div:last-child { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important; }
   .taskflow-sidebar > div:last-child > button { justify-content: center !important; padding: 10px 6px !important; }
 }
 
@@ -2268,3 +2270,9 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .fx-row.is-draggable { cursor: grab; }
 .fx-row.is-draggable:active { cursor: grabbing; }
 .fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }
+
+/* Installed app: keep the sidebar and header clear of notches / rounded corners and the home indicator. */
+@media (display-mode: standalone) {
+  .taskflow-sidebar { padding-top: env(safe-area-inset-top, 0px); height: 100dvh; box-sizing: border-box; }
+  .taskflow-sidebar nav { overflow-y: auto; }
+}

@@ -43,3 +43,5 @@
 
 - [Files: Drag and Drop to Move Items](docs/files-drag-drop-move.md) — Documents dragging files/folders onto folders, breadcrumbs or the Back row to move them, plus the new move option in the drive PATCH API.
 - [AI Assistant: Close with Esc](docs/ai-chat-esc-close.md) — Documents closing the AI Assistant panel with the Esc key.
+
+- [PWA Layout Fixes](docs/pwa-layout-fixes.md) — Documents the narrow-sidebar profile/theme overlap fix and the installed-app safe-area padding.

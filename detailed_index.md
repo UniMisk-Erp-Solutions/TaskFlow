@@ -447,3 +447,9 @@ Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Ba
 **Document:** [docs/ai-chat-esc-close.md](docs/ai-chat-esc-close.md)
 
 Pressing Esc closes the AI assistant panel, the same as its X button; the listener is removed when the panel unmounts.
+
+---
+
+**Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
+
+Stops the profile and theme buttons overlapping in the narrow sidebar rail and keeps the sidebar clear of notches and the home indicator when installed as an app.
