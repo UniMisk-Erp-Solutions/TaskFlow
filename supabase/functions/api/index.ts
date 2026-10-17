@@ -4579,10 +4579,30 @@ async function handleDrive(req: Request, path: string) {
     const patchMatch = path.match(/^\/drive\/(files|folders)\/([^/]+)$/);
     if (req.method === "PATCH" && patchMatch) {
       const table = patchMatch[1] === "files" ? "drive_files" : "drive_folders";
-      const { data: row } = await supabase.from(table).select("id, owner_id, name, visibility").eq("id", patchMatch[2]).eq("org_id", user.org_id).maybeSingle();
+      const parentCol = patchMatch[1] === "files" ? "folder_id" : "parent_id";
+      const { data: row } = await supabase.from(table).select(`id, owner_id, name, visibility, ${parentCol}`).eq("id", patchMatch[2]).eq("org_id", user.org_id).maybeSingle();
       if (!row || row.owner_id !== user.id) return json({ error: "Item not found" }, 404);
       const body = await parseBody(req) as Record<string, unknown>;
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      // Move: { folder_id: <uuid|null> } puts the item inside one of the owner's own folders (null = My files).
+      let moveTo: string | null | undefined;
+      if (body.folder_id !== undefined) {
+        moveTo = body.folder_id ? String(body.folder_id) : null;
+        if (moveTo) {
+          const { rows: folderRows, byId } = await driveLoadFolders(user);
+          const target = byId.get(moveTo);
+          if (!target || target.owner_id !== user.id) return json({ error: "You can only move items into your own folders." }, 404);
+          if (patchMatch[1] === "folders") {
+            if (moveTo === row.id) return json({ error: "A folder cannot be moved into itself." }, 400);
+            for (let cur: string | null = target.parent_id, depth = 0; cur && depth < 50; depth++) {
+              if (cur === row.id) return json({ error: "A folder cannot be moved into one of its own subfolders." }, 400);
+              cur = byId.get(cur)?.parent_id ?? null;
+            }
+          }
+          void folderRows;
+        }
+        if ((row as any)[parentCol] !== moveTo) patch[parentCol] = moveTo; else moveTo = undefined;
+      }
       if (body.name !== undefined) {
         const name = driveCleanName(body.name, patchMatch[1] === "files" ? 255 : 120);
         if (!name) return json({ error: "Name is required." }, 400);
@@ -4599,6 +4619,10 @@ async function handleDrive(req: Request, path: string) {
       if (patch.name !== undefined && patch.name !== row.name) {
         await driveLog(user, { kind: itemKind, id: row.id, name: String(patch.name), ownerId: row.owner_id, action: "renamed",
           details: { from: row.name, to: patch.name }, publicAtEvent: publicAfter });
+      }
+      if (moveTo !== undefined) {
+        await driveLog(user, { kind: itemKind, id: row.id, name: data.name, ownerId: row.owner_id, action: "moved",
+          details: { from_folder: (row as any)[parentCol] ?? null, to_folder: moveTo }, publicAtEvent: publicAfter });
       }
       if (patch.visibility !== undefined && patch.visibility !== row.visibility) {
         await driveLog(user, { kind: itemKind, id: row.id, name: data.name, ownerId: row.owner_id, action: "visibility_changed",

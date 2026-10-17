@@ -266,3 +266,9 @@ Five fixes from 16/10/2026: employees cannot move an In Progress task back to To
 **Document:** [docs/local-ai-two-core.md](docs/local-ai-two-core.md)
 
 Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGUF plus a FastAPI planner using multilingual-e5-small ONNX) pinned to one shared two-logical-CPU cpuset, private network, hardened containers, model fetch script with checksum lock. The Edge Function assistant now prefers the local model when LOCAL_AI_URL is set, answers greetings via the local router without the LLM, and falls back to OpenRouter. Records the audit, setup commands, post-deploy checks and the fact that nothing has been deployed or benchmarked yet.
+
+---
+
+**Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
+
+Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged), a folder_id move option on the drive PATCH endpoints with ownership and cycle checks, a Moved activity entry, tests and the Edge Function redeploy.
