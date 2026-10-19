@@ -12,8 +12,10 @@ function assigneeIds(task) {
 const APPROVED_TASK_VISIBLE_MS = 60_000;
 
 function approvedTaskTimeLeft(task, now) {
-  // Older approvals have no approval stamp, so fall back to the last update.
-  const approvedAt = Date.parse(task.kanban_approved_at || task.updated_at || '');
+  // Only tasks approved through the review flow carry an approval stamp. Older completed tasks have none and
+  // stay in Done (docs/kanban-approved-task-countdown.md); falling back to updated_at made every completed task
+  // vanish from the board a minute after its last edit.
+  const approvedAt = Date.parse(task.kanban_approved_at || '');
   if (!Number.isFinite(approvedAt)) return null;
   return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
 }
