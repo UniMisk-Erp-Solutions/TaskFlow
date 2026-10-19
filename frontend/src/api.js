@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getApiAccessToken } from './sessionAccess';
+import supabase from './supabaseClient';
 
 const baseURL = import.meta.env.VITE_API_URL;
 if (!baseURL) {
@@ -15,6 +16,12 @@ const api = axios.create({
     legacyInterceptorReqResOrdering: false,
   },
 });
+
+// Supabase Edge Function gateway API key (public anon key). Express ignores it; the
+// local Express AI proxy forwards it when routing assistant calls to the Edge Function.
+if (import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  api.defaults.headers.common.apikey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+}
 
 function isPublicAuthRequest(config) {
   const u = config.url || '';
@@ -46,26 +53,42 @@ function setAuthHeader(config, token) {
   }
 }
 
+function tokenNearExpiry(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return !Number.isFinite(payload.exp) || payload.exp <= Date.now() / 1000 + 60;
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Synchronous interceptor only. Token comes from sessionAccess (updated in AuthContext).
+ * Prefer the cached token updated by AuthContext. If an early request races the initial
+ * getSession(), read Supabase's persisted session before sending it to the Edge Function.
  * Never overwrites an Authorization header already set on the request (e.g. fetchProfile).
  */
 api.interceptors.request.use(
-  (config) => {
+  async (config) => {
     if (isPublicAuthRequest(config)) {
       return config;
     }
     if (getExistingAuthorization(config)) {
       return config;
     }
-    const token = getApiAccessToken();
+    let token = getApiAccessToken();
+    if (!token || tokenNearExpiry(token)) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        token = data?.session?.access_token || token;
+      } catch {
+        // Let the API return its normal auth response if the local session cannot be read.
+      }
+    }
     if (token) {
       setAuthHeader(config, token);
     }
     return config;
   },
-  undefined,
-  { synchronous: true },
 );
 
 api.interceptors.response.use(

@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
 import { useProjects } from './useProjects';
 import ProjectsPanel from './components/ProjectsPanel';
 import TaskForm from './components/TaskForm';
 import MeetingForm from './components/MeetingForm';
 import { useAuth } from './AuthContext';
+import { ThemeToggle } from './ThemeContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime, useLiveRefresh } from './useRealtime';
@@ -50,10 +51,12 @@ function Stat({ label, value, color }) {
 function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskDetail }) {
   const [open, setOpen] = useState(true);
   if (!tasks.length) return null;
+  const sectionKey = label.toLowerCase().replace(/\s+/g, '-');
   return (
-    <div>
+    <div className={`employee-task-group employee-task-group-${sectionKey}`}>
       <button
         type="button"
+        className="employee-task-group-toggle"
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'flex',
@@ -83,7 +86,7 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
         <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tf-muted)' }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 24 }}>
+        <div className="employee-task-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 24 }}>
           {tasks.map((t) => (
             <TaskCard
               key={t.id}
@@ -190,22 +193,33 @@ export default function EmployeeDashboard() {
       <Sidebar active={page} onNav={navigateToPage} role="employee" />
       <main style={{ flex: 1, minWidth: 0 }}>
       <div className="employee-dashboard-content" style={{ width: '100%', minWidth: 0, padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div className="employee-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>
-              {page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'tasks' ? `${greeting()}, ${profile?.full_name?.split(' ')[0] || 'there'}` : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'profile' ? 'Profile' : 'Notifications'}
+              {page === 'tasks' ? (
+                <span className="employee-greeting-lines">
+                  <span>{greeting()},</span>
+                  <span>{profile?.full_name?.split(' ')[0] || 'there'}</span>
+                </span>
+              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'profile' ? 'Profile' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               {stats.overdue > 0 && <span style={{ color: 'var(--status-danger)', marginLeft: 10 }}>{stats.overdue} overdue</span>}
             </div>
           </div>
-          <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={refetch} aria-label="Refresh">
-            <RefreshCw size={15} strokeWidth={1.8} />
-          </button>
+          <div className="employee-header-actions">
+            <button type="button" className="btn btn-ghost btn-sm btn-icon tf-header-ai-button" onClick={() => setShowAI(true)} aria-label="Open AI Assistant" title="AI Assistant">
+              <Sparkles size={20} strokeWidth={2.2} />
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={refetch} aria-label="Refresh">
+              <RefreshCw size={20} strokeWidth={2} />
+            </button>
+            <ThemeToggle size={16} />
+          </div>
         </div>
 
-        {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'kanban' && <div className="tf-dashboard-actions" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
@@ -253,6 +267,10 @@ export default function EmployeeDashboard() {
 
         {page === 'kanban' && (
           <KanbanBoard
+            actions={<div className="kanban-task-actions">
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}><Plus size={14} /> Task</button>
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}><Plus size={14} /> Meeting</button>
+            </div>}
             tasks={tasks}
             projects={projects}
             assignees={allProfiles}

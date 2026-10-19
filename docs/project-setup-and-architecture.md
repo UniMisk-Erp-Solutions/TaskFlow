@@ -72,7 +72,7 @@ Do not use a service-role key in the frontend. The Express API is not self-conta
 
 ### Local Supabase stack
 
-`supabase/config.toml` configures the local Supabase CLI stack. Running it requires Docker and the Supabase CLI (or `npx supabase`). This repository's SQL files and migrations include incremental changes for a pre-existing schema; they do not form a single guaranteed blank-database bootstrap. Review prerequisites before applying SQL to a local database. The Edge API's local serve instructions are in [supabase/functions/README.md](../supabase/functions/README.md).
+`supabase/config.toml` configures the local Supabase CLI stack. Running it requires the Supabase CLI (or `npx supabase`). This repository's SQL files and migrations include incremental changes for a pre-existing schema; they do not form a single guaranteed blank-database bootstrap. Review prerequisites before applying SQL to a local database. The Edge API's local serve instructions are in [supabase/functions/README.md](../supabase/functions/README.md).
 
 ## Environment variables
 
@@ -102,8 +102,6 @@ Apply database changes to a development/staging project first, then deploy the m
 ## Deployment
 
 - `render.yaml` declares the Render backend container and static frontend services.
-- `backend/Dockerfile` builds the frontend assets and Express API into one image.
-- `docker-compose.yml` starts the Express container locally and expects `backend/.env`.
 - `frontend/vercel.json` supplies SPA route fallback rewrites for Vercel hosting.
 - `scripts/deploy-edge-api.sh` deploys the Edge API to the linked hosted Supabase project. Read `supabase/functions/README.md` before using it.
 

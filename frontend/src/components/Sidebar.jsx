@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { ThemeToggle } from '../ThemeContext';
 
@@ -36,6 +36,8 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
   const isEmployee = role === 'employee';
   const navItems = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
+  const activeButtonRef = useRef(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try { return window.localStorage.getItem('taskflow:sidebar-collapsed') === '1'; } catch { return false; }
   });
@@ -60,9 +62,41 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [toggleCollapsed]);
 
+  useEffect(() => {
+    if (mobileOpen && window.matchMedia('(max-width: 760px)').matches) {
+      activeButtonRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+  }, [active, mobileOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const navigate = (id) => {
+    onNav(id);
+    setMobileOpen(false);
+  };
+
   return (
+    <>
+    <button
+      type="button"
+      className="taskflow-mobile-menu-trigger"
+      onClick={() => setMobileOpen(true)}
+      aria-label="Open navigation menu"
+      aria-expanded={mobileOpen}
+      aria-controls="taskflow-sidebar-navigation"
+    >
+      <Menu size={20} aria-hidden="true" />
+    </button>
+    {mobileOpen && <button type="button" className="taskflow-mobile-menu-backdrop" onClick={() => setMobileOpen(false)} aria-label="Close navigation menu" />}
     <aside
-      className={`taskflow-sidebar${collapsed ? ' is-collapsed' : ''}`}
+      id="taskflow-sidebar-navigation"
+      className={`taskflow-sidebar${isEmployee ? ' is-employee' : ''}${collapsed ? ' is-collapsed' : ''}${mobileOpen ? ' is-mobile-open' : ''}`}
       data-collapsed={collapsed}
       style={{
         width: collapsed ? 68 : 220,
@@ -105,6 +139,15 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
         </span>
         <button
           type="button"
+          className="taskflow-mobile-menu-close"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close navigation menu"
+          title="Close navigation menu"
+        >
+          <ChevronLeft size={20} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
           className="taskflow-sidebar-toggle"
           onClick={toggleCollapsed}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -121,8 +164,10 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
           return (
             <button
               key={id}
+              ref={isActive ? activeButtonRef : undefined}
               type="button"
-              onClick={() => onNav(id)}
+              onClick={() => navigate(id)}
+              aria-current={isActive ? 'page' : undefined}
               title={collapsed ? label : undefined}
               aria-label={label}
               style={{
@@ -154,7 +199,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
 
       <div style={{ padding: '12px', borderTop: '1px solid var(--tf-border)' }}>
         <div style={{ padding: '8px 10px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, borderRadius: 11, background: active === 'profile' ? 'var(--tf-pearl)' : 'transparent' }}>
-          <button type="button" onClick={() => onNav('profile')} aria-label="Open profile" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, padding: 0, textAlign: 'left', border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }}>
+          <button type="button" onClick={() => navigate('profile')} aria-label="Open profile" style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, padding: 0, textAlign: 'left', border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }}>
           <div
             style={{
               width: 36,
@@ -187,6 +232,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
         <button
           type="button"
           onClick={signOut}
+          aria-label="Sign out"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -215,5 +261,6 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
         </button>
       </div>
     </aside>
+    </>
   );
 }

@@ -37,7 +37,7 @@ The repository has no root npm workspace. Install and run the frontend and backe
 - A Supabase project URL and **anon/public** key for the browser app.
 - For the Express API: the Supabase URL and **service-role** key. Keep the service-role key on the server; never put it in a `VITE_` variable or commit it.
 
-Docker and the Supabase CLI are only needed if you want to run the Supabase stack locally. Optional integrations require their own provider credentials.
+The Supabase CLI is only needed if you want to run the Supabase stack locally. Optional integrations require their own provider credentials.
 
 ## Quick start
 
@@ -141,7 +141,6 @@ Run from the indicated directory:
 | `backend/` | `npm run dev` | Start Express with nodemon; the predev hook frees the configured port. |
 | `backend/` | `npm start` | Start Express without nodemon. |
 
-The Express Docker setup is available through `docker-compose.yml`; it requires `backend/.env` and builds the frontend assets into the container. The container exposes port 5000.
 
 ## Optional integrations
 
@@ -168,7 +167,6 @@ supabase/migrations/     Incremental database migrations
 supabase/*.sql           Numbered schema changes and optional development seed data
 docs/                    Feature and integration documentation
 render.yaml              Render service definitions
-docker-compose.yml       Local Express container definition
 ```
 
 ## Security notes

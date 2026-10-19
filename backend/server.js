@@ -29,7 +29,9 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+// OCR images are base64 encoded in /api/ai/query (up to three files, each capped by the
+// Edge Function). The default 100 KB JSON parser limit rejected them before the route ran.
+app.use(express.json({ limit: "25mb" }));
 
 // API routes
 app.use("/api/auth", authRoutes);

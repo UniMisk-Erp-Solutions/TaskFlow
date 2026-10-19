@@ -401,7 +401,7 @@ export default function FileExplorer() {
           </div>
           {isAdmin && <button type="button" className="btn btn-ghost btn-sm" onClick={exportDetails} disabled={!items.length} title="Download a CSV with full details of the items listed below"><FileSpreadsheet size={14} /> Export details</button>}
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(true)}><FolderPlus size={14} /> New folder</button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload</button>
+          <button type="button" className="btn btn-primary btn-sm fx-upload-button" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload</button>
           <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => uploadFiles(e.target.files)} />
         </div>
       </div>

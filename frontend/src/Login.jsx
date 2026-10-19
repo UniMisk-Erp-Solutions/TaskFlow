@@ -104,6 +104,7 @@ export default function Login() {
 
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 20px' }}>
         <div
+          className="login-card"
           style={{
             width: '100%',
             maxWidth: 400,

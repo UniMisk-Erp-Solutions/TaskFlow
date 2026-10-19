@@ -476,7 +476,7 @@ export default function TaskDetailModal({
                 {canAddSubtask && (
                   <form onSubmit={handleQuickSubtask} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input
-                      className="input"
+                      className="input tf-subtask-title-input"
                       style={{ flex: 1, minWidth: 160 }}
                       value={subtaskTitle}
                       onChange={(e) => setSubtaskTitle(e.target.value)}
@@ -504,7 +504,7 @@ export default function TaskDetailModal({
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">What did you change / complete? (optional)</label>
                       <textarea
-                        className="input"
+                        className="input tf-work-note-input"
                         rows={3}
                         placeholder="Briefly describe the work done…"
                         value={submitNote}

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Sparkles, Send, RefreshCw, Upload } from 'lucide-react';
 import CsvImportModal from './components/CsvImportModal';
 import { useAuth } from './AuthContext';
+import { ThemeToggle } from './ThemeContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime, useLiveRefresh } from './useRealtime';
@@ -308,7 +309,7 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="tf-subnav-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {pendingApprovalCount > 0 && (
               <button
                 type="button"
@@ -351,9 +352,6 @@ export default function AdminDashboard() {
                   {sending ? <span className="spinner" /> : <Send size={12} />}
                   Send Reminders
                 </button>
-                <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setShowAI(true)} title="AI Assistant">
-                  <Sparkles size={13} />
-                </button>
                 <button
                   className="btn btn-ghost btn-sm"
                   type="button"
@@ -378,10 +376,14 @@ export default function AdminDashboard() {
                 </button>
               </>
             )}
+            <button className="btn btn-ghost btn-sm btn-icon tf-header-ai-button" type="button" onClick={() => setShowAI(true)} aria-label="Open AI Assistant" title="AI Assistant">
+              <Sparkles size={20} strokeWidth={2.2} />
+            </button>
+            <ThemeToggle size={16} />
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <div className="admin-dashboard-content" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '24px' }}>
 
           {/* ── OVERVIEW ── */}
           {page === 'overview' && (

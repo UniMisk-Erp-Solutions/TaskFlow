@@ -99,7 +99,7 @@ export default function ProfilePage() {
             <div style={{ ...fieldStyle, display: 'flex', alignItems: 'center', gap: 9, marginTop: 7 }}><Phone size={15} /><input aria-label="Phone number" type="tel" maxLength={30} autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Add a phone number" style={{ flex: 1, minWidth: 0, border: 0, outline: 0, background: 'transparent', color: 'var(--tf-text)', font: 'inherit' }} /></div>
           </label>
           {message && <div role="status" style={{ marginBottom: 14, fontSize: 13, color: message.type === 'success' ? 'var(--status-success)' : 'var(--status-danger)' }}>{message.text}</div>}
-          <button type="submit" className="btn btn-primary" disabled={saving || !fullName.trim()}>{saving ? 'Saving…' : 'Save changes'}</button>
+          <button type="submit" className="btn btn-primary tf-profile-save" disabled={saving || !fullName.trim()}>{saving ? 'Saving…' : 'Save changes'}</button>
         </form>
       </div>
       <style>{'@media (max-width: 760px) { .tf-profile-grid { grid-template-columns: 1fr !important; } }'}</style>

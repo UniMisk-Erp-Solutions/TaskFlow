@@ -1,7 +1,7 @@
 const router = require("express").Router();
 const auth = require("../middleware/authMiddleware");
-const { handleAIQuery } = require("../controllers/aiController");
+const { proxyAssistant } = require("../controllers/aiController");
 
-router.post("/query", auth, handleAIQuery);
+router.use(auth, proxyAssistant);
 
 module.exports = router;
