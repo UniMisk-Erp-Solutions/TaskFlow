@@ -272,3 +272,9 @@ Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGU
 **Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
 
 Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged), a folder_id move option on the drive PATCH endpoints with ownership and cycle checks, a Moved activity entry, tests and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/chat-attachment-preview.md](docs/chat-attachment-preview.md)
+
+Chat images and documents now open in the shared in-app preview modal (fetched with the user storage permissions as a temporary blob) with a Download button, instead of a new tab showing the raw signed storage URL; adds an optional load() source to FilePreviewModal, a per-attachment download icon and a unit test.

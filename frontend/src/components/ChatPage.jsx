@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Hash, Lock, Search, Send, Trash2, ArrowLeft, MessageSquarePlus, Paperclip, Mic, Square, Pencil, X,
   FileText, Download, Reply, Users, Plus, Check, LogOut, Crown, UserPlus, Info,
@@ -6,6 +7,8 @@ import {
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
+import FilePreviewModal from './FilePreviewModal';
+import { previewKind, saveBlob } from '../lib/fileAccess';
 
 const MESSAGE_LIMIT = 300;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
@@ -76,7 +79,7 @@ function Avatar({ name, size = 34, group = false, team = false }) {
   );
 }
 
-function Attachment({ msg }) {
+export function Attachment({ msg }) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -84,23 +87,54 @@ function Attachment({ msg }) {
       .then(({ data }) => { if (alive) setUrl(data?.signedUrl || null); });
     return () => { alive = false; };
   }, [msg.attachment_path]);
+  const [preview, setPreview] = useState(null);
   const type = msg.attachment_type || '';
+  // Files open in the in-app viewer (with a Download button) instead of a new tab, so the raw
+  // storage address is never shown in the browser's address bar.
+  const load = async () => {
+    const { data, error } = await supabase.storage.from('chat-files').download(msg.attachment_path);
+    if (error) throw error;
+    return data;
+  };
+  const source = { path: `chat:${msg.attachment_path}`, name: msg.attachment_name || 'file', contentType: type, size: msg.attachment_size, load };
+  const openPreview = () => setPreview(source);
+  const download = async (event) => {
+    event.stopPropagation();
+    try { saveBlob(await load(), source.name); } catch { /* keep the chat usable */ }
+  };
+  const modal = preview ? createPortal(<FilePreviewModal source={preview} onClose={() => setPreview(null)} />, document.body) : null;
   if (!url) return <div style={{ fontSize: 12, opacity: 0.7 }}>Loading attachment…</div>;
   if (type.startsWith('image/')) {
-    return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} /></a>;
+    return (
+      <>
+        <button type="button" onClick={openPreview} aria-label={`Preview ${source.name}`} style={{ padding: 0, border: 0, background: 'none', cursor: 'zoom-in', display: 'block' }}>
+          <img src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} />
+        </button>
+        {modal}
+      </>
+    );
   }
   if (type.startsWith('audio/')) return <audio src={url} controls preload="metadata" style={{ maxWidth: 260 }} />;
   if (type.startsWith('video/')) return <video src={url} controls preload="metadata" style={{ maxWidth: 280, borderRadius: 10 }} />;
+  const canPreview = Boolean(previewKind(type, source.name, msg.attachment_size));
   return (
-    <a href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none' }}>
-      <FileText size={20} />
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' }}>{msg.attachment_name}</span>
-        <span style={{ fontSize: 11, opacity: 0.75 }}>{formatSize(msg.attachment_size)}</span>
-      </span>
-      <Download size={15} />
-    </a>
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button type="button" onClick={canPreview ? openPreview : download} aria-label={canPreview ? `Preview ${source.name}` : `Download ${source.name}`}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textAlign: 'left', padding: 0, border: 0, background: 'none', cursor: 'pointer', font: 'inherit', minWidth: 0 }}>
+          <FileText size={20} style={{ flexShrink: 0 }} />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' }}>{msg.attachment_name}</span>
+            <span style={{ fontSize: 11, opacity: 0.75 }}>{formatSize(msg.attachment_size)}</span>
+          </span>
+        </button>
+        <button type="button" onClick={download} aria-label={`Download ${source.name}`} title="Download"
+          style={{ display: 'inline-flex', padding: 4, border: 0, background: 'none', color: 'inherit', cursor: 'pointer', flexShrink: 0 }}>
+          <Download size={15} />
+        </button>
+      </div>
+      {modal}
+    </>
   );
 }
 

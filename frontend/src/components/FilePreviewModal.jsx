@@ -3,7 +3,8 @@ import { Download, File as FileIcon, X } from 'lucide-react';
 import { fetchFileBlob, fileErrorMessage, previewKind, saveBlob } from '../lib/fileAccess';
 
 /**
- * In-app viewer. `source` = { path, params?, name, contentType, size }.
+ * In-app viewer. `source` = { path, params?, name, contentType, size, load? }.
+ * `load` (optional) is an async function returning a Blob, for files that do not come from the API (e.g. chat storage).
  * Images, PDFs, video, audio and plain text open inline; anything else offers a download.
  */
 export default function FilePreviewModal({ source, onClose }) {
@@ -17,7 +18,7 @@ export default function FilePreviewModal({ source, onClose }) {
     setState({ status: 'loading', url: '', text: '', blob: null, error: '', progress: 0 });
     (async () => {
       try {
-        const blob = await fetchFileBlob(source.path, source.params, (e) => {
+        const blob = source.load ? await source.load() : await fetchFileBlob(source.path, source.params, (e) => {
           if (!cancelled && e.total) setState((s) => ({ ...s, progress: Math.round((e.loaded / e.total) * 100) }));
         });
         if (cancelled) return;
