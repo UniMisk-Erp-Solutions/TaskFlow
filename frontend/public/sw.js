@@ -8,6 +8,8 @@
  * - index.html / page navigations are network-first (a new deploy is picked up immediately);
  *   if the network is down the branded offline page is shown.
  * - Hashed build assets (/assets/*) are cache-first: their names change on every build.
+ * - The on-device OCR engine (/ocr/*: worker, WASM, language data, ~7 MB) is cache-first too, so photo reading
+ *   works offline and the download happens once per install. Bump VERSION if those files are ever replaced.
  * - Bump VERSION to drop every old cache.
  */
 const VERSION = 'v1';
@@ -89,7 +91,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(handleNavigation(request));
     return;
   }
-  if (url.pathname.startsWith('/assets/')) {
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/ocr/')) {
     event.respondWith(cacheFirst(request));
     return;
   }
