@@ -2118,4 +2118,8 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .admin-dashboard-content, .employee-dashboard-content { padding-bottom: calc(18px + env(safe-area-inset-bottom)) !important; } /* bottom nav no longer exists */
   /* The floating AI button (the reason for main's 96px bottom padding) is hidden on phones; the AI button lives in the header. */
   main { padding-bottom: 0; }
+  /* Chat box: clip instead of hiding, so focusing a field can never scroll the list sideways inside the card
+     (that left the list shifted with its left edge and the + button cut off on small phones). */
+  .tf-chat { overflow: clip !important; }
+  .tf-chat-list, .tf-chat-list > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
 }
