@@ -2111,3 +2111,11 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
    by the text field until the icons were only a few pixels wide, leaving just the outline). */
 .tf-chat-icon-btn { flex: 0 0 auto; min-width: 38px; min-height: 38px; padding-inline: 10px; }
 .tf-chat-icon-btn svg { flex: 0 0 auto; }
+
+/* Phones use the slide-in menu, not a bottom tab bar, so the page no longer needs to reserve room for one
+   (that reserved band showed up as a blank gap under the chat and other full-height pages). */
+@media (max-width: 760px) {
+  .admin-dashboard-content, .employee-dashboard-content { padding-bottom: calc(18px + env(safe-area-inset-bottom)) !important; } /* bottom nav no longer exists */
+  /* The floating AI button (the reason for main's 96px bottom padding) is hidden on phones; the AI button lives in the header. */
+  main { padding-bottom: 0; }
+}

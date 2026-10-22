@@ -265,7 +265,49 @@ function MemberPicker({ people, selected, onToggle }) {
   );
 }
 
+// On phones, size the chat to the space that is actually left on screen (below the page header, above the bottom
+// edge / home indicator) instead of subtracting a fixed header height, which left a blank band under the composer.
+function useFitChatToViewport(el) {
+  useEffect(() => {
+    if (!el || typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(max-width: 760px)');
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    let timer = 0;
+    const fit = () => {
+      timer = 0;
+      if (!mq.matches) { el.style.removeProperty('height'); return; }
+      const vv = window.visualViewport;
+      const viewportHeight = vv ? vv.height : window.innerHeight;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const safeBottom = probe.getBoundingClientRect().height || 0;
+      const height = Math.max(320, Math.round(viewportHeight - top - 18 - safeBottom));
+      el.style.setProperty('height', height + 'px', 'important');
+    };
+    const schedule = () => { window.clearTimeout(timer); timer = window.setTimeout(fit, 40); };
+    fit();
+    schedule(); // once more after the first paint, when the header above has settled
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    observer?.observe(document.body);
+    return () => {
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+      observer?.disconnect();
+      window.clearTimeout(timer);
+      probe.remove();
+    };
+  }, [el]);
+}
+
 export default function ChatPage() {
+  // The chat box only exists once the conversation list has loaded, so track the element itself (not a ref object).
+  const [chatRoot, setChatRoot] = useState(null);
+  useFitChatToViewport(chatRoot);
   const { profile } = useAuth();
   const meId = profile?.id;
   const orgId = profile?.org_id;
@@ -758,7 +800,7 @@ export default function ChatPage() {
   const composerDisabled = !active;
 
   return (
-    <div className="tf-chat" style={{ display: 'flex', height: 'calc(100vh - 150px)', minHeight: 420, border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+    <div ref={setChatRoot} className="tf-chat" style={{ display: 'flex', height: 'calc(100vh - 150px)', minHeight: 420, border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
       <style>{`
         .tf-chat-actions { opacity: 0; transition: opacity 120ms ease; }
         .tf-chat-msg:hover .tf-chat-actions, .tf-chat-msg:focus-within .tf-chat-actions { opacity: 1; }
