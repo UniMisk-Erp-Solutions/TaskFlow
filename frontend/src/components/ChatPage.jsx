@@ -996,10 +996,10 @@ export default function ChatPage() {
             </div>
           ) : (
             <>
-              <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Attach file" title="Attach file" disabled={composerDisabled || sending || !!editingId} onClick={() => fileRef.current?.click()}>
+              <button type="button" className="btn btn-ghost btn-sm btn-icon tf-chat-icon-btn" aria-label="Attach file" title="Attach file" disabled={composerDisabled || sending || !!editingId} onClick={() => fileRef.current?.click()}>
                 <Paperclip size={16} />
               </button>
-              <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Record voice message" title="Record voice message" disabled={composerDisabled || sending || !!editingId} onClick={startRecording}>
+              <button type="button" className="btn btn-ghost btn-sm btn-icon tf-chat-icon-btn" aria-label="Record voice message" title="Record voice message" disabled={composerDisabled || sending || !!editingId} onClick={startRecording}>
                 <Mic size={16} />
               </button>
               <input
@@ -1016,11 +1016,11 @@ export default function ChatPage() {
                 aria-label="Message"
                 maxLength={4000}
                 disabled={composerDisabled}
-                style={{ ...fieldStyle, flex: 1, width: 'auto', padding: '10px 14px', borderRadius: 12 }}
+                style={{ ...fieldStyle, flex: 1, width: 'auto', minWidth: 0, padding: '10px 14px', borderRadius: 12 }}
               />
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm tf-chat-icon-btn"
                 disabled={(!text.trim() && !pending.length) || sending || composerDisabled}
                 aria-label={editingId ? 'Save edit' : 'Send message'}
               >

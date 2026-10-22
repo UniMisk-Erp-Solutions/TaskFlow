@@ -2107,3 +2107,7 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .taskflow-sidebar nav { overflow-y: auto; }
 }
 
+/* Chat composer: the attach / voice / send buttons keep their size on narrow phones (they used to be squeezed
+   by the text field until the icons were only a few pixels wide, leaving just the outline). */
+.tf-chat-icon-btn { flex: 0 0 auto; min-width: 38px; min-height: 38px; padding-inline: 10px; }
+.tf-chat-icon-btn svg { flex: 0 0 auto; }
