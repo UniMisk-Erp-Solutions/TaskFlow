@@ -1175,6 +1175,12 @@ main { padding-bottom: 0; }
 .fx-busy { display: flex; align-items: center; gap: 8px; color: var(--tf-muted); font-size: 13px; }
 .fx-newfolder { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-panel); }
 .fx-newfolder input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--tf-text); font: inherit; font-size: 14px; }
+/* The single "+" button in the Files toolbar and its New folder / Upload files menu. */
+.fx-plus { position: relative; }
+.fx-plus-button { display: inline-flex; align-items: center; gap: 6px; }
+.fx-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 180px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--tf-border); border-radius: 12px; background: var(--tf-panel); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18); }
+.fx-menu button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--tf-text); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.fx-menu button:hover, .fx-menu button:focus-visible { background: var(--tf-pearl); outline: 0; }
 .fx-list { border: 1px solid var(--tf-border); border-radius: 14px; background: var(--tf-panel); overflow: hidden; }
 .fx-row { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) 110px 90px 110px 110px; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--tf-border); font-size: 13px; width: 100%; text-align: left; background: transparent; border-left: 0; border-right: 0; border-top: 0; font-family: inherit; }
 .fx-row:last-child { border-bottom: 0; }

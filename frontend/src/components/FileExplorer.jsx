@@ -3,7 +3,7 @@ import { downloadFromApi, fileErrorMessage, previewKind } from '../lib/fileAcces
 import FilePreviewModal from './FilePreviewModal';
 import {
   ChevronRight, Download, File as FileIcon, FileImage, FileText, FileArchive, FileVideo, FileAudio, FolderPlus,
-  Folder, Eye, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History,
+  Folder, Eye, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History, Plus, FolderUp,
 } from 'lucide-react';
 import api from '../api';
 import supabase from '../supabaseClient';
@@ -85,6 +85,44 @@ function VisibilityBadge({ visibility, onClick, disabled }) {
   );
 }
 
+// Operating-system junk that should never be uploaded with a folder.
+const IGNORED_FILE_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
+const MAX_FOLDER_UPLOAD_FILES = 2000;
+// Same cleaning the API applies to folder names, so we can find a folder that already exists.
+const cleanFolderName = (name) => String(name ?? '').replace(/[\\/\u0000-\u001f]+/g, ' ').trim().slice(0, 120);
+
+/** Turns the picker's FileList (webkitdirectory) into { file, dirs } entries; dirs = folder path above the file. */
+export function entriesFromPicker(fileList) {
+  return Array.from(fileList || []).map((file) => {
+    const parts = String(file.webkitRelativePath || '').split('/').filter(Boolean);
+    return { file, dirs: parts.length > 1 ? parts.slice(0, -1) : [] };
+  });
+}
+
+/** Reads everything dropped on the page, descending into dropped folders. Must start synchronously inside the drop event. */
+export async function entriesFromDrop(dataTransfer) {
+  const roots = Array.from(dataTransfer?.items || []).map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null));
+  if (!roots.length || roots.some((entry) => !entry)) {
+    return Array.from(dataTransfer?.files || []).map((file) => ({ file, dirs: [] }));
+  }
+  const out = [];
+  async function walk(entry, dirs) {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      out.push({ file, dirs });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child, [...dirs, entry.name]);
+      }
+    }
+  }
+  for (const entry of roots) await walk(entry, []);
+  return out;
+}
+
 export default function FileExplorer() {
   const { profile } = useAuth();
   const [folderId, setFolderId] = useState(null);
@@ -115,6 +153,21 @@ export default function FileExplorer() {
   const fileInputRef = useRef(null);
   const draggedRef = useRef(null); // { kind, id, name } while an item is dragged inside the explorer
   const [dropTarget, setDropTarget] = useState(null); // folder id, '__root__' or null
+  const folderInputRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false); // the "+" menu: New folder / Upload files
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onPointerDown = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -234,33 +287,84 @@ export default function FileExplorer() {
     setFolderId(id);
   }
 
-  async function uploadFiles(fileList) {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
+  // Creates the folder, or reuses the one you already have with that name in the same place.
+  async function ensureFolder(parentId, rawName) {
+    const name = cleanFolderName(rawName);
+    if (!name) throw new Error('Folder name is empty.');
+    try {
+      const { data: created } = await api.post('/drive/folders', { name, parent_id: parentId, visibility: uploadVisibility });
+      return created.id;
+    } catch (err) {
+      if (err.response?.status !== 409) throw err;
+      const { data: listing } = await api.get('/drive', { params: parentId ? { folder_id: parentId } : {} });
+      const existing = (listing?.folders || []).find((f) => f.name === name && f.is_owner);
+      if (!existing) throw err;
+      return existing.id;
+    }
+  }
+
+  // Uploads { file, dirs } entries into the current folder, recreating each file's folder path first.
+  async function uploadTree(entries) {
+    const list = (entries || []).filter((entry) => entry?.file && !IGNORED_FILE_NAMES.has(String(entry.file.name).toLowerCase()));
+    if (!list.length) return;
+    if (list.length > MAX_FOLDER_UPLOAD_FILES) {
+      setError(`That is ${list.length} files. Upload at most ${MAX_FOLDER_UPLOAD_FILES} files at a time (split the folder).`);
+      return;
+    }
     setError('');
     const failures = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      setBusy(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
+    const folderCache = new Map([['', folderId]]); // 'a/b' -> folder id
+    const failedFolders = new Set();
+    async function targetFolderFor(dirs) {
+      let key = '';
+      let parent = folderId;
+      for (const dir of dirs) {
+        key = key ? `${key}/${dir}` : dir;
+        if (failedFolders.has(key)) throw new Error(`folder "${key}" could not be created`);
+        if (!folderCache.has(key)) {
+          try {
+            folderCache.set(key, await ensureFolder(parent, dir));
+          } catch (err) {
+            failedFolders.add(key);
+            throw new Error(`folder "${key}": ${err.response?.data?.error || err.message}`);
+          }
+        }
+        parent = folderCache.get(key);
+      }
+      return parent;
+    }
+    for (let index = 0; index < list.length; index += 1) {
+      const { file, dirs } = list[index];
+      const label = dirs.length ? `${dirs.join('/')}/${file.name}` : file.name;
+      setBusy(`Uploading ${index + 1} of ${list.length}: ${label}`);
       try {
+        const targetId = await targetFolderFor(dirs);
         // Files go straight to storage, so size is not limited by the API.
-        const { data: ticket } = await api.post('/drive/files/prepare', { name: file.name, folder_id: folderId, visibility: uploadVisibility });
+        const { data: ticket } = await api.post('/drive/files/prepare', { name: file.name, folder_id: targetId, visibility: uploadVisibility });
         const { error: uploadError } = await supabase.storage
           .from(ticket.bucket)
           .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type || 'application/octet-stream' });
         if (uploadError) throw new Error(uploadError.message);
         await api.post('/drive/files/complete', {
-          file_id: ticket.file_id, name: file.name, folder_id: folderId, visibility: uploadVisibility, content_type: file.type || null,
+          file_id: ticket.file_id, name: file.name, folder_id: targetId, visibility: uploadVisibility, content_type: file.type || null,
         });
       } catch (err) {
-        failures.push(`${file.name}: ${err.response?.data?.error || err.message}`);
+        failures.push(`${label}: ${err.response?.data?.error || err.message}`);
       }
     }
     setBusy('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (failures.length) setError(`Could not upload ${failures.length} file${failures.length === 1 ? '' : 's'}. ${failures.join(' | ')}`);
+    if (folderInputRef.current) folderInputRef.current.value = '';
+    // Refresh first: a successful refresh clears the error banner, which would hide these failures.
     await load({ silent: true });
+    if (failures.length) {
+      const shown = failures.slice(0, 8).join(' | ');
+      setError(`Could not upload ${failures.length} file${failures.length === 1 ? '' : 's'}. ${shown}${failures.length > 8 ? ` … and ${failures.length - 8} more` : ''}`);
+    }
   }
+
+  const uploadFiles = (fileList) => uploadTree(Array.from(fileList || []).map((file) => ({ file, dirs: [] })));
+  const uploadFolder = (fileList) => uploadTree(entriesFromPicker(fileList));
 
   async function createFolder(e) {
     e.preventDefault();
@@ -382,7 +486,7 @@ export default function FileExplorer() {
       aria-label="File explorer"
       onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer?.files?.length) void uploadFiles(e.dataTransfer.files); }}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); if (e.dataTransfer?.files?.length) void entriesFromDrop(e.dataTransfer).then(uploadTree); }}
     >
       <div className="fx-toolbar">
         <nav className="fx-breadcrumbs" aria-label="Folder path">
@@ -400,9 +504,25 @@ export default function FileExplorer() {
             <button type="button" className={uploadVisibility === 'public' ? 'is-active' : ''} aria-pressed={uploadVisibility === 'public'} onClick={() => setUploadVisibility('public')} title="New uploads and folders are visible to your whole organization"><Globe size={13} aria-hidden="true" /> Public</button>
           </div>
           {isAdmin && <button type="button" className="btn btn-ghost btn-sm" onClick={exportDetails} disabled={!items.length} title="Download a CSV with full details of the items listed below"><FileSpreadsheet size={14} /> Export details</button>}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(true)}><FolderPlus size={14} /> New folder</button>
-          <button type="button" className="btn btn-primary btn-sm fx-upload-button" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload</button>
+          <div className="fx-plus" ref={menuRef}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm fx-plus-button"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Add"
+              onClick={() => setMenuOpen((open) => !open)}
+            ><Plus size={16} aria-hidden="true" /> New</button>
+            {menuOpen && (
+              <div className="fx-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setCreating(true); }}><FolderPlus size={15} aria-hidden="true" /> New folder</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}><Upload size={15} aria-hidden="true" /> Upload files</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); folderInputRef.current?.click(); }}><FolderUp size={15} aria-hidden="true" /> Upload folder</button>
+              </div>
+            )}
+          </div>
           <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => uploadFiles(e.target.files)} />
+          <input ref={folderInputRef} type="file" multiple hidden webkitdirectory="true" data-testid="folder-input" aria-label="Upload folder" onChange={(e) => uploadFolder(e.target.files)} />
         </div>
       </div>
 

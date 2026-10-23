@@ -75,3 +75,19 @@ A shared file explorer for every user (admin and employee) with folder navigatio
 - Privacy is unchanged: private items of other people are not listed to admins, so their properties are not available either.
 - Deployed with backup `index.ts.bak-pre-filedetails-20261015`.
 
+## Update: one "+ New" button
+
+The Files toolbar now has a single **+ New** button (`frontend/src/components/FileExplorer.jsx`, styles `.fx-plus` / `.fx-menu` in `frontend/src/index.css`) that opens a small menu with **New folder**, **Upload files** and **Upload folder**, replacing the two separate buttons. The menu closes with Escape or a click elsewhere. **New folder** opens the same inline name field as before and creates the folder in the folder you are viewing, with the Private/Public choice shown next to the button; **Upload files** opens the file picker (drag-and-drop onto the page still works). No API or database change. Covered by `frontend/src/components/__tests__/FileExplorerPlusMenu.test.jsx`.
+
+### Uploading a whole folder
+
+**Upload folder** (or dragging a folder onto the page) uploads the folder with all its subfolders into the folder you are viewing. The browser reports each file's path (`webkitRelativePath`, or the dropped directory tree); `FileExplorer.jsx` recreates the folders one level at a time with `POST /drive/folders` and uploads each file into the right folder through the existing prepare / upload / complete flow, so there is no new API and no size limit beyond storage. Details:
+
+- If you already have a folder with that name in the same place (the API answers 409), it is reused instead of failing, so re-uploading merges into it.
+- `.DS_Store`, `Thumbs.db` and `desktop.ini` are skipped.
+- At most 2000 files per upload; larger folders must be split.
+- Empty folders are not recreated (browsers do not list them).
+- New folders and files use the Private/Public choice shown in the toolbar.
+- Failures are listed per file (first 8 shown) and do not stop the rest. The list is refreshed before the error banner is set, because a successful refresh clears the banner (this also fixes failed single-file uploads whose message disappeared immediately).
+- Browser support: the folder picker needs `webkitdirectory` (Chrome, Edge, Firefox, Safari); folder drag-and-drop uses `webkitGetAsEntry`.
+- Tests: `frontend/src/components/__tests__/FileExplorerPlusMenu.test.jsx`.
