@@ -103,29 +103,6 @@ export default function CalenderView({
 
   return (
     <div className="calendar-view" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Google Calendar connect bar — sits above the month grid so it's
-          unmistakable from any page state. */}
-      <div
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, flexWrap: 'wrap',
-          padding: '10px 14px',
-          border: '1px solid var(--tf-border)',
-          borderRadius: 14,
-          background: 'var(--tf-panel)',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.005em' }}>
-            Sync with Google Calendar
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
-            Connect your Gmail to auto-push new meetings to your Google calendar.
-          </span>
-        </div>
-        <GoogleConnectCard variant="inline" />
-      </div>
-
       <div className="calendar-month" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', overflow: 'hidden' }}>
         <div className="calendar-month-toolbar" style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -232,6 +209,27 @@ export default function CalenderView({
           })}
         </div>
         </div>
+      </div>
+      <div
+        className="calendar-google-sync"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap',
+          padding: '10px 14px',
+          border: '1px solid var(--tf-border)',
+          borderRadius: 14,
+          background: 'var(--tf-panel)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.005em' }}>
+            Sync with Google Calendar
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+            Connect your Gmail to auto-push new meetings to your Google calendar.
+          </span>
+        </div>
+        <GoogleConnectCard variant="inline" />
       </div>
     </div>
   );

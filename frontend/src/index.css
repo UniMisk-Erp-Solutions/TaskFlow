@@ -845,10 +845,8 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
   .taskflow-sidebar nav { padding: 10px 6px !important; }
   .taskflow-sidebar nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
   .taskflow-sidebar > div:last-child { padding: 8px 5px !important; }
-  /* Profile + theme toggle stack vertically in the narrow rail instead of overlapping. */
-  .taskflow-sidebar > div:last-child > div { flex-direction: column; justify-content: center !important; align-items: center; gap: 8px !important; padding: 8px 0 !important; }
-  .taskflow-sidebar > div:last-child > div > button:first-child { flex: 0 0 auto !important; width: auto !important; justify-content: center; }
-  .taskflow-sidebar > div:last-child { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important; }
+  .taskflow-sidebar > div:last-child > div { justify-content: center !important; padding: 8px 0 !important; }
+  .taskflow-sidebar > div:last-child > div > div:first-child { display: none !important; }
   .taskflow-sidebar > div:last-child > button { justify-content: center !important; padding: 10px 6px !important; }
 }
 
@@ -1076,8 +1074,8 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
   .timer-hbar-track { grid-column: 1 / -1; grid-row: 2; }
 }
 
-/* Keep the floating AI button from covering the last rows of any page. */
-main { padding-bottom: 96px; }
+/* (The floating AI button that used to need this room is hidden everywhere now; the AI button lives in the header.) */
+main { padding-bottom: 0; }
 .tf-fab { opacity: .9; }
 .tf-fab:hover, .tf-fab:focus-visible { opacity: 1; }
 .timer-toolbar-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -2097,16 +2095,6 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .taskflow-mobile-menu-close { width: 30px; height: 30px; flex-basis: 30px; }
 }
 
-.fx-row.is-draggable { cursor: grab; }
-.fx-row.is-draggable:active { cursor: grabbing; }
-.fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }
-
-/* Installed app: keep the sidebar and header clear of notches / rounded corners and the home indicator. */
-@media (display-mode: standalone) {
-  .taskflow-sidebar { padding-top: env(safe-area-inset-top, 0px); height: 100dvh; box-sizing: border-box; }
-  .taskflow-sidebar nav { overflow-y: auto; }
-}
-
 /* Chat composer: the attach / voice / send buttons keep their size on narrow phones (they used to be squeezed
    by the text field until the icons were only a few pixels wide, leaving just the outline). */
 .tf-chat-icon-btn { flex: 0 0 auto; min-width: 38px; min-height: 38px; padding-inline: 10px; }
@@ -2123,3 +2111,42 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .tf-chat { overflow: clip !important; }
   .tf-chat-list, .tf-chat-list > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
 }
+
+/* ── Tablet (iPad mini and similar, ~600–1100 px wide) ───────────────────────────────────────────
+   iPad mini portrait is 744–768 px: wider than a phone, narrower than a desktop. These rules sit last so they
+   win over the phone-first rules above. */
+@media (min-width: 600px) and (max-width: 1100px) {
+  /* Header actions: the secondary buttons keep their icons and drop the words, so the row stays tidy. */
+  .tf-subnav-actions .tf-btn-label { display: none; }
+  .tf-subnav-actions .btn-ghost { padding-inline: 10px; }
+  /* Overview statistics: even rows of four instead of 5 + 3. */
+  .tf-stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+  /* Filters: search on its own row, the dropdowns in an even grid underneath. */
+  .tf-filter-bar { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .tf-filter-bar > div:first-child { grid-column: 1 / -1; min-width: 0 !important; }
+  .tf-filter-bar > select { width: 100% !important; min-width: 0 !important; }
+  .tf-filter-bar > button { justify-self: start; }
+  /* Task / meeting tables: give the title room (the table scrolls sideways inside its card if it must). */
+  .tf-data-table th, .tf-data-table td { padding-inline: 8px !important; }
+  .tf-data-table td.tf-col-title { min-width: 150px; }
+  .tf-data-table .tf-status-select { width: 128px !important; }
+  /* Kanban: all four lanes at once as a 2 x 2 board instead of one lane behind tabs. */
+  .kanban-mobile-lanes { display: none !important; }
+  .kanban-board { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 12px; width: 100% !important; overflow: visible !important; }
+  .kanban-column { display: block !important; min-height: 240px; }
+}
+
+/* Profile: stack the two panels whenever the page is narrower than ~900 px (it used to overflow beside an open sidebar). */
+@media (max-width: 900px) {
+  .tf-profile-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* iPad mini landscape (~1100–1300 px, sidebar open): four Kanban lanes share the width instead of scrolling sideways. */
+@media (min-width: 1101px) and (max-width: 1300px) {
+  .kanban-board { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+}
+
+/* Kept from earlier changes (Files drag-and-drop, installed-app safe areas). */
+.fx-row.is-draggable { cursor: grab; }
+.fx-row.is-draggable:active { cursor: grabbing; }
+.fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }

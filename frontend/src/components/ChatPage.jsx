@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Hash, Lock, Search, Send, Trash2, ArrowLeft, MessageSquarePlus, Paperclip, Mic, Square, Pencil, X,
-  FileText, Download, Reply, Users, Plus, Check, LogOut, Crown, UserPlus, Info,
+  FileText, Download, Reply, Users, Plus, Check, LogOut, Crown, UserPlus, Info, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
@@ -270,14 +270,15 @@ function MemberPicker({ people, selected, onToggle }) {
 function useFitChatToViewport(el) {
   useEffect(() => {
     if (!el || typeof window === 'undefined') return undefined;
-    const mq = window.matchMedia('(max-width: 760px)');
+    const mq = window.matchMedia('(max-width: 1100px)'); // phones and tablets: fit the chat to the space left on screen
+    const originalHeight = el.style.height; // React's own inline height, restored on wide screens
     const probe = document.createElement('div');
     probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none';
     document.body.appendChild(probe);
     let timer = 0;
     const fit = () => {
       timer = 0;
-      if (!mq.matches) { el.style.removeProperty('height'); return; }
+      if (!mq.matches) { if (originalHeight) el.style.setProperty('height', originalHeight); else el.style.removeProperty('height'); return; }
       const vv = window.visualViewport;
       const viewportHeight = vv ? vv.height : window.innerHeight;
       const top = el.getBoundingClientRect().top + window.scrollY;
@@ -304,10 +305,75 @@ function useFitChatToViewport(el) {
   }, [el]);
 }
 
+// Conversation-list sizing on tablets and larger (>= 600 px, which includes iPad mini portrait): drag the divider to resize, drag it far left (or use the
+// button) to close the list, and reopen it from the thread header. The choice is remembered per browser.
+const LIST_MIN = 200;
+const LIST_MAX = 480;
+const LIST_DEFAULT = 290;
+const LIST_SNAP_CLOSE = 150; // dragging narrower than this closes the list
+function readStored(key, fallback) {
+  try { const v = window.localStorage.getItem(key); return v === null ? fallback : v; } catch { return fallback; }
+}
+function writeStored(key, value) {
+  try { window.localStorage.setItem(key, String(value)); } catch { /* storage unavailable */ }
+}
+function useIsWide() {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 600px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 600px)');
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return wide;
+}
+
 export default function ChatPage() {
   // The chat box only exists once the conversation list has loaded, so track the element itself (not a ref object).
   const [chatRoot, setChatRoot] = useState(null);
   useFitChatToViewport(chatRoot);
+  const isWide = useIsWide();
+  const [listOpen, setListOpen] = useState(() => readStored('taskflow:chat-list-open', '1') !== '0');
+  const [listWidth, setListWidth] = useState(() => {
+    const n = Number(readStored('taskflow:chat-list-width', LIST_DEFAULT));
+    return Number.isFinite(n) ? Math.min(LIST_MAX, Math.max(LIST_MIN, n)) : LIST_DEFAULT;
+  });
+  const [resizing, setResizing] = useState(false);
+  const setOpen = useCallback((open) => { setListOpen(open); writeStored('taskflow:chat-list-open', open ? '1' : '0'); }, []);
+  const commitWidth = useCallback((w) => { setListWidth(w); writeStored('taskflow:chat-list-width', w); }, []);
+  const startResize = useCallback((e) => {
+    if (!chatRoot || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const left = chatRoot.getBoundingClientRect().left;
+    let latest = null;
+    let close = false;
+    try { handle.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+    setResizing(true);
+    const move = (ev) => {
+      const rawWidth = ev.clientX - left;
+      close = rawWidth < LIST_SNAP_CLOSE;
+      latest = Math.min(LIST_MAX, Math.max(LIST_MIN, rawWidth));
+      setListWidth(latest);
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      setResizing(false);
+      if (close) { setOpen(false); return; }
+      if (latest !== null) writeStored('taskflow:chat-list-width', latest);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }, [chatRoot, setOpen]);
+  const onResizeKey = useCallback((e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); commitWidth(Math.max(LIST_MIN, listWidth - 16)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); commitWidth(Math.min(LIST_MAX, listWidth + 16)); }
+    else if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); setOpen(false); }
+  }, [listWidth, commitWidth, setOpen]);
   const { profile } = useAuth();
   const meId = profile?.id;
   const orgId = profile?.org_id;
@@ -805,14 +871,27 @@ export default function ChatPage() {
         .tf-chat-actions { opacity: 0; transition: opacity 120ms ease; }
         .tf-chat-msg:hover .tf-chat-actions, .tf-chat-msg:focus-within .tf-chat-actions { opacity: 1; }
         @media (hover: none) { .tf-chat-actions { opacity: 0.7; } }
-        @media (max-width: 760px) {
+        @media (max-width: 599px) {
           .tf-chat-list { width: 100% !important; display: ${showList ? 'flex' : 'none'} !important; }
           .tf-chat-thread { display: ${showList ? 'none' : 'flex'} !important; }
         }
       `}</style>
 
       {/* Conversation list */}
-      <div className="tf-chat-list" style={{ width: 290, flexShrink: 0, borderRight: '1px solid var(--tf-border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div
+        className="tf-chat-list"
+        aria-hidden={isWide && !listOpen ? true : undefined}
+        style={{
+          width: isWide ? (listOpen ? listWidth : 0) : 290,
+          flexShrink: 0,
+          borderRight: isWide && !listOpen ? 'none' : '1px solid var(--tf-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: isWide && !listOpen ? 'hidden' : undefined,
+          transition: resizing ? 'none' : 'width 160ms ease',
+        }}
+      >
         <div style={{ padding: 12, borderBottom: '1px solid var(--tf-border)', display: 'flex', gap: 8 }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--tf-muted)' }} />
@@ -827,6 +906,11 @@ export default function ChatPage() {
           <button type="button" className="btn btn-primary btn-sm btn-icon" title="Create group" aria-label="Create group" onClick={() => setShowCreate(true)}>
             <Plus size={16} />
           </button>
+          {isWide && (
+            <button type="button" className="btn btn-ghost btn-sm btn-icon" title="Hide conversation list" aria-label="Hide conversation list" onClick={() => setOpen(false)}>
+              <PanelLeftClose size={16} />
+            </button>
+          )}
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
@@ -886,6 +970,26 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {isWide && listOpen && (
+        <div
+          className="tf-chat-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize conversation list (drag, or use the arrow keys; Escape closes it)"
+          aria-valuemin={LIST_MIN}
+          aria-valuemax={LIST_MAX}
+          aria-valuenow={listWidth}
+          tabIndex={0}
+          title="Drag to resize · drag left to close · double-click to reset"
+          onPointerDown={startResize}
+          onDoubleClick={() => commitWidth(LIST_DEFAULT)}
+          onKeyDown={onResizeKey}
+          style={{ flex: '0 0 12px', margin: '0 -6px', zIndex: 5, cursor: 'col-resize', touchAction: 'none', position: 'relative' }}
+        >
+          <span aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, left: 5, width: 2, borderRadius: 2, background: resizing ? 'var(--color-primary)' : 'transparent', transition: 'background 120ms' }} />
+        </div>
+      )}
+
       {/* Thread */}
       <div
         className="tf-chat-thread"
@@ -906,6 +1010,11 @@ export default function ChatPage() {
         )}
 
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isWide && !listOpen && (
+            <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Show conversation list" title="Show conversation list" onClick={() => setOpen(true)}>
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Back to chats" onClick={() => setMobileThread(false)} style={{ display: showList ? 'none' : undefined }}>
             <ArrowLeft size={16} />
           </button>

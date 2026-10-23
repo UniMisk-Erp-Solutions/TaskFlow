@@ -348,9 +348,9 @@ export default function AdminDashboard() {
             )}
             {page !== 'notifications' && page !== 'users' && page !== 'profile' && (
               <>
-                <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
+                <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending} title="Send reminders" aria-label="Send reminders">
                   {sending ? <span className="spinner" /> : <Send size={12} />}
-                  Send Reminders
+                  <span className="tf-btn-label">Send Reminders</span>
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"
@@ -358,7 +358,7 @@ export default function AdminDashboard() {
                   title="Bulk import tasks from a CSV"
                   onClick={() => setImportKind('task')}
                 >
-                  <Upload size={13} /> Import tasks
+                  <Upload size={13} /> <span className="tf-btn-label">Import tasks</span>
                 </button>
                 <button
                   className="btn btn-ghost btn-sm"
@@ -366,7 +366,7 @@ export default function AdminDashboard() {
                   title="Bulk import meetings from a CSV"
                   onClick={() => setImportKind('meeting')}
                 >
-                  <Upload size={13} /> Import meetings
+                  <Upload size={13} /> <span className="tf-btn-label">Import meetings</span>
                 </button>
                 <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
                   <Plus size={13} /> New Task
@@ -389,6 +389,7 @@ export default function AdminDashboard() {
           {page === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div
+                className="tf-stat-grid"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))',

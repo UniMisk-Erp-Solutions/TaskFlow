@@ -39,7 +39,12 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
   const activeButtonRef = useRef(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
-    try { return window.localStorage.getItem('taskflow:sidebar-collapsed') === '1'; } catch { return false; }
+    // First visit on a tablet-sized screen (e.g. iPad mini portrait, 761–1100 px): start with the slim icon rail so the
+    // page gets the width. Once the user toggles it, their choice is remembered.
+    let stored = null;
+    try { stored = window.localStorage.getItem('taskflow:sidebar-collapsed'); } catch { /* storage unavailable */ }
+    if (stored !== null) return stored === '1';
+    return typeof window !== 'undefined' && window.innerWidth > 760 && window.innerWidth <= 1100;
   });
   const toggleCollapsed = useCallback(() => {
     setCollapsed((current) => {

@@ -50,6 +50,7 @@ export default function StatusSelect({
 
   return (
     <label
+      className="tf-status-select"
       style={{
         position: 'relative',
         display: 'inline-flex',
