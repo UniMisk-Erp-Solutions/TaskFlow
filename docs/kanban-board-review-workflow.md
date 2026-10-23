@@ -31,6 +31,8 @@ Employees can move active tasks freely among Backlog, To Do, and In Progress. Wh
 
 When an employee submits from the board, the API looks up administrators in the task's organization and includes them in the existing `task_update` push notification. The notification title is **Task ready for review** and links to the task. The existing TaskFlow push preference and browser subscription settings determine whether an administrator receives a browser push. The admin dashboard's pending-review count also derives from tasks in `submitted` status.
 
+Tasks can also reach `submitted` automatically when an assigned employee's GitHub push or pull request references the task; they use the same review notification and admin actions. See [github-integration.md](github-integration.md).
+
 ## Priority card design
 
 All four lane surfaces use the same theme panel color (white in the light theme). Lane background colors do not vary by workflow; task priority remains visible through the card fills and priority badges.

@@ -42,3 +42,4 @@
 - [Files: Drag and Drop to Move Items](docs/files-drag-drop-move.md) — Documents dragging files/folders onto folders, breadcrumbs or the Back row to move them, plus the new move option in the drive PATCH API.
 - [AI Assistant: Close with Esc](docs/ai-chat-esc-close.md) — Documents closing the AI Assistant panel with the Esc key.
 - [PWA Layout Fix](docs/pwa-layout-fixes.md) — Documents the fix for the overlapping profile and theme buttons in the narrow sidebar of the installed app, plus safe-area polish.
+- [GitHub Integration](docs/github-integration.md) — Documents the GitHub App integration: connecting accounts, linking commits/branches/PRs to tasks, automatic In Progress to Done (pending approval) submission, admin notification, webhook security, setup, API routes and testing.

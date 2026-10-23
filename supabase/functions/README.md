@@ -32,6 +32,7 @@ It mirrors the core backend routes used by the app:
 - `/meetings/:id/attachments` list/upload
 - `/meetings/attachments/:attachmentId/download`
 - `/admin/dashboard`, `/admin/users`
+- `/github/*` and `/tasks/:id/github*` (GitHub App integration: webhook, OAuth/installation callbacks, connection status, task links)
 
 ## 1) Set local function secrets
 
@@ -86,3 +87,7 @@ Run these SQL files before testing:
 
 - `POST /admin/send-reminders` is currently `501 Not implemented` in edge function.
 - Existing Node backend can be stopped once frontend is using `/functions/v1/api`.
+
+## GitHub integration
+
+The GitHub webhook and the browser callbacks cannot carry a Supabase JWT, so serve and deploy this function with JWT verification disabled (`supabase functions serve api --no-verify-jwt`, `supabase functions deploy api --no-verify-jwt`). The routes authenticate themselves. Additional secrets (`GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_API_PUBLIC_URL`) and the migrations `supabase/migrations/20261022120000_github_integration.sql` and `20261023120000_task_github_repo.sql` are described in [docs/github-integration.md](../../docs/github-integration.md). The function now imports `./github.ts`, which is deployed with it.

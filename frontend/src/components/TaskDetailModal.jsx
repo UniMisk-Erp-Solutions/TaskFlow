@@ -7,6 +7,7 @@ import ProjectSelect from './ProjectSelect';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import HistoryTimeline from './HistoryTimeline';
 import AttachmentsSection from './AttachmentsSection';
+import TaskGithubSection from './TaskGithubSection';
 import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 function assigneeNames(task, profileById) {
@@ -585,6 +586,13 @@ export default function TaskDetailModal({
             )}
 
             {error && <div className="form-error">{error}</div>}
+
+            <TaskGithubSection
+              taskId={record.id}
+              canEdit={isAdmin || isMyTask}
+              isAdmin={isAdmin}
+              refreshKey={`${record.status}:${history.length}`}
+            />
 
             <AttachmentsSection kind="task" itemId={record.id} canEdit={isAdmin || isMyTask} />
 

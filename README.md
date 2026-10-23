@@ -11,6 +11,7 @@ TaskFlow is a web application for teams to plan, assign, and track work in one s
 - Separate administrator and employee experiences with role-based API access.
 - Direct, bookmarkable pages for each dashboard feature under `/admin/...` and `/dashboard/...` routes.
 - Projects, meetings and calendar views, meeting attachments, notifications, and dashboard summaries.
+- GitHub integration: connect your GitHub account, and pushes or pull requests that reference a task (for example `feature/TF-1a2b3c4d-login`) link to it and move it from In Progress to Done for admin approval, even when TaskFlow is closed.
 - Optional Google Calendar, AI, email, and browser push integrations when their credentials are configured.
 
 For the architecture, database model, feature flow, and deployment notes, see [docs/project-setup-and-architecture.md](docs/project-setup-and-architecture.md). The Kanban-specific behavior is in [docs/kanban-board-review-workflow.md](docs/kanban-board-review-workflow.md).
@@ -18,6 +19,8 @@ For the architecture, database model, feature flow, and deployment notes, see [d
 Timer behavior, analytics, access rules, and its required migration are in [docs/task-timer-tracking-and-analytics.md](docs/task-timer-tracking-and-analytics.md).
 
 The employee submission confirmation and admin review lifecycle are documented in [docs/employee-kanban-review-submission.md](docs/employee-kanban-review-submission.md).
+
+The GitHub App setup, task matching rules, security model, API routes, migration, and testing steps are in [docs/github-integration.md](docs/github-integration.md).
 
 Dashboard route and priority color details are in [docs/portal-routes-and-priority-colors.md](docs/portal-routes-and-priority-colors.md).
 
@@ -145,6 +148,7 @@ Run from the indicated directory:
 ## Optional integrations
 
 - **Google Calendar:** Set `VITE_GOOGLE_CLIENT_ID` in `frontend/.env.local` after configuring a Google Cloud OAuth web client. See [docs/GOOGLE_CALENDAR.md](docs/GOOGLE_CALENDAR.md).
+- **GitHub:** Create a GitHub App, apply `supabase/migrations/20261022120000_github_integration.sql` and `20261023120000_task_github_repo.sql`, set the `GITHUB_*` Edge Function secrets, and deploy the Edge API with `--no-verify-jwt`. See [docs/github-integration.md](docs/github-integration.md).
 - **Maintenance gate:** `VITE_STATUS_URL` and `VITE_STATUS_KEY` configure the optional status project; leave them unset to disable the gate.
 - **Browser push:** Configure the VAPID values in `backend/.env` and enable push subscriptions in the app.
 - **AI and email:** Configure the optional `OPENROUTER_*` or `BREVO_*` variables described in [the architecture guide](docs/project-setup-and-architecture.md) when those integrations are needed.

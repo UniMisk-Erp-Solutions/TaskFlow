@@ -48,6 +48,8 @@ The app can use either API implementation. Point `VITE_API_URL` at the selected 
 
 For Kanban, the task's board lane and order are persisted alongside its business status. Employee submissions transition to a review state; administrators approve into completed work or reject back to active work. The detailed lifecycle and migration names are in [kanban-board-review-workflow.md](kanban-board-review-workflow.md).
 
+GitHub webhooks are a second input to that review flow: the Edge API validates the webhook signature, matches the pushed commits or pull request to an assigned task, and moves an In Progress task to the same `submitted` review state. See [github-integration.md](github-integration.md).
+
 ## Local development modes
 
 ### Frontend + hosted Edge API
@@ -90,6 +92,7 @@ Do not use a service-role key in the frontend. The Express API is not self-conta
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Express | Optional | AI-related API features. |
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | Express | Optional | Email integration settings. |
 | `VITE_STATUS_URL`, `VITE_STATUS_KEY` | Frontend | Optional | Separate status/maintenance project configuration. |
+| `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | Edge Function | Optional (required for GitHub integration) | GitHub App credentials and webhook secret; also `GITHUB_API_PUBLIC_URL`, `GITHUB_STATE_SECRET`, `GITHUB_RETURN_ORIGINS`. See [github-integration.md](github-integration.md). |
 
 See `frontend/.env.example` and `backend/.env.example` for templates. Do not commit local environment files.
 

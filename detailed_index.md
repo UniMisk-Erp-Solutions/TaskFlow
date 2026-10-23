@@ -290,3 +290,9 @@ The AI Assistant panel now also closes when Esc is pressed (document keydown lis
 **Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
 
 Stacks the profile and theme buttons vertically in the 68px sidebar rail used on narrow screens and in the installed PWA (they previously overlapped), removes a dead CSS rule, and adds standalone-mode safe-area and 100dvh handling for the sidebar.
+
+---
+
+**Document:** [docs/github-integration.md](docs/github-integration.md)
+
+Describes the GitHub App integration in the Supabase Edge API: per-user GitHub connection (identity only, no stored tokens), admin installation linked to the organization, the HMAC-verified webhook, task matching by the TF-xxxxxxxx reference in branch names, commits and pull requests, by explicitly linked branches/PRs, or by an optional per-task repository, installation by any connected user, and the assignee-only authorization rules. It explains what counts as qualifying activity, the atomic In Progress to Done (pending admin approval) transition with duplicate-delivery and replay protection, admin push notification and the existing approve / request-changes flow, the task detail GitHub section, API routes, the migration, GitHub App settings and secrets, `--no-verify-jwt` deployment, the local webhook simulator, automated tests, troubleshooting and limitations.

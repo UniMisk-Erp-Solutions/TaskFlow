@@ -1,4 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  createAppJwt, normalizeBranch, normalizeRepo, parseExplicitLink, processGithubDelivery, signState, taskRefOf, verifyGithubSignature,
+  verifyState,
+  type GithubHooks,
+} from "./github.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inlined push module. Nothing here loads Node-only npm modules at module
@@ -3659,6 +3664,11 @@ async function handleTasks(req: Request, path: string) {
     const { title, description, priority, due_date, due_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
+    // Optional GitHub repository (and branch) this task's work lives in.
+    const ghRepo = normalizeRepo((body as any).github_repo);
+    if ("error" in ghRepo) return json({ error: ghRepo.error }, 400);
+    const ghBranch = normalizeBranch((body as any).github_branch);
+    if ("error" in ghBranch) return json({ error: ghBranch.error }, 400);
     if (project_id) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
@@ -3678,6 +3688,8 @@ async function handleTasks(req: Request, path: string) {
         created_by: user.id,
         org_id: user.org_id,
         parent_task_id: parent_task_id || null,
+        // Only sent when set, so tasks can still be created before the GitHub migration is applied.
+        ...(ghRepo.repo ? { github_repo: ghRepo.repo, github_branch: ghBranch.branch } : {}),
       }])
       .select("id")
       .single();
@@ -3958,6 +3970,14 @@ async function handleTasks(req: Request, path: string) {
       patch.parent_task_id = parent_task_id_in === null || parent_task_id_in === ""
         ? null
         : String(parent_task_id_in);
+    }
+    if ((body as any).github_repo !== undefined || (body as any).github_branch !== undefined) {
+      const r = normalizeRepo((body as any).github_repo);
+      if ("error" in r) return json({ error: r.error }, 400);
+      const b = normalizeBranch((body as any).github_branch);
+      if ("error" in b) return json({ error: b.error }, 400);
+      patch.github_repo = r.repo;
+      patch.github_branch = r.repo ? b.branch : null;
     }
 
     const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
@@ -5804,6 +5824,419 @@ async function handleAdmin(req: Request, path: string) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GitHub integration (GitHub App): per-user account connection, org-level App
+// installation, secure webhook, task linking and auto-submit for admin approval.
+// Pure logic + webhook orchestration live in ./github.ts (unit-tested in Node);
+// this block is the HTTP / database / notification glue.
+// Setup: docs/github-integration.md
+// ─────────────────────────────────────────────────────────────────────────────
+const GH_API_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+  "User-Agent": "TaskFlow-GitHub-Integration",
+};
+
+// Each value comes from the function's env, or public.app_settings (key = lower-cased name).
+async function ghConf(name: string): Promise<string> {
+  return (Deno.env.get(name) || (await getAppSetting(name.toLowerCase())) || "").trim();
+}
+
+async function ghSettings() {
+  const [appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, stateSecret, returnOrigins] = await Promise.all([
+    ghConf("GITHUB_APP_ID"), ghConf("GITHUB_APP_SLUG"), ghConf("GITHUB_APP_CLIENT_ID"), ghConf("GITHUB_APP_CLIENT_SECRET"),
+    ghConf("GITHUB_APP_PRIVATE_KEY"), ghConf("GITHUB_WEBHOOK_SECRET"), ghConf("GITHUB_API_PUBLIC_URL"), ghConf("GITHUB_STATE_SECRET"),
+    ghConf("GITHUB_RETURN_ORIGINS"),
+  ]);
+  return {
+    appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, returnOrigins,
+    stateSecret: stateSecret || clientSecret || webhookSecret,
+  };
+}
+type GhSettings = Awaited<ReturnType<typeof ghSettings>>;
+
+// Public base URL of this API (what GitHub redirects the browser to). Behind the Supabase
+// gateway the request URL is an internal host, so GITHUB_API_PUBLIC_URL can pin it.
+function ghApiBase(req: Request, s: GhSettings): string {
+  if (s.publicUrl) return s.publicUrl.replace(/\/+$/, "");
+  const u = new URL(req.url);
+  const host = req.headers.get("x-forwarded-host") || u.host;
+  const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
+  const prefix = u.pathname.startsWith("/functions/v1/api") ? "/functions/v1/api" : u.pathname.startsWith("/api") ? "/api" : "";
+  return `${proto}://${host}${prefix}`;
+}
+
+// The browser is sent back to the page that started the flow, but only to an origin we trust:
+// the one that made the (authenticated) request, FRONTEND_URL, or GITHUB_RETURN_ORIGINS.
+function ghSafeReturnTo(req: Request, s: GhSettings, returnTo: unknown): string | null {
+  let target: URL;
+  try { target = new URL(String(returnTo)); } catch { return null; }
+  if (target.protocol !== "http:" && target.protocol !== "https:") return null;
+  const allowed = new Set<string>();
+  const origin = req.headers.get("origin");
+  if (origin) allowed.add(origin);
+  for (const o of `${Deno.env.get("FRONTEND_URL") || ""},${s.returnOrigins}`.split(",")) {
+    const t = o.trim();
+    if (!t) continue;
+    try { allowed.add(new URL(t).origin); } catch { /* ignore */ }
+  }
+  if (!allowed.has(target.origin)) return null;
+  target.hash = "";
+  return target.toString();
+}
+
+function ghRedirect(returnTo: string, code: string, reason?: string): Response {
+  const u = new URL(returnTo);
+  u.searchParams.set("github", code);
+  if (reason) u.searchParams.set("reason", reason);
+  return new Response(null, { status: 302, headers: { Location: u.toString(), "Cache-Control": "no-store" } });
+}
+
+function ghErrorPage(message: string, status = 400): Response {
+  const safe = message.replace(/[<>&]/g, "");
+  return new Response(`<!doctype html><meta charset="utf-8"><title>TaskFlow</title><body style="font-family:system-ui;padding:40px"><h3>GitHub</h3><p>${safe}</p><p>Close this tab and try again from TaskFlow Settings.</p></body>`, {
+    status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+function ghManageUrl(inst: { installation_id: number; account_login: string; account_type: string | null }): string {
+  return inst.account_type === "Organization"
+    ? `https://github.com/organizations/${inst.account_login}/settings/installations/${inst.installation_id}`
+    : `https://github.com/settings/installations/${inst.installation_id}`;
+}
+
+// Hooks that plug the webhook processor into TaskFlow's existing timers, history and push notifications.
+const ghHooks: GithubHooks = {
+  closeTimers: async (taskId, orgId, endedAtIso) => {
+    const { error } = await supabase.from("task_timer_sessions")
+      .update({ ended_at: endedAtIso }).eq("task_id", taskId).eq("org_id", orgId).is("ended_at", null);
+    if (error) console.error("[github] could not close timers:", error.message);
+  },
+  logHistory: (taskId, actorId, orgId, action, changes, note) => logTaskHistory(taskId, actorId, orgId, action, changes, note),
+  notifyReview: async ({ orgId, task, actorId, actorLogin, summary }) => {
+    // The webhook response must not return before the push goes out: the edge runtime can
+    // terminate background work once the response is sent.
+    try {
+      const assignees = taskAssigneeIds(task);
+      const admins = await orgAdminIds(orgId);
+      const who = await getActorDisplayName(supabase, actorId);
+      await notifyUsers({
+        userIds: [...assignees, ...admins],
+        excludeUserId: actorId,
+        category: "task_update",
+        title: "Task ready for review",
+        body: `${who} pushed work to GitHub (@${actorLogin}); "${task.title}" was submitted automatically for your review.`,
+        data: { type: "task", taskId: task.id, url: "/" },
+      });
+      await notifyUsers({
+        userIds: [actorId],
+        category: "task_update",
+        title: "Task submitted from GitHub",
+        body: `"${task.title}" was moved to Done (pending admin approval) after ${summary}.`,
+        data: { type: "task", taskId: task.id, url: "/" },
+      });
+    } catch (err) {
+      console.error("[github] review notification failed:", (err as Error)?.message);
+    }
+  },
+};
+
+async function handleGithubWebhook(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  if (!s.webhookSecret) return json({ error: "GitHub webhook secret is not configured." }, 503);
+  const raw = new Uint8Array(await req.arrayBuffer());
+  if (raw.length > 5_000_000) return json({ error: "Payload too large" }, 413);
+  if (!(await verifyGithubSignature(s.webhookSecret, raw, req.headers.get("x-hub-signature-256")))) {
+    return json({ error: "Invalid signature" }, 401);
+  }
+  const event = req.headers.get("x-github-event") || "";
+  const deliveryId = req.headers.get("x-github-delivery") || "";
+  if (!event || !deliveryId) return json({ error: "Missing GitHub headers" }, 400);
+  let payload: unknown;
+  try { payload = JSON.parse(new TextDecoder().decode(raw)); } catch { return json({ error: "Webhook content type must be application/json" }, 400); }
+  try {
+    const out = await processGithubDelivery(supabase, ghHooks, { id: deliveryId, event, payload });
+    if (Math.random() < 0.02) {
+      // Keep the idempotency table small; deliveries older than 30 days can never be redelivered.
+      void supabase.from("github_events").delete().lt("received_at", new Date(Date.now() - 30 * 86_400_000).toISOString());
+    }
+    return json({ ok: true, result: out.result });
+  } catch (err) {
+    console.error("[github] webhook processing failed:", (err as Error)?.message);
+    return json({ error: "Processing failed; GitHub may redeliver." }, 500);
+  }
+}
+
+async function handleGithubOauthCallback(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  const url = new URL(req.url);
+  const state = await verifyState(s.stateSecret, url.searchParams.get("state"));
+  if (!state || state.p !== "connect" || typeof state.rt !== "string" || typeof state.uid !== "string") {
+    return ghErrorPage("This GitHub sign-in link is invalid or has expired.");
+  }
+  const rt: string = state.rt;
+  if (url.searchParams.get("error")) return ghRedirect(rt, "denied");
+  const code = url.searchParams.get("code");
+  if (!code || !s.clientId || !s.clientSecret) return ghRedirect(rt, "error", "not_configured");
+
+  const tokenRes = await fetchTimeout("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": GH_API_HEADERS["User-Agent"] },
+    body: JSON.stringify({
+      client_id: s.clientId, client_secret: s.clientSecret, code,
+      redirect_uri: `${ghApiBase(req, s)}/github/oauth/callback`,
+    }),
+  }, 10_000);
+  const tokenJson = tokenRes ? await tokenRes.json().catch(() => ({})) : {};
+  const accessToken: string = tokenJson?.access_token || "";
+  if (!accessToken) return ghRedirect(rt, "error", "token_exchange_failed");
+
+  try {
+    const meRes = await fetchTimeout("https://api.github.com/user", {
+      headers: { ...GH_API_HEADERS, Authorization: `Bearer ${accessToken}` },
+    }, 10_000);
+    const me = meRes && meRes.ok ? await meRes.json().catch(() => null) : null;
+    if (!me?.id || !me?.login) return ghRedirect(rt, "error", "github_profile_unavailable");
+
+    const { data: prof } = await supabase.from("profiles").select("org_id").eq("id", state.uid).maybeSingle();
+    if (!prof) return ghRedirect(rt, "error", "user_not_found");
+    if (!prof.org_id) return ghRedirect(rt, "error", "no_organization");
+
+    const { data: taken } = await supabase.from("github_connections").select("user_id").eq("github_user_id", me.id).maybeSingle();
+    if (taken && taken.user_id !== state.uid) return ghRedirect(rt, "error", "already_linked");
+
+    const { error } = await supabase.from("github_connections").upsert([{
+      user_id: state.uid, org_id: prof.org_id, github_user_id: me.id, github_login: String(me.login),
+      avatar_url: me.avatar_url ?? null, connected_at: new Date().toISOString(),
+    }], { onConflict: "user_id" });
+    if (error) return ghRedirect(rt, "error", error.code === "23505" ? "already_linked" : "save_failed");
+    return ghRedirect(rt, "connected");
+  } finally {
+    // We only needed the token to read the user's identity — invalidate it, never store it.
+    void fetchTimeout(`https://api.github.com/applications/${s.clientId}/token`, {
+      method: "DELETE",
+      headers: { ...GH_API_HEADERS, Authorization: `Basic ${btoa(`${s.clientId}:${s.clientSecret}`)}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+    }, 8_000);
+  }
+}
+
+async function handleGithubInstallCallback(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  const url = new URL(req.url);
+  const state = await verifyState(s.stateSecret, url.searchParams.get("state"));
+  if (!state || state.p !== "install" || typeof state.rt !== "string") {
+    return ghErrorPage("This GitHub installation link is invalid or has expired. Start again from TaskFlow Settings.");
+  }
+  const rt: string = state.rt;
+  if (url.searchParams.get("setup_action") === "request") return ghRedirect(rt, "install_requested");
+  const installationId = Number(url.searchParams.get("installation_id"));
+  if (!Number.isSafeInteger(installationId) || installationId <= 0) return ghRedirect(rt, "error", "bad_installation");
+  if (!s.appId || !s.privateKey) return ghRedirect(rt, "error", "app_not_configured");
+
+  // The person finishing the install must still belong to the organization that started it and
+  // have connected their GitHub account (so a personal-account installation can be tied to them).
+  const { data: prof } = await supabase.from("profiles").select("role, org_id").eq("id", state.uid).maybeSingle();
+  if (!prof || !prof.org_id || prof.org_id !== state.org) return ghRedirect(rt, "error", "not_member");
+  const { data: instConn } = await supabase.from("github_connections").select("github_user_id").eq("user_id", state.uid).maybeSingle();
+  if (!instConn) return ghRedirect(rt, "error", "connect_first");
+
+  let jwt: string;
+  try { jwt = await createAppJwt(s.appId, s.privateKey); } catch { return ghRedirect(rt, "error", "bad_private_key"); }
+  // Ask GitHub (as the App) whether this installation really exists — the query string is user-controlled.
+  const res = await fetchTimeout(`https://api.github.com/app/installations/${installationId}`, {
+    headers: { ...GH_API_HEADERS, Authorization: `Bearer ${jwt}` },
+  }, 10_000);
+  const info = res && res.ok ? await res.json().catch(() => null) : null;
+  if (!info?.id || String(info.app_id) !== String(s.appId) || !info.account?.login) return ghRedirect(rt, "error", "installation_not_verified");
+
+  // A personal-account installation can only be linked by that GitHub account's owner.
+  if (info.account.type === "User" && Number(info.account.id) !== Number(instConn.github_user_id)) {
+    return ghRedirect(rt, "error", "installation_not_yours");
+  }
+
+  const { data: existing } = await supabase.from("github_installations").select("org_id").eq("installation_id", installationId).maybeSingle();
+  if (existing && existing.org_id !== prof.org_id) return ghRedirect(rt, "error", "installation_claimed");
+
+  const { error } = await supabase.from("github_installations").upsert([{
+    installation_id: installationId, org_id: prof.org_id, account_login: String(info.account.login),
+    account_type: info.account.type ?? null, repository_selection: info.repository_selection ?? null,
+    installed_by: state.uid, suspended_at: info.suspended_at ?? null,
+  }], { onConflict: "installation_id" });
+  if (error) return ghRedirect(rt, "error", "save_failed");
+  return ghRedirect(rt, "installed");
+}
+
+async function handleGithub(req: Request, path: string): Promise<Response | null> {
+  const taskRoute = path.match(/^\/tasks\/([^/]+)\/github(?:\/links(?:\/([^/]+))?|\/(repo))?$/);
+  if (!path.startsWith("/github/") && !taskRoute) return null;
+
+  // Public endpoints: authenticated by a signed `state` (browser redirects) or HMAC (GitHub).
+  if (req.method === "POST" && path === "/github/webhook") return await handleGithubWebhook(req);
+  if (req.method === "GET" && path === "/github/oauth/callback") return await handleGithubOauthCallback(req);
+  if (req.method === "GET" && path === "/github/install/callback") return await handleGithubInstallCallback(req);
+
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+
+  if (req.method === "GET" && path === "/github/status") {
+    const s = await ghSettings();
+    const { data: connection } = await supabase.from("github_connections")
+      .select("github_login, avatar_url, connected_at").eq("user_id", user.id).maybeSingle();
+    let installations: unknown[] = [];
+    if (user.org_id) {
+      const { data } = await supabase.from("github_installations")
+        .select("installation_id, account_login, account_type, repository_selection, suspended_at, created_at, installed_by")
+        .eq("org_id", user.org_id).order("created_at", { ascending: true });
+      installations = (data ?? []).map((i: any) => {
+        const { installed_by, ...rest } = i;
+        return { ...rest, manage_url: ghManageUrl(i), can_manage: user.role === "admin" || installed_by === user.id };
+      });
+    }
+    return json({
+      configured: {
+        oauth: !!(s.clientId && s.clientSecret),
+        app: !!(s.appId && s.privateKey && s.appSlug),
+        webhook: !!s.webhookSecret,
+      },
+      is_admin: user.role === "admin",
+      connection: connection ?? null,
+      installations,
+      // Only admins need the values they paste into the GitHub App settings.
+      setup: user.role === "admin"
+        ? { webhook_url: `${ghApiBase(req, s)}/github/webhook`, callback_url: `${ghApiBase(req, s)}/github/oauth/callback`, setup_url: `${ghApiBase(req, s)}/github/install/callback` }
+        : null,
+    });
+  }
+
+  if (req.method === "POST" && path === "/github/connect") {
+    const s = await ghSettings();
+    if (!s.clientId || !s.clientSecret) return json({ error: "GitHub is not configured on this server yet. Ask an administrator." }, 503);
+    if (!user.org_id) return json({ error: "Join or create an organization before connecting GitHub." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const rt = ghSafeReturnTo(req, s, body.return_to);
+    if (!rt) return json({ error: "Invalid return address." }, 400);
+    const state = await signState(s.stateSecret, { p: "connect", uid: user.id, rt, n: crypto.randomUUID() }, 600);
+    const authorize = new URL("https://github.com/login/oauth/authorize");
+    authorize.searchParams.set("client_id", s.clientId);
+    authorize.searchParams.set("redirect_uri", `${ghApiBase(req, s)}/github/oauth/callback`);
+    authorize.searchParams.set("state", state);
+    authorize.searchParams.set("prompt", "select_account");
+    return json({ url: authorize.toString() });
+  }
+
+  if (req.method === "DELETE" && path === "/github/connection") {
+    const { error } = await supabase.from("github_connections").delete().eq("user_id", user.id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (req.method === "POST" && path === "/github/install-url") {
+    const s = await ghSettings();
+    if (!s.appSlug || !s.appId || !s.privateKey) return json({ error: "The GitHub App is not configured on this server yet (GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY)." }, 503);
+    if (!user.org_id) return json({ error: "No organization." }, 400);
+    const { data: ownConn } = await supabase.from("github_connections").select("user_id").eq("user_id", user.id).maybeSingle();
+    if (!ownConn) return json({ error: "Connect your GitHub account first, then install the app." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const rt = ghSafeReturnTo(req, s, body.return_to);
+    if (!rt) return json({ error: "Invalid return address." }, 400);
+    const state = await signState(s.stateSecret, { p: "install", uid: user.id, org: user.org_id, rt, n: crypto.randomUUID() }, 1800);
+    return json({ url: `https://github.com/apps/${encodeURIComponent(s.appSlug)}/installations/new?state=${encodeURIComponent(state)}` });
+  }
+
+  const instDel = path.match(/^\/github\/installations\/(\d+)$/);
+  if (req.method === "DELETE" && instDel) {
+    if (!user.org_id) return json({ error: "No organization." }, 400);
+    const { data: inst } = await supabase.from("github_installations").select("installed_by")
+      .eq("installation_id", Number(instDel[1])).eq("org_id", user.org_id).maybeSingle();
+    if (!inst) return json({ error: "Installation not found" }, 404);
+    if (user.role !== "admin" && inst.installed_by !== user.id) {
+      return json({ error: "Only an administrator or the person who linked this installation can unlink it." }, 403);
+    }
+    const { error } = await supabase.from("github_installations").delete().eq("installation_id", Number(instDel[1])).eq("org_id", user.org_id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (taskRoute) {
+    const taskId = taskRoute[1];
+    const linkId = taskRoute[2] ?? null;
+    const isLinksRoot = /\/github\/links$/.test(path);
+    const deny = await assertTaskAccess(user, taskId);
+    if (deny) return deny;
+
+    if (req.method === "GET" && !isLinksRoot && !linkId) {
+      const [{ data: links, error }, { data: conn }, { data: repoRow }] = await Promise.all([
+        supabase.from("task_github_links")
+          .select("id, kind, repo_full_name, ref, url, title, state, author_login, source, created_at")
+          .eq("task_id", taskId).order("created_at", { ascending: false }).limit(200),
+        supabase.from("github_connections").select("github_login").eq("user_id", user.id).maybeSingle(),
+        supabase.from("tasks").select("github_repo, github_branch").eq("id", taskId).maybeSingle(),
+      ]);
+      if (error) return json({ error: error.message }, 400);
+      return json({
+        task_ref: taskRefOf(taskId), links: links ?? [], connected: !!conn,
+        github_repo: repoRow?.github_repo ?? null, github_branch: repoRow?.github_branch ?? null,
+      });
+    }
+
+    if (req.method === "PUT" && taskRoute[3] === "repo") {
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const r = normalizeRepo(body.repo);
+      if ("error" in r) return json({ error: r.error }, 400);
+      const b = normalizeBranch(body.branch);
+      if ("error" in b) return json({ error: b.error }, 400);
+      const { data: before } = await supabase.from("tasks").select("github_repo, github_branch").eq("id", taskId).maybeSingle();
+      const patch = { github_repo: r.repo, github_branch: r.repo ? b.branch : null, updated_at: new Date().toISOString() };
+      let uq = supabase.from("tasks").update(patch).eq("id", taskId);
+      if (user.org_id) uq = uq.eq("org_id", user.org_id);
+      const { error } = await uq;
+      if (error) return json({ error: error.message }, 400);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "updated", {
+        github_repo: { from: before?.github_repo ?? null, to: patch.github_repo },
+        ...(before?.github_branch !== patch.github_branch ? { github_branch: { from: before?.github_branch ?? null, to: patch.github_branch } } : {}),
+      }, null));
+      return json({ github_repo: patch.github_repo, github_branch: patch.github_branch });
+    }
+
+    if (req.method === "POST" && isLinksRoot) {
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const parsed = parseExplicitLink(body.input);
+      if ("error" in parsed) return json({ error: parsed.error }, 400);
+      const { count } = await supabase.from("task_github_links").select("id", { count: "exact", head: true })
+        .eq("task_id", taskId).eq("source", "manual");
+      if ((count ?? 0) >= 50) return json({ error: "This task already has the maximum number of manual GitHub links." }, 400);
+      const { data: conn } = await supabase.from("github_connections").select("github_login").eq("user_id", user.id).maybeSingle();
+      const { data: inserted, error } = await supabase.from("task_github_links").upsert([{
+        org_id: user.org_id, task_id: taskId, kind: parsed.kind, repo_full_name: parsed.repo, ref: parsed.ref, url: parsed.url,
+        title: parsed.kind === "branch" ? parsed.ref : parsed.kind === "pull_request" ? `${parsed.repo}#${parsed.ref}` : parsed.ref.slice(0, 7),
+        state: null, author_login: conn?.github_login ?? null, author_user_id: user.id, source: "manual",
+      }], { onConflict: "task_id,kind,repo_full_name,ref", ignoreDuplicates: true })
+        .select("id, kind, repo_full_name, ref, url, title, state, author_login, source, created_at");
+      if (error) return json({ error: error.message }, 400);
+      if (!inserted?.length) return json({ error: "That GitHub item is already linked to this task." }, 409);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "github_linked", {}, `Linked ${parsed.kind.replace("_", " ")} ${parsed.repo}${parsed.kind === "pull_request" ? "#" : "@"}${parsed.ref}`));
+      return json(inserted[0], 201);
+    }
+
+    if (req.method === "DELETE" && linkId) {
+      const { data: link } = await supabase.from("task_github_links").select("id, source, kind, repo_full_name, ref")
+        .eq("id", linkId).eq("task_id", taskId).maybeSingle();
+      if (!link) return json({ error: "Link not found" }, 404);
+      if (link.source !== "manual" && user.role !== "admin") {
+        return json({ error: "Links detected automatically from GitHub can only be removed by an administrator." }, 403);
+      }
+      const { error } = await supabase.from("task_github_links").delete().eq("id", linkId).eq("task_id", taskId);
+      if (error) return json({ error: error.message }, 400);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "github_unlinked", {}, `Removed ${String(link.kind).replace("_", " ")} ${link.repo_full_name}@${link.ref}`));
+      return json({ ok: true });
+    }
+  }
+
+  return null;
+}
+
 Deno.serve(async (req): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -5844,6 +6277,11 @@ Deno.serve(async (req): Promise<Response> => {
 
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
+
+    // Must run before handlers that require a login for every path (e.g. handleProjects): the
+    // GitHub webhook and OAuth/installation callbacks are public and authenticate themselves.
+    const githubResp = await handleGithub(req, path);
+    if (githubResp) return githubResp;
 
     const driveResp = await handleDrive(req, path);
     if (driveResp) return driveResp;
