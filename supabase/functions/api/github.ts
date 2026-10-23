@@ -643,3 +643,155 @@ async function applyToTask(
   await hooks.notifyReview({ orgId, task, actorId: userId, actorLogin: act.actor.login || actorLogin, summary: act.summary, url: firstUrl });
   return outcome;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Polling fallback: no GitHub App needed on the repository
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** AES-256-GCM encryption for stored GitHub tokens. `keyB64` is 32 random bytes, base64. */
+async function aesKey(keyB64: string, usage: "encrypt" | "decrypt"): Promise<CryptoKey> {
+  const raw = b64urlDecode(String(keyB64).trim());
+  if (raw.length !== 32) throw new Error("GITHUB_TOKEN_ENC_KEY must be 32 bytes, base64-encoded.");
+  return await crypto.subtle.importKey("raw", raw, "AES-GCM", false, [usage]);
+}
+
+export async function encryptToken(keyB64: string, plain: string): Promise<string> {
+  const key = await aesKey(keyB64, "encrypt");
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plain)));
+  return `v1.${b64urlEncode(iv)}.${b64urlEncode(ct)}`;
+}
+
+export async function decryptToken(keyB64: string, blob: string): Promise<string> {
+  const [v, iv, ct] = String(blob).split(".");
+  if (v !== "v1" || !iv || !ct) throw new Error("Unrecognised token format.");
+  const key = await aesKey(keyB64, "decrypt");
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64urlDecode(iv) }, key, b64urlDecode(ct));
+  return new TextDecoder().decode(plain);
+}
+
+export type GhFetch = (path: string, token: string) => Promise<{ status: number; json: any }>;
+export type PollSummary = { users: number; tasks: number; submitted: number; linked: number; notes: string[] };
+
+const MAX_BRANCHES_PER_REPO = 40;
+
+/**
+ * Looks, for each user who saved a token, at the repository named on each of their In Progress
+ * tasks. New commits authored by that user (on the task's branch, or any branch when none is set)
+ * are linked and submit the task through the same path as a webhook push. Idempotent: commits
+ * already linked never count twice, and a repository seen for the first time only counts commits
+ * made after it was attached to the task.
+ */
+export async function pollGithubTasks(
+  db: any,
+  hooks: GithubHooks,
+  ghFetch: GhFetch,
+  decrypt: (blob: string) => Promise<string>,
+  opts: { userId?: string } = {},
+): Promise<PollSummary> {
+  const summary: PollSummary = { users: 0, tasks: 0, submitted: 0, linked: 0, notes: [] };
+  let q = db.from("github_user_tokens").select("user_id, org_id, github_user_id, github_login, token_enc");
+  if (opts.userId) q = q.eq("user_id", opts.userId);
+  const { data: tokens, error } = await q.limit(500);
+  if (error) throw new Error(error.message);
+  for (const t of tokens || []) {
+    summary.users++;
+    const nowIso = (hooks.now ? hooks.now() : new Date()).toISOString();
+    try {
+      const problem = await pollOneUser(db, hooks, ghFetch, decrypt, t, summary);
+      await db.from("github_user_tokens").update({ last_checked_at: nowIso, last_error: problem }).eq("user_id", t.user_id);
+    } catch (e) {
+      const msg = String((e as Error)?.message || e).slice(0, 300);
+      summary.notes.push(`${t.github_login}: ${msg}`);
+      await db.from("github_user_tokens").update({ last_checked_at: nowIso, last_error: msg }).eq("user_id", t.user_id);
+    }
+  }
+  return summary;
+}
+
+async function pollOneUser(
+  db: any, hooks: GithubHooks, ghFetch: GhFetch, decrypt: (b: string) => Promise<string>, t: any, summary: PollSummary,
+): Promise<string | null> {
+  const token = await decrypt(t.token_enc);
+  const { data: tasks, error } = await db.from("tasks")
+    .select("id, title, status, kanban_column, assignee_id, github_repo, github_branch, github_repo_set_at, task_assignees(profile_id)")
+    .eq("org_id", t.org_id).eq("kanban_column", "in_progress").limit(500);
+  if (error) throw new Error(error.message);
+  const mine = (tasks || []).filter((x: any) =>
+    x.github_repo && IN_PROGRESS_STATUSES.includes(x.status) && isAssignee(x, t.user_id));
+  summary.tasks += mine.length;
+  let problem: string | null = null;
+  const login = String(t.github_login || "").toLowerCase();
+
+  for (const repo of [...new Set<string>(mine.map((x: any) => String(x.github_repo)))]) {
+    const repoTasks = mine.filter((x: any) => x.github_repo === repo);
+    const branches: { name: string; sha: string }[] = [];
+    if (repoTasks.some((x: any) => !x.github_branch)) {
+      const r = await ghFetch(`/repos/${repo}/branches?per_page=100`, token);
+      if (r.status === 401) throw new Error("GitHub rejected the saved token. Save a new one.");
+      if (r.status !== 200) { problem = `No access to ${repo} (GitHub answered ${r.status}).`; continue; }
+      for (const b of r.json || []) if (b?.name && b?.commit?.sha) branches.push({ name: b.name, sha: b.commit.sha });
+    }
+    for (const name of new Set(repoTasks.map((x: any) => x.github_branch).filter(Boolean))) {
+      if (branches.some((b) => b.name === name)) continue;
+      const r = await ghFetch(`/repos/${repo}/branches/${encodeURIComponent(name as string)}`, token);
+      if (r.status === 401) throw new Error("GitHub rejected the saved token. Save a new one.");
+      if (r.status === 200 && r.json?.commit?.sha) branches.push({ name: name as string, sha: r.json.commit.sha });
+      else if (r.status !== 404) problem = `No access to ${repo} (GitHub answered ${r.status}).`;
+    }
+
+    for (const br of branches.slice(0, MAX_BRANCHES_PER_REPO)) {
+      const applicable = repoTasks.filter((x: any) => !x.github_branch || x.github_branch === br.name);
+      if (!applicable.length) continue;
+      const { data: state, error: stErr } = await db.from("github_poll_state").select("head_sha, updated_at")
+        .eq("user_id", t.user_id).eq("repo_full_name", repo).eq("branch", br.name).maybeSingle();
+      if (stErr) throw new Error(stErr.message);
+      if (state && state.head_sha === br.sha) continue;
+
+      const nowIso = (hooks.now ? hooks.now() : new Date()).toISOString();
+      const saveState = () => db.from("github_poll_state").upsert([{
+        user_id: t.user_id, repo_full_name: repo, branch: br.name, head_sha: br.sha, updated_at: nowIso,
+      }], { onConflict: "user_id,repo_full_name,branch" });
+
+      // Lower bound: where we last looked, or (first sight) when the repository was attached to the task.
+      const since: string | null = state
+        ? state.updated_at
+        : applicable.map((x: any) => x.github_repo_set_at).filter(Boolean).sort()[0] || null;
+      if (!since) { await saveState(); continue; } // nothing to compare with: start watching from here
+
+      const r = await ghFetch(`/repos/${repo}/commits?sha=${encodeURIComponent(br.name)}&per_page=30&since=${encodeURIComponent(since)}`, token);
+      if (r.status === 401) throw new Error("GitHub rejected the saved token. Save a new one.");
+      if (r.status !== 200) { problem = `Could not read commits of ${repo}@${br.name} (GitHub answered ${r.status}).`; continue; }
+
+      const fresh: NormCommit[] = [];
+      for (const c of r.json || []) {
+        if (state && c.sha === state.head_sha) break;
+        if (String(c.author?.login || "").toLowerCase() !== login) continue; // only commits the token owner authored
+        fresh.push({
+          sha: String(c.sha).toLowerCase(), message: String(c.commit?.message || ""),
+          url: String(c.html_url || githubUrlFor("commit", repo, String(c.sha))), authorLogin: c.author?.login ?? null,
+        });
+      }
+      if (fresh.length) {
+        if (applicable.length > 1) {
+          summary.notes.push(`${repo}@${br.name}: ${applicable.length} of your In Progress tasks use this repository; put a TF- reference in the commit to choose one.`);
+        } else {
+          const task = applicable[0];
+          const act: NormActivity = {
+            event: "push", action: null, repo, actor: { id: Number(t.github_user_id), login: t.github_login },
+            branch: br.name, branchRepo: repo, commits: fresh, pr: null, qualifying: true,
+            summary: `${fresh.length} commit${fresh.length === 1 ? "" : "s"} pushed to ${repo}@${br.name}`,
+          };
+          const out = await applyToTask(db, hooks, {
+            act, orgId: t.org_id, userId: t.user_id, actorLogin: t.github_login, task,
+            cand: { viaBranch: true, viaPr: false, commitShas: new Set() },
+          });
+          summary.linked += out.linked;
+          if (out.submitted) summary.submitted++;
+        }
+      }
+      await saveState(); // advanced only after the work above succeeded, so a failure is retried next time
+    }
+  }
+  return problem;
+}

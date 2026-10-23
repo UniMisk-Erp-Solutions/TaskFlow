@@ -1,6 +1,6 @@
 # GitHub Integration
 
-TaskFlow connects to GitHub through a **GitHub App**. Once the app is installed on the GitHub account or organization that owns the repository (any TaskFlow user can do this) and each employee connects their GitHub account, pushing code or opening a pull request in the task's repository, or one that references the task, links that activity to the task and automatically moves it from **In Progress** to **Done (pending admin approval)**. The admin is notified and approves the task or requests changes with the existing review actions. Everything runs from GitHub webhooks into the API, so it works while TaskFlow is closed.
+TaskFlow connects to GitHub through a **GitHub App**. Once the app is installed on the GitHub account or organization that owns the repository (any TaskFlow user can do this) and each employee connects their GitHub account, pushing code or opening a pull request in the task's repository, or one that references the task, links that activity to the task and automatically moves it from **In Progress** to **Done (pending admin approval)**. The admin is notified and approves the task or requests changes with the existing review actions. Everything runs on the server (GitHub webhooks, or the polling fallback below), so it works while TaskFlow is closed.
 
 ```
 User connects GitHub → pushes code / opens PR → webhook reaches the API → task identified
@@ -91,6 +91,18 @@ On auto-submit, the existing web-push system sends **Task ready for review** to 
 
 Each task's detail dialog has a **GitHub** section: the task reference, the task's repository (editable by assignees and admins), linked pull requests (with state), branches and commits (author, repository, time, link to GitHub), and a field to link a PR/branch manually. Assignees and admins can remove manual links; links created automatically can be removed only by an admin. Link/unlink actions appear in the task history.
 
+## Polling fallback (no app on the repository)
+
+GitHub only sends push events for repositories where the app is installed. When it is not (for example an organization repo whose owner has not approved the app), a user can instead save a **GitHub token** and let TaskFlow check the repository named on their task.
+
+- **Setup (each user):** Settings → Notifications → Integrations → GitHub → *No app on the repository? Use your own token*. Create a fine-grained token on GitHub (resource owner = the account/organization that owns the repo, that repository selected, **Contents: Read-only**) or a classic token with the `repo` scope, paste it and **Save token**. If the organization requires approval for tokens, an owner must approve it. The token must belong to the GitHub account you connected (or, if you have not connected one, it connects that account).
+- **Per task:** set the task's **Repository** (and optionally a branch), as in "Task repository" above.
+- **What happens:** about every minute, for each user with a saved token, TaskFlow looks at the repository of each of their **In Progress** tasks (the task's branch, or any branch if none is set; up to 40 branches). Commits **authored by that GitHub account** after the repository was attached to the task are linked, and the task is submitted for approval through exactly the same path as a webhook push (same checks, same admin notification, same duplicate protection). Several In Progress tasks on the same repository/branch are ambiguous and left alone unless the commit carries a `TF-` reference. Pull requests are not watched by polling (their commits are).
+- **Security:** the token is encrypted with AES-256-GCM using `GITHUB_TOKEN_ENC_KEY` before it is stored, never returned to the browser, and only used to read repository data. **Remove token** (or **Disconnect**) deletes it and the polling cursor. A failing token or a repository the token cannot read is reported on the card (`last_error`).
+- **Cursor:** `github_poll_state` stores the last head commit per user, repository and branch. The cursor only advances after the work for that branch succeeded, so a failed run is retried; links are unique, so nothing is counted twice, including when the webhook path also sees the same commits.
+- **Scheduler:** polling needs something to run it. Either set `GITHUB_POLL_INTERVAL_SECONDS` (20 or more; the function polls from inside its own process, suited to self-hosted/local runs) or call `POST <API>/github/poll` from a cron with header `x-taskflow-secret: <GITHUB_POLL_SECRET>` (hosted edge runtimes do not keep timers). **Check now** on the card (`POST /github/poll/me`) runs it for the signed-in user immediately.
+- Migration: `supabase/migrations/20261023180000_github_polling.sql` (`github_user_tokens`, `github_poll_state`, `tasks.github_repo_set_at`).
+
 ## API
 
 All authenticated routes use the normal TaskFlow bearer token.
@@ -105,6 +117,10 @@ All authenticated routes use the normal TaskFlow bearer token.
 | `DELETE /github/connection` | Any user | Disconnect own account. |
 | `POST /github/install-url` | Any user with a connected GitHub account | Returns the GitHub App installation URL. |
 | `DELETE /github/installations/:id` | Admin or the person who linked it | Unlink an installation from the organization. |
+| `PUT /github/token` | Any user | Save (encrypt) the user's GitHub token; verified with GitHub first. |
+| `DELETE /github/token` | Any user | Remove the saved token and polling cursor. |
+| `POST /github/poll/me` | Any user | Check the signed-in user's tasks now. |
+| `POST /github/poll` | Scheduler | Poll for everyone; requires header `x-taskflow-secret` = `GITHUB_POLL_SECRET`. |
 | `PUT /tasks/:id/github/repo` | Task assignee/admin | Set or clear the task's repository (`{ "repo": "owner/repo", "branch": "" }`). |
 | `GET /tasks/:id/github` | Task assignee/admin | Task reference, repository and linked items. |
 | `POST /tasks/:id/github/links` | Task assignee/admin | Link a PR/branch/commit (`{ "input": "..." }`). |
@@ -114,7 +130,7 @@ All authenticated routes use the normal TaskFlow bearer token.
 
 ### 1. Apply the migrations
 
-Run `supabase/migrations/20261022120000_github_integration.sql` and then `supabase/migrations/20261023120000_task_github_repo.sql` on the Supabase database (both are idempotent; the second adds the optional task repository columns). It creates `github_connections`, `github_installations`, `task_github_links` and `github_events` with RLS enabled and no browser policies (only the service-role API touches them).
+Run `supabase/migrations/20261022120000_github_integration.sql` then `supabase/migrations/20261023120000_task_github_repo.sql` and, for the polling fallback, `supabase/migrations/20261023180000_github_polling.sql` on the Supabase database (all idempotent; the second adds the optional task repository columns). It creates `github_connections`, `github_installations`, `task_github_links` and `github_events` with RLS enabled and no browser policies (only the service-role API touches them).
 
 ### 2. Create the GitHub App
 
@@ -147,6 +163,8 @@ GitHub → Settings → Developer settings → **GitHub Apps → New GitHub App*
 | `GITHUB_APP_PRIVATE_KEY` | Full PEM contents (PKCS#1 as downloaded, or PKCS#8; `\n` escapes are accepted) |
 | `GITHUB_WEBHOOK_SECRET` | The webhook secret from step 2 |
 | `GITHUB_API_PUBLIC_URL` | Recommended: the public API base (`https://<host>/functions/v1/api`) so callback URLs are exact behind a proxy/gateway |
+| `GITHUB_TOKEN_ENC_KEY` | Polling fallback: 32 random bytes, base64 (for example `[Convert]::ToBase64String((1..32 | % { Get-Random -Max 256 }))` or `openssl rand -base64 32`). Without it users cannot save tokens. Keep it stable: changing it makes saved tokens unreadable. |
+| `GITHUB_POLL_INTERVAL_SECONDS` / `GITHUB_POLL_SECRET` | Polling schedule: in-process interval, or the shared secret for the cron call to `/github/poll`. |
 | `GITHUB_STATE_SECRET` | Optional extra secret for signing `state` (defaults to the client secret) |
 | `GITHUB_RETURN_ORIGINS` | Optional comma-separated extra frontend origins allowed as return targets (the request's own origin and `FRONTEND_URL` are always allowed) |
 
@@ -210,6 +228,7 @@ Expose the API publicly (a tunnel such as `cloudflared tunnel --url ...` or smee
 | After connecting you land on TaskFlow with an error banner | The banner shows the reason (for example the GitHub account is linked to another TaskFlow user). |
 | GitHub says redirect_uri mismatch | Callback URL in the app does not equal `<API>/github/oauth/callback`; set `GITHUB_API_PUBLIC_URL` to the exact public base. |
 | Installation not verified | App ID/private key mismatch, or the installation belongs to a different GitHub App. |
+| Polling does nothing | Check the card: `last_error` shows token/repository access problems. The task must be In Progress, assigned to the token's owner, have a Repository set, and the commit must be authored by the connected GitHub account (the commit email must be linked to that GitHub account). Only commits made after the repository was set count. |
 
 ## Limitations
 

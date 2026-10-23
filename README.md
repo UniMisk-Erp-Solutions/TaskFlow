@@ -148,7 +148,7 @@ Run from the indicated directory:
 ## Optional integrations
 
 - **Google Calendar:** Set `VITE_GOOGLE_CLIENT_ID` in `frontend/.env.local` after configuring a Google Cloud OAuth web client. See [docs/GOOGLE_CALENDAR.md](docs/GOOGLE_CALENDAR.md).
-- **GitHub:** Create a GitHub App, apply `supabase/migrations/20261022120000_github_integration.sql` and `20261023120000_task_github_repo.sql`, set the `GITHUB_*` Edge Function secrets, and deploy the Edge API with `--no-verify-jwt`. See [docs/github-integration.md](docs/github-integration.md).
+- **GitHub:** Create a GitHub App, apply `supabase/migrations/20261022120000_github_integration.sql`, `20261023120000_task_github_repo.sql` and (for the token/polling fallback) `20261023180000_github_polling.sql`, set the `GITHUB_*` Edge Function secrets, and deploy the Edge API with `--no-verify-jwt`. See [docs/github-integration.md](docs/github-integration.md).
 - **Maintenance gate:** `VITE_STATUS_URL` and `VITE_STATUS_KEY` configure the optional status project; leave them unset to disable the gate.
 - **Browser push:** Configure the VAPID values in `backend/.env` and enable push subscriptions in the app.
 - **AI and email:** Configure the optional `OPENROUTER_*` or `BREVO_*` variables described in [the architecture guide](docs/project-setup-and-architecture.md) when those integrations are needed.

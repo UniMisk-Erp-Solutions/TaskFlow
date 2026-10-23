@@ -198,7 +198,7 @@ export default function TaskGithubSection({ taskId, canEdit = false, isAdmin = f
       )}
       {data?.github_repo && (
         <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 4 }}>
-          A push or pull request by the assignee in <strong>{data.github_repo}</strong>{data.github_branch ? ` on ${data.github_branch}` : ''} moves this task to Done for approval, even without the task reference.
+          A push or pull request by the assignee in <strong>{data.github_repo}</strong>{data.github_branch ? ` on ${data.github_branch}` : ''} moves this task to Done for approval, even without the task reference. This works through the GitHub App, or through your saved token (Settings → Notifications → GitHub), which is checked every minute or so.
         </div>
       )}
 

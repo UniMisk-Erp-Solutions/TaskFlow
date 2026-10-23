@@ -93,6 +93,7 @@ Do not use a service-role key in the frontend. The Express API is not self-conta
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | Express | Optional | Email integration settings. |
 | `VITE_STATUS_URL`, `VITE_STATUS_KEY` | Frontend | Optional | Separate status/maintenance project configuration. |
 | `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | Edge Function | Optional (required for GitHub integration) | GitHub App credentials and webhook secret; also `GITHUB_API_PUBLIC_URL`, `GITHUB_STATE_SECRET`, `GITHUB_RETURN_ORIGINS`. See [github-integration.md](github-integration.md). |
+| `GITHUB_TOKEN_ENC_KEY`, `GITHUB_POLL_INTERVAL_SECONDS`, `GITHUB_POLL_SECRET` | Edge Function | Optional | GitHub token/polling fallback: encryption key for saved user tokens, and the polling schedule. See [github-integration.md](github-integration.md). |
 
 See `frontend/.env.example` and `backend/.env.example` for templates. Do not commit local environment files.
 

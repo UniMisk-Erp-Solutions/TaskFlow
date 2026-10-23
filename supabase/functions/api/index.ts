@@ -1,8 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
-  createAppJwt, normalizeBranch, normalizeRepo, parseExplicitLink, processGithubDelivery, signState, taskRefOf, verifyGithubSignature,
-  verifyState,
-  type GithubHooks,
+  createAppJwt, decryptToken, encryptToken, normalizeBranch, normalizeRepo, parseExplicitLink, pollGithubTasks, processGithubDelivery,
+  safeEqual, signState, taskRefOf, verifyGithubSignature, verifyState,
+  type GhFetch, type GithubHooks,
 } from "./github.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -298,7 +298,7 @@ async function handleNotificationRoutes(
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -3689,7 +3689,7 @@ async function handleTasks(req: Request, path: string) {
         org_id: user.org_id,
         parent_task_id: parent_task_id || null,
         // Only sent when set, so tasks can still be created before the GitHub migration is applied.
-        ...(ghRepo.repo ? { github_repo: ghRepo.repo, github_branch: ghBranch.branch } : {}),
+        ...(ghRepo.repo ? { github_repo: ghRepo.repo, github_branch: ghBranch.branch, github_repo_set_at: new Date().toISOString() } : {}),
       }])
       .select("id")
       .single();
@@ -3978,6 +3978,8 @@ async function handleTasks(req: Request, path: string) {
       if ("error" in b) return json({ error: b.error }, 400);
       patch.github_repo = r.repo;
       patch.github_branch = r.repo ? b.branch : null;
+      const { data: curRepo } = await supabase.from("tasks").select("github_repo").eq("id", id).maybeSingle();
+      if (r.repo && r.repo !== curRepo?.github_repo) patch.github_repo_set_at = new Date().toISOString();
     }
 
     const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
@@ -5843,13 +5845,13 @@ async function ghConf(name: string): Promise<string> {
 }
 
 async function ghSettings() {
-  const [appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, stateSecret, returnOrigins] = await Promise.all([
+  const [appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, stateSecret, returnOrigins, tokenEncKey, pollSecret] = await Promise.all([
     ghConf("GITHUB_APP_ID"), ghConf("GITHUB_APP_SLUG"), ghConf("GITHUB_APP_CLIENT_ID"), ghConf("GITHUB_APP_CLIENT_SECRET"),
     ghConf("GITHUB_APP_PRIVATE_KEY"), ghConf("GITHUB_WEBHOOK_SECRET"), ghConf("GITHUB_API_PUBLIC_URL"), ghConf("GITHUB_STATE_SECRET"),
-    ghConf("GITHUB_RETURN_ORIGINS"),
+    ghConf("GITHUB_RETURN_ORIGINS"), ghConf("GITHUB_TOKEN_ENC_KEY"), ghConf("GITHUB_POLL_SECRET"),
   ]);
   return {
-    appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, returnOrigins,
+    appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, returnOrigins, tokenEncKey, pollSecret,
     stateSecret: stateSecret || clientSecret || webhookSecret,
   };
 }
@@ -5940,6 +5942,41 @@ const ghHooks: GithubHooks = {
     }
   },
 };
+
+// ── Polling fallback: repositories without the GitHub App, via the user's own saved token ──
+const ghApiFetch: GhFetch = async (path, token) => {
+  const res = await fetchTimeout(`https://api.github.com${path}`, {
+    headers: { ...GH_API_HEADERS, Authorization: `Bearer ${token}` },
+  }, 15_000);
+  if (!res) return { status: 0, json: null };
+  const json = res.status === 200 ? await res.json().catch(() => null) : null;
+  return { status: res.status, json };
+};
+
+let ghPolling = false;
+async function runGithubPoll(userId?: string) {
+  const s = await ghSettings();
+  if (!s.tokenEncKey) return { ok: false as const, error: "GITHUB_TOKEN_ENC_KEY is not configured." };
+  if (ghPolling) return { ok: true as const, skipped: "a poll is already running" };
+  ghPolling = true;
+  try {
+    const summary = await pollGithubTasks(supabase, ghHooks, ghApiFetch, (blob) => decryptToken(s.tokenEncKey, blob), { userId });
+    return { ok: true as const, ...summary };
+  } finally {
+    ghPolling = false;
+  }
+}
+
+// Self-hosted / local runs can poll from inside the process; hosted runs call POST /github/poll from a cron.
+const ghPollEvery = Number(Deno.env.get("GITHUB_POLL_INTERVAL_SECONDS") || 0);
+if (ghPollEvery >= 20) {
+  setInterval(() => {
+    runGithubPoll().then((r) => {
+      if ("submitted" in r && (r.submitted || r.linked)) console.log("[github] poll:", JSON.stringify({ submitted: r.submitted, linked: r.linked }));
+    }).catch((e) => console.error("[github] poll failed:", (e as Error)?.message));
+  }, ghPollEvery * 1000);
+  console.log(`[github] polling every ${ghPollEvery}s`);
+}
 
 async function handleGithubWebhook(req: Request): Promise<Response> {
   const s = await ghSettings();
@@ -6073,6 +6110,16 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
 
   // Public endpoints: authenticated by a signed `state` (browser redirects) or HMAC (GitHub).
   if (req.method === "POST" && path === "/github/webhook") return await handleGithubWebhook(req);
+  if (req.method === "POST" && path === "/github/poll") {
+    // For an external scheduler (cron): authenticated by a shared secret header.
+    const s = await ghSettings();
+    const given = req.headers.get("x-taskflow-secret") || "";
+    if (!s.pollSecret || !safeEqual(given, s.pollSecret)) {
+      return json({ error: "Forbidden" }, 403);
+    }
+    const out = await runGithubPoll();
+    return json(out, out.ok ? 200 : 503);
+  }
   if (req.method === "GET" && path === "/github/oauth/callback") return await handleGithubOauthCallback(req);
   if (req.method === "GET" && path === "/github/install/callback") return await handleGithubInstallCallback(req);
 
@@ -6094,8 +6141,12 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
         return { ...rest, manage_url: ghManageUrl(i), can_manage: user.role === "admin" || installed_by === user.id };
       });
     }
+    const { data: tokenRow } = await supabase.from("github_user_tokens")
+      .select("github_login, token_hint, created_at, last_checked_at, last_error").eq("user_id", user.id).maybeSingle();
     return json({
+      token: tokenRow ?? null,
       configured: {
+        polling: !!s.tokenEncKey,
         oauth: !!(s.clientId && s.clientSecret),
         app: !!(s.appId && s.privateKey && s.appSlug),
         webhook: !!s.webhookSecret,
@@ -6126,7 +6177,54 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
     return json({ url: authorize.toString() });
   }
 
+  if (req.method === "PUT" && path === "/github/token") {
+    const s = await ghSettings();
+    if (!s.tokenEncKey) return json({ error: "Saving a GitHub token is not enabled on this server (GITHUB_TOKEN_ENC_KEY)." }, 503);
+    if (!user.org_id) return json({ error: "Join or create an organization first." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const token = String(body.token ?? "").trim();
+    if (token.length < 20 || token.length > 400 || /\s/.test(token)) return json({ error: "That does not look like a GitHub token." }, 400);
+    const me = await ghApiFetch("/user", token);
+    if (me.status === 401) return json({ error: "GitHub rejected that token." }, 400);
+    if (me.status !== 200 || !me.json?.id || !me.json?.login) return json({ error: "Could not verify the token with GitHub. Try again." }, 502);
+    // The token must belong to the GitHub account already connected, so activity is attributed to the right person.
+    const { data: conn } = await supabase.from("github_connections").select("github_user_id, github_login").eq("user_id", user.id).maybeSingle();
+    if (conn && Number(conn.github_user_id) !== Number(me.json.id)) {
+      return json({ error: `That token belongs to @${me.json.login}, but you connected @${conn.github_login}. Use a token from the same account or switch the connected account first.` }, 400);
+    }
+    if (!conn) {
+      const { data: taken } = await supabase.from("github_connections").select("user_id").eq("github_user_id", me.json.id).maybeSingle();
+      if (taken && taken.user_id !== user.id) return json({ error: "That GitHub account is already connected to another TaskFlow user." }, 400);
+      const { error: cErr } = await supabase.from("github_connections").upsert([{
+        user_id: user.id, org_id: user.org_id, github_user_id: me.json.id, github_login: String(me.json.login),
+        avatar_url: me.json.avatar_url ?? null, connected_at: new Date().toISOString(),
+      }], { onConflict: "user_id" });
+      if (cErr) return json({ error: cErr.message }, 400);
+    }
+    const token_enc = await encryptToken(s.tokenEncKey, token);
+    const { error } = await supabase.from("github_user_tokens").upsert([{
+      user_id: user.id, org_id: user.org_id, github_user_id: me.json.id, github_login: String(me.json.login),
+      token_enc, token_hint: token.slice(-4), created_at: new Date().toISOString(), last_checked_at: null, last_error: null,
+    }], { onConflict: "user_id" });
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true, github_login: me.json.login });
+  }
+
+  if (req.method === "DELETE" && path === "/github/token") {
+    await supabase.from("github_poll_state").delete().eq("user_id", user.id);
+    const { error } = await supabase.from("github_user_tokens").delete().eq("user_id", user.id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (req.method === "POST" && path === "/github/poll/me") {
+    const out = await runGithubPoll(user.id);
+    return json(out, out.ok ? 200 : 503);
+  }
+
   if (req.method === "DELETE" && path === "/github/connection") {
+    await supabase.from("github_poll_state").delete().eq("user_id", user.id);
+    await supabase.from("github_user_tokens").delete().eq("user_id", user.id);
     const { error } = await supabase.from("github_connections").delete().eq("user_id", user.id);
     if (error) return json({ error: error.message }, 400);
     return json({ ok: true });
@@ -6188,7 +6286,9 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
       const b = normalizeBranch(body.branch);
       if ("error" in b) return json({ error: b.error }, 400);
       const { data: before } = await supabase.from("tasks").select("github_repo, github_branch").eq("id", taskId).maybeSingle();
-      const patch = { github_repo: r.repo, github_branch: r.repo ? b.branch : null, updated_at: new Date().toISOString() };
+      const patch: Record<string, unknown> = { github_repo: r.repo, github_branch: r.repo ? b.branch : null, updated_at: new Date().toISOString() };
+      // Commits made after the repository is attached (or changed) are the ones that count.
+      if (r.repo && (r.repo !== before?.github_repo || b.branch !== before?.github_branch)) patch.github_repo_set_at = new Date().toISOString();
       let uq = supabase.from("tasks").update(patch).eq("id", taskId);
       if (user.org_id) uq = uq.eq("org_id", user.org_id);
       const { error } = await uq;

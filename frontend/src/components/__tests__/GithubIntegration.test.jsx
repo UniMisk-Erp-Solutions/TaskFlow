@@ -1,9 +1,9 @@
-import React from 'react';
+﻿import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const state = { links: [], status: {}, repo: null };
+const state = { links: [], status: {}, repo: null, token: null };
 
 vi.mock('../../api', () => {
   const get = vi.fn(async (url) => {
@@ -18,10 +18,12 @@ vi.mock('../../api', () => {
       state.links = [...state.links, { id: 'm1', kind: 'pull_request', repo_full_name: 'acme/web', ref: '9', title: 'acme/web#9', url: 'https://github.com/acme/web/pull/9', source: 'manual', created_at: '2026-10-22T10:00:00Z' }];
       return { data: state.links[state.links.length - 1] };
     }
+    if (url === '/github/poll/me') return { data: { ok: true, tasks: 1, submitted: 1 } };
     if (url === '/github/connect') return { data: { url: 'https://github.com/login/oauth/authorize?x=1' } };
     return { data: {} };
   });
   const put = vi.fn(async (url, body) => {
+    if (url === '/github/token') { state.token = { github_login: 'naveena246', token_hint: 'abcd', last_checked_at: null, last_error: null }; return { data: { ok: true } }; }
     if (url.endsWith('/github/repo')) { state.repo = String(body.repo || '').toLowerCase() || null; return { data: { github_repo: state.repo, github_branch: body.branch || null } }; }
     return { data: {} };
   });
@@ -122,5 +124,42 @@ describe('GithubConnectCard', () => {
     expect(screen.getByText('acme')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /add another account/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /choose repositories/i })).toHaveAttribute('href', expect.stringContaining('/installations/5'));
+  });
+});
+
+describe('GithubConnectCard saved token (polling fallback)', () => {
+  beforeEach(() => { state.token = null; vi.clearAllMocks(); });
+
+  it('lets a user save a token and never shows it again', async () => {
+    state.status = { configured: { oauth: true, app: true, webhook: true, polling: true }, is_admin: false, connection: { github_login: 'naveena246' }, installations: [], token: null, setup: null };
+    const user = userEvent.setup();
+    render(<GithubConnectCard />);
+    const input = await screen.findByLabelText('GitHub token');
+    expect(input).toHaveAttribute('type', 'password');
+    await user.type(input, 'fake-token-for-tests-0123456789');
+    await user.click(screen.getByRole('button', { name: /save token/i }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith('/github/token', { token: 'fake-token-for-tests-0123456789' }));
+    expect(await screen.findByText(/token saved\. taskflow will now watch/i)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('fake-token-for-tests-0123456789')).toBeNull();
+  });
+
+  it('shows the saved token state, its last error, and runs a check on demand', async () => {
+    state.status = { configured: { oauth: true, app: true, webhook: true, polling: true }, is_admin: false, connection: { github_login: 'naveena246' }, installations: [],
+      token: { github_login: 'naveena246', token_hint: 'wxyz', last_checked_at: '2026-10-23T10:00:00Z', last_error: 'No access to acme/web (GitHub answered 404).' }, setup: null };
+    const user = userEvent.setup();
+    render(<GithubConnectCard />);
+    expect(await screen.findByText(/ends in wxyz/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert', { name: '' })).toHaveTextContent(/No access to acme\/web/);
+    await user.click(screen.getByRole('button', { name: /check now/i }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/github/poll/me'));
+    expect(await screen.findByText(/1 task submitted for review/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove token/i })).toBeInTheDocument();
+  });
+
+  it('explains when saving tokens is not enabled on the server', async () => {
+    state.status = { configured: { oauth: true, app: true, webhook: true, polling: false }, is_admin: false, connection: null, installations: [], token: null, setup: null };
+    render(<GithubConnectCard />);
+    expect(await screen.findByText(/not enabled on this server yet/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('GitHub token')).toBeNull();
   });
 });

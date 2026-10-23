@@ -70,6 +70,8 @@ export default function GithubConnectCard() {
   const [busy, setBusy] = useState('');
   const [flash, setFlash] = useState(() => flashFromUrl());
   const [loadError, setLoadError] = useState('');
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenMsg, setTokenMsg] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -126,7 +128,60 @@ export default function GithubConnectCard() {
     }
   }
 
+  async function saveToken(e) {
+    e.preventDefault();
+    if (!tokenInput.trim()) return;
+    setBusy('token');
+    setTokenMsg(null);
+    try {
+      await api.put('/github/token', { token: tokenInput.trim() });
+      setTokenInput('');
+      setTokenMsg({ ok: true, text: 'Token saved. TaskFlow will now watch the repositories named on your In Progress tasks.' });
+      await load();
+    } catch (err) {
+      setTokenMsg({ ok: false, text: err.response?.data?.error || 'Could not save the token.' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function removeToken() {
+    if (!window.confirm('Remove your saved GitHub token? TaskFlow will stop checking repositories for you (the GitHub App, if installed, keeps working).')) return;
+    setBusy('token');
+    try {
+      await api.delete('/github/token');
+      setTokenMsg({ ok: true, text: 'Token removed.' });
+      await load();
+    } catch (err) {
+      setTokenMsg({ ok: false, text: err.response?.data?.error || 'Could not remove the token.' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function checkNow() {
+    setBusy('check');
+    setTokenMsg(null);
+    try {
+      const { data } = await api.post('/github/poll/me');
+      const moved = data?.submitted || 0;
+      setTokenMsg({
+        ok: true,
+        text: moved
+          ? `Checked: ${moved} task${moved === 1 ? '' : 's'} submitted for review.`
+          : `Checked ${data?.tasks ?? 0} task${data?.tasks === 1 ? '' : 's'} with a repository. No new commits to submit.`,
+      });
+      await load();
+    } catch (err) {
+      setTokenMsg({ ok: false, text: err.response?.data?.error || 'Could not run the check.' });
+    } finally {
+      setBusy('');
+    }
+  }
+
   const conn = status?.connection;
+  const tokenInfo = status?.token;
+  const pollingReady = !!status?.configured?.polling;
   const installs = status?.installations || [];
   const isAdmin = !!status?.is_admin;
   const oauthReady = !!status?.configured?.oauth;
@@ -236,6 +291,56 @@ export default function GithubConnectCard() {
             {isAdmin && !appReady && oauthReady && (
               <div style={infoBox}>Set <code style={code}>GITHUB_APP_ID</code>, <code style={code}>GITHUB_APP_SLUG</code> and <code style={code}>GITHUB_APP_PRIVATE_KEY</code> to enable installation.</div>
             )}
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              No app on the repository? Use your own token
+            </div>
+            {!pollingReady ? (
+              <div style={infoBox}>Saving a token is not enabled on this server yet (it needs <code style={code}>GITHUB_TOKEN_ENC_KEY</code>).</div>
+            ) : tokenInfo ? (
+              <>
+                <div style={{ fontSize: 13, color: 'var(--tf-muted)', lineHeight: 1.55 }}>
+                  Token saved for <strong style={{ color: 'var(--tf-text)' }}>@{tokenInfo.github_login}</strong> (ends in {tokenInfo.token_hint}).
+                  TaskFlow checks the repository named on each of your In Progress tasks every minute or so and submits the task when you commit to it.
+                  {tokenInfo.last_checked_at ? ` Last checked ${new Date(tokenInfo.last_checked_at).toLocaleString()}.` : ' Not checked yet.'}
+                </div>
+                {tokenInfo.last_error && <div role="alert" style={{ ...infoBox, color: 'var(--status-danger)' }}>{tokenInfo.last_error}</div>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={checkNow} disabled={!!busy}>
+                    {busy === 'check' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : null} Check now
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={removeToken} disabled={!!busy} style={{ color: 'var(--status-danger)' }}>
+                    Remove token
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form onSubmit={saveToken} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--tf-muted)', lineHeight: 1.6 }}>
+                  On GitHub: Settings → Developer settings → Personal access tokens → <strong>Fine-grained tokens</strong> → Generate. Choose the account or organization that owns the repository as
+                  <em> Resource owner</em>, select that repository, and give <strong>Contents: Read-only</strong>. (A classic token with the <code style={code}>repo</code> scope also works.)
+                  If the organization requires approval for tokens, an owner must approve it. The token is stored encrypted and only used to read commits.
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    className="input"
+                    type="password"
+                    style={{ flex: 1, minWidth: 220 }}
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    placeholder="Paste your GitHub token"
+                    aria-label="GitHub token"
+                    autoComplete="off"
+                  />
+                  <button type="submit" className="btn btn-ghost btn-sm" disabled={!!busy || !tokenInput.trim()}>
+                    {busy === 'token' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : null} Save token
+                  </button>
+                </div>
+              </form>
+            )}
+            {tokenMsg && <div role="status" style={{ ...infoBox, color: tokenMsg.ok ? 'var(--status-success, #16a34a)' : 'var(--status-danger)' }}>{tokenMsg.text}</div>}
           </div>
 
           {isAdmin && (!webhookReady || !oauthReady || !appReady) && status.setup && (

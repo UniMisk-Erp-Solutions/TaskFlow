@@ -4,12 +4,13 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync, createVerify, createHmac } from "node:crypto";
 import {
   extractTaskRefs, taskRefOf, verifyGithubSignature, signState, verifyState, createAppJwt,
-  parseExplicitLink, normalizeActivity, processGithubDelivery, normalizeRepo, normalizeBranch,
+  parseExplicitLink, normalizeActivity, processGithubDelivery, normalizeRepo, normalizeBranch, pollGithubTasks, encryptToken, decryptToken,
 } from "../functions/api/github.ts";
 
 // ── minimal in-memory stand-in for the supabase-js query builder ────────────
 const UNIQUE = {
   github_events: ["delivery_id"],
+  github_poll_state: ["user_id", "repo_full_name", "branch"],
   task_github_links: ["task_id", "kind", "repo_full_name", "ref"],
 };
 class FakeDb {
@@ -492,4 +493,144 @@ test("an explicit task reference wins over the repository fallback", async () =>
   assert.equal(out.tasks.length, 1);
   assert.equal(out.tasks[0].task_id, "7a7a7a7a-0000-4000-8000-000000000007");
   assert.equal(w.task(T1).status, "in_progress");
+});
+
+// ── polling fallback (no GitHub App on the repository) ──────────────────────
+const NOW = "2026-10-23T12:00:00.000Z";
+const SET_AT = "2026-10-23T10:00:00.000Z";
+
+function pollWorld(taskOver = {}, extraTasks = []) {
+  const w = world();
+  Object.assign(w.task(T1), { github_repo: "acme/web", github_repo_set_at: SET_AT, ...taskOver });
+  for (const t of extraTasks) w.db.rows("tasks").push(t);
+  w.db.seed("github_user_tokens", [{ user_id: ALICE, org_id: ORG, github_user_id: 100, github_login: "Alice-GH", token_enc: "enc", last_error: null }]);
+  w.db.seed("github_poll_state", []);
+  w.db.seed("github_events", []);
+  const gh = { calls: [], branches: [{ name: "main", commit: { sha: "h1" } }], commits: {}, status: {} };
+  const ghFetch = async (p) => {
+    gh.calls.push(p);
+    const key = Object.keys(gh.status).find((k) => p.startsWith(k));
+    if (key) return { status: gh.status[key], json: null };
+    if (p.startsWith("/repos/acme/web/branches?")) return { status: 200, json: gh.branches };
+    const one = p.match(/^\/repos\/acme\/web\/branches\/([^?]+)/);
+    if (one) { const b = gh.branches.find((x) => x.name === decodeURIComponent(one[1])); return b ? { status: 200, json: b } : { status: 404, json: null }; }
+    const cm = p.match(/^\/repos\/acme\/web\/commits\?sha=([^&]+)/);
+    if (cm) return { status: 200, json: gh.commits[decodeURIComponent(cm[1])] || [] };
+    return { status: 404, json: null };
+  };
+  const decrypt = async () => "ghp_token";
+  const hooks = { ...w.hooks, now: () => new Date(NOW) };
+  const poll = (o) => pollGithubTasks(w.db, hooks, ghFetch, decrypt, o);
+  return { ...w, gh, poll };
+}
+const ghCommit = (sha, login, message = "work") => ({ sha, html_url: `https://github.com/acme/web/commit/${sha}`, commit: { message }, author: login ? { login } : null });
+
+test("token encryption round-trips and rejects tampering and bad keys", async () => {
+  const key = Buffer.alloc(32, 7).toString("base64");
+  const blob = await encryptToken(key, "ghp_secret_value");
+  assert.ok(!blob.includes("ghp_secret_value"));
+  assert.equal(await decryptToken(key, blob), "ghp_secret_value");
+  assert.notEqual(blob, await encryptToken(key, "ghp_secret_value"), "fresh IV each time");
+  await assert.rejects(decryptToken(Buffer.alloc(32, 8).toString("base64"), blob));
+  await assert.rejects(decryptToken(key, blob.slice(0, -4) + "AAAA"));
+  await assert.rejects(encryptToken("short", "x"));
+});
+
+test("polling: a new commit by the assignee in the task's repository submits the task (no app, no reference)", async () => {
+  const p = pollWorld();
+  p.gh.commits.main = [ghCommit("c3", "alice-gh", "make layout responsive"), ghCommit("c2", "someone-else")];
+  const s = await p.poll();
+  assert.equal(s.submitted, 1);
+  assert.equal(p.task(T1).status, "submitted");
+  assert.equal(p.task(T1).kanban_column, "done");
+  assert.match(p.task(T1).submission_notes, /Submitted automatically from GitHub/);
+  const kinds = p.db.rows("task_github_links").map((l) => `${l.kind}:${l.ref}`).sort();
+  assert.deepEqual(kinds, ["branch:main", "commit:c3"], "only the assignee's own commit is linked");
+  assert.equal(p.calls.notify.length, 1);
+  assert.equal(p.db.rows("github_poll_state")[0].head_sha, "h1");
+  assert.equal(p.db.rows("github_user_tokens")[0].last_error, null);
+});
+
+test("polling: someone else's commits, or no change, do nothing; a second poll never repeats", async () => {
+  const p = pollWorld();
+  p.gh.commits.main = [ghCommit("c9", "stranger"), ghCommit("c8", null)];
+  assert.equal((await p.poll()).submitted, 0);
+  assert.equal(p.task(T1).status, "in_progress");
+  p.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  assert.equal((await p.poll()).submitted, 0, "head unchanged since the last poll: nothing fetched or counted");
+  p.gh.branches[0].commit.sha = "h2";
+  const s = await p.poll();
+  assert.equal(s.submitted, 1);
+  assert.equal((await p.poll()).submitted, 0);
+  assert.equal(p.calls.notify.length, 1);
+});
+
+test("polling: a repository first seen without a start time is only snapshotted; later commits count", async () => {
+  const p = pollWorld({ github_repo_set_at: null });
+  p.gh.commits.main = [ghCommit("old", "alice-gh")];
+  assert.equal((await p.poll()).submitted, 0);
+  assert.equal(p.db.rows("github_poll_state")[0].head_sha, "h1");
+  p.gh.branches[0].commit.sha = "h2";
+  p.gh.commits.main = [ghCommit("new1", "alice-gh"), ghCommit("h1", "alice-gh")];
+  assert.equal((await p.poll()).submitted, 1);
+  assert.deepEqual(p.db.rows("task_github_links").filter((l) => l.kind === "commit").map((l) => l.ref), ["new1"], "stops at the previously seen head");
+});
+
+test("polling honours the task's branch and ignores other branches", async () => {
+  const p = pollWorld({ github_branch: "naveena/features/responsive" });
+  p.gh.branches = [{ name: "main", commit: { sha: "m1" } }, { name: "naveena/features/responsive", commit: { sha: "r1" } }];
+  p.gh.commits.main = [ghCommit("onmain", "alice-gh")];
+  p.gh.commits["naveena/features/responsive"] = [];
+  assert.equal((await p.poll()).submitted, 0);
+  p.gh.branches[1].commit.sha = "r2";
+  p.gh.commits["naveena/features/responsive"] = [ghCommit("onbranch", "alice-gh")];
+  assert.equal((await p.poll()).submitted, 1);
+  assert.ok(p.gh.calls.every((c) => !c.includes("sha=main")), "main is never read when the task names a branch");
+});
+
+test("polling: several In Progress tasks on the same repo/branch are ambiguous and left alone", async () => {
+  const p = pollWorld({}, [{ id: "6b6b6b6b-0000-4000-8000-000000000006", org_id: ORG, title: "Second", status: "in_progress", kanban_column: "in_progress", assignee_id: ALICE, github_repo: "acme/web", github_repo_set_at: SET_AT, task_assignees: [{ profile_id: ALICE }] }]);
+  p.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  const s = await p.poll();
+  assert.equal(s.submitted, 0);
+  assert.ok(s.notes.some((n) => /put a TF- reference/.test(n)));
+  assert.equal(p.task(T1).status, "in_progress");
+});
+
+test("polling only touches tasks the token owner is assigned to, In Progress, in their organization", async () => {
+  const p = pollWorld({ assignee_id: BOB, task_assignees: [{ profile_id: BOB }] });
+  p.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  assert.equal((await p.poll()).submitted, 0, "alice is not an assignee");
+  const q = pollWorld({ status: "pending", kanban_column: "to_do" });
+  q.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  assert.equal((await q.poll()).submitted, 0, "not In Progress");
+  const o = pollWorld();
+  o.db.rows("github_user_tokens")[0].org_id = OTHER_ORG;
+  o.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  assert.equal((await o.poll()).submitted, 0, "token belongs to another organization");
+});
+
+test("polling dedupes with the webhook path: commits already linked do not submit again", async () => {
+  const p = pollWorld();
+  p.db.rows("task_github_links").push({ id: "x", org_id: ORG, task_id: T1, kind: "commit", repo_full_name: "acme/web", ref: "c3", source: "auto" });
+  p.gh.commits.main = [ghCommit("c3", "alice-gh")];
+  const s = await p.poll();
+  assert.equal(s.submitted, 0);
+  assert.equal(p.task(T1).status, "in_progress");
+});
+
+test("polling records token and access problems per user without failing the run", async () => {
+  const bad = pollWorld();
+  bad.gh.status["/repos/acme/web/branches?"] = 401;
+  const s = await bad.poll();
+  assert.equal(s.submitted, 0);
+  assert.match(bad.db.rows("github_user_tokens")[0].last_error, /rejected the saved token/);
+  const noAccess = pollWorld();
+  noAccess.gh.status["/repos/acme/web/branches?"] = 404;
+  await noAccess.poll();
+  assert.match(noAccess.db.rows("github_user_tokens")[0].last_error, /No access to acme\/web/);
+  const ok = pollWorld();
+  await ok.poll();
+  assert.equal(ok.db.rows("github_user_tokens")[0].last_error, null);
+  assert.ok(ok.db.rows("github_user_tokens")[0].last_checked_at);
 });
