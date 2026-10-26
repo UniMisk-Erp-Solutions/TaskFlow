@@ -1,4 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  createAppJwt, decryptToken, encryptToken, normalizeBranch, normalizeRepo, parseExplicitLink, pollGithubTasks, processGithubDelivery,
+  safeEqual, signState, taskRefOf, verifyGithubSignature, verifyState,
+  type GhFetch, type GithubHooks,
+} from "./github.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inlined push module. Nothing here loads Node-only npm modules at module
@@ -293,7 +298,7 @@ async function handleNotificationRoutes(
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1314,7 +1319,7 @@ async function processWhatsAppMessage(body: any): Promise<void> {
 type AppUser = {
   id: string;
   email?: string;
-  role: "admin" | "employee";
+  role: "admin" | "manager" | "employee";
   org_id: string | null;
 };
 
@@ -1427,6 +1432,17 @@ function requireAdmin(user: AppUser) {
   return null;
 }
 
+/** Admins review everything; managers review their teams' tasks (first step). Employees cannot review. */
+function requireReviewer(user: AppUser) {
+  if (user.role !== "admin" && user.role !== "manager") return json({ error: "Admin access required" }, 403);
+  return null;
+}
+
+function requireManager(user: AppUser) {
+  if (user.role !== "admin" && user.role !== "manager") return json({ error: "Manager access required" }, 403);
+  return null;
+}
+
 function taskAssigneeIds(t: any): string[] {
   const fromJ = (t.task_assignees ?? []).map((x: any) => x.profile_id).filter(Boolean);
   if (t.assignee_id && !fromJ.includes(t.assignee_id)) return [t.assignee_id, ...fromJ];
@@ -1448,6 +1464,48 @@ async function orgAdminIds(orgId: string | null): Promise<string[]> {
     return [];
   }
   return (data ?? []).map((row: { id: string }) => row.id);
+}
+
+// ── Teams & manager review ──
+// A manager owns teams (public.teams / team_members). Tasks submitted by a team member go to the manager first, and only
+// reach the admin once the manager approves. A submitter with no manager skips straight to the admin.
+
+/** Ids of everyone in the teams this manager runs (not including the manager). */
+async function managedMemberIds(managerId: string, orgId: string | null): Promise<string[]> {
+  if (!orgId) return [];
+  const { data: teams } = await supabase.from("teams").select("id").eq("manager_id", managerId).eq("org_id", orgId);
+  const teamIds = (teams ?? []).map((t: { id: string }) => t.id);
+  if (!teamIds.length) return [];
+  const { data: members } = await supabase.from("team_members").select("user_id").in("team_id", teamIds);
+  return [...new Set((members ?? []).map((m: { user_id: string }) => m.user_id))];
+}
+
+/** Managers (other than the submitter) whose team the user belongs to. */
+async function managerIdsOf(userId: string, orgId: string | null): Promise<string[]> {
+  if (!orgId) return [];
+  const { data: mine } = await supabase.from("team_members").select("team_id").eq("user_id", userId);
+  const teamIds = (mine ?? []).map((m: { team_id: string }) => m.team_id);
+  if (!teamIds.length) return [];
+  const { data: teams } = await supabase.from("teams").select("manager_id").in("id", teamIds).eq("org_id", orgId);
+  return [...new Set((teams ?? []).map((t: { manager_id: string }) => t.manager_id))].filter((id) => id !== userId);
+}
+
+/** Where a task submitted by `user` goes first: their manager, or straight to the admin. */
+async function reviewRouteFor(user: AppUser): Promise<{ stage: "manager" | "admin"; reviewerIds: string[] }> {
+  if (user.role === "employee") {
+    const managers = await managerIdsOf(user.id, user.org_id);
+    if (managers.length) return { stage: "manager", reviewerIds: managers };
+  }
+  return { stage: "admin", reviewerIds: await orgAdminIds(user.org_id) };
+}
+
+/** True when the manager runs a team that includes at least one assignee of the task row. */
+async function managerOverseesTask(user: AppUser, taskId: string, row?: { assignee_id: string | null }): Promise<boolean> {
+  const members = new Set(await managedMemberIds(user.id, user.org_id));
+  if (!members.size) return false;
+  const { data: inj } = await supabase.from("task_assignees").select("profile_id").eq("task_id", taskId);
+  const ids = [...(inj ?? []).map((r: { profile_id: string }) => r.profile_id), ...(row?.assignee_id ? [row.assignee_id] : [])];
+  return ids.some((id) => members.has(id));
 }
 
 function meetingAssigneeIds(m: any): string[] {
@@ -3252,7 +3310,20 @@ async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response
   const { data: row } = await tq.maybeSingle();
   if (!row) return json({ error: "Task not found or access denied" }, 404);
   const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", taskId).eq("profile_id", user.id).maybeSingle();
-  if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
+  if (row.assignee_id !== user.id && !inj) {
+    // A manager may also open the tasks of the people in their teams (to review and follow them).
+    if (user.role === "manager" && await managerOverseesTask(user, taskId, row)) return null;
+    return json({ error: "Task not found or access denied" }, 403);
+  }
+  return null;
+}
+
+/** For actions only the person doing the work may take (board moves, submitting): managers are not exempt. */
+async function assertTaskAssignee(user: AppUser, taskId: string): Promise<Response | null> {
+  if (user.role !== "manager") return null;
+  const { data: row } = await supabase.from("tasks").select("assignee_id").eq("id", taskId).maybeSingle();
+  const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", taskId).eq("profile_id", user.id).maybeSingle();
+  if (!row || (row.assignee_id !== user.id && !inj)) return json({ error: "Only the person assigned to this task can do that." }, 403);
   return null;
 }
 
@@ -3404,7 +3475,19 @@ async function handleTasks(req: Request, path: string) {
     if (user.org_id) legQ = legQ.eq("org_id", user.org_id);
     const { data: leg } = await legQ;
     const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
-    const allIds = [...new Set([...fromJ, ...fromLeg])];
+    let fromTeam: string[] = [];
+    if (user.role === "manager") {
+      // A manager also sees the tasks of the people in their teams.
+      const members = await managedMemberIds(user.id, user.org_id);
+      if (members.length) {
+        const { data: tj } = await supabase.from("task_assignees").select("task_id").in("profile_id", members);
+        let tlQ = supabase.from("tasks").select("id").in("assignee_id", members);
+        if (user.org_id) tlQ = tlQ.eq("org_id", user.org_id);
+        const { data: tl } = await tlQ;
+        fromTeam = [...(tj ?? []).map((r: { task_id: string }) => r.task_id), ...(tl ?? []).map((r: { id: string }) => r.id)];
+      }
+    }
+    const allIds = [...new Set([...fromJ, ...fromLeg, ...fromTeam])];
     if (!allIds.length) return json([]);
     const { rows, error: chunkErr } = await fetchTasksByIdsChunked(allIds);
     if (chunkErr) return json({ error: chunkErr.message }, 400);
@@ -3519,6 +3602,8 @@ async function handleTasks(req: Request, path: string) {
 
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
+    const notAssignee = await assertTaskAssignee(user, id);
+    if (notAssignee) return notAssignee;
     let taskQuery = supabase.from("tasks").select("*, task_assignees(profile_id)").eq("id", id);
     if (user.org_id) taskQuery = taskQuery.eq("org_id", user.org_id);
     const { data: current, error: currentError } = await taskQuery.maybeSingle();
@@ -3581,8 +3666,15 @@ async function handleTasks(req: Request, path: string) {
     } else if (nextStatus !== "completed") {
       patch.kanban_approved_at = null;
     }
+    let boardRoute: { stage: "manager" | "admin"; reviewerIds: string[] } | null = null;
     if (nextStatus === "submitted" && previousStatus !== "submitted") {
       patch.submission_notes = "Submitted from Kanban board";
+      boardRoute = await reviewRouteFor(user);
+      patch.review_stage = boardRoute.stage;
+      patch.manager_approved_by = null;
+      patch.manager_approved_at = null;
+    } else if (previousStatus === "submitted" && nextStatus !== "submitted") {
+      patch.review_stage = null;
     }
     if (nextStatus === "completed" && previousStatus === "submitted") {
       patch.approval_notes = current.approval_notes || "Approved from Kanban board";
@@ -3615,7 +3707,7 @@ async function handleTasks(req: Request, path: string) {
       }, action === "submitted" ? "Submitted from Kanban board" : action === "approved" ? "Approved from Kanban board" : null));
       scheduleNotify(async () => {
         const who = await getActorDisplayName(supabase, user.id);
-        const admins = nextStatus === "submitted" ? await orgAdminIds(user.org_id) : [];
+        const admins = nextStatus === "submitted" ? (boardRoute?.reviewerIds ?? await orgAdminIds(user.org_id)) : [];
         await notifyUsersEdge(supabase, {
           userIds: [...(out.assignee_ids || []), ...admins],
           excludeUserId: user.id,
@@ -3659,6 +3751,18 @@ async function handleTasks(req: Request, path: string) {
     const { title, description, priority, due_date, due_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
+    if (user.role === "manager" && assignee_ids.length) {
+      // Managers assign work to the people in their own teams (or to themselves).
+      const allowed = new Set([user.id, ...(await managedMemberIds(user.id, user.org_id))]);
+      if (assignee_ids.some((id) => !allowed.has(id))) {
+        return json({ error: "You can only assign tasks to people in your teams (or yourself)." }, 403);
+      }
+    }
+    // Optional GitHub repository (and branch) this task's work lives in.
+    const ghRepo = normalizeRepo((body as any).github_repo);
+    if ("error" in ghRepo) return json({ error: ghRepo.error }, 400);
+    const ghBranch = normalizeBranch((body as any).github_branch);
+    if ("error" in ghBranch) return json({ error: ghBranch.error }, 400);
     if (project_id) {
       const { data: proj } = await supabase.from("projects").select("id").eq("id", project_id).eq("org_id", user.org_id).maybeSingle();
       if (!proj) return json({ error: "Project not found" }, 400);
@@ -3678,6 +3782,8 @@ async function handleTasks(req: Request, path: string) {
         created_by: user.id,
         org_id: user.org_id,
         parent_task_id: parent_task_id || null,
+        // Only sent when set, so tasks can still be created before the GitHub migration is applied.
+        ...(ghRepo.repo ? { github_repo: ghRepo.repo, github_branch: ghBranch.branch, github_repo_set_at: new Date().toISOString() } : {}),
       }])
       .select("id")
       .single();
@@ -3878,6 +3984,7 @@ async function handleTasks(req: Request, path: string) {
     } else if (status !== "completed") {
       statusUpdate.kanban_approved_at = null;
     }
+    if (beforeRow?.status === "submitted" && status !== "submitted") statusUpdate.review_stage = null;
     let uq = supabase
       .from("tasks")
       .update(statusUpdate)
@@ -3958,6 +4065,16 @@ async function handleTasks(req: Request, path: string) {
       patch.parent_task_id = parent_task_id_in === null || parent_task_id_in === ""
         ? null
         : String(parent_task_id_in);
+    }
+    if ((body as any).github_repo !== undefined || (body as any).github_branch !== undefined) {
+      const r = normalizeRepo((body as any).github_repo);
+      if ("error" in r) return json({ error: r.error }, 400);
+      const b = normalizeBranch((body as any).github_branch);
+      if ("error" in b) return json({ error: b.error }, 400);
+      patch.github_repo = r.repo;
+      patch.github_branch = r.repo ? b.branch : null;
+      const { data: curRepo } = await supabase.from("tasks").select("github_repo").eq("id", id).maybeSingle();
+      if (r.repo && r.repo !== curRepo?.github_repo) patch.github_repo_set_at = new Date().toISOString();
     }
 
     const assignee_ids = body.assignee_ids !== undefined || body.assigneeIds !== undefined
@@ -4050,14 +4167,20 @@ async function handleTasks(req: Request, path: string) {
     const id = submitMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
+    const notAssignee = await assertTaskAssignee(user, id);
+    if (notAssignee) return notAssignee;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    const route = await reviewRouteFor(user);
     let uq = supabase
       .from("tasks")
       .update({
         status: "submitted",
         kanban_column: "done",
         submission_notes: note || null,
+        review_stage: route.stage,
+        manager_approved_by: null,
+        manager_approved_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);
@@ -4075,9 +4198,8 @@ async function handleTasks(req: Request, path: string) {
     );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
-      const admins = await orgAdminIds(user.org_id);
       await notifyUsersEdge(supabase, {
-        userIds: [...(out.assignee_ids || []), ...admins],
+        userIds: [...(out.assignee_ids || []), ...route.reviewerIds],
         excludeUserId: user.id,
         category: "task_update",
         title: "Task ready for review",
@@ -4091,18 +4213,51 @@ async function handleTasks(req: Request, path: string) {
   // POST /tasks/:id/approve — admin approves the submission → completed.
   const approveMatchT = path.match(/^\/tasks\/([^/]+)\/approve$/);
   if (req.method === "POST" && approveMatchT) {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    const reviewErr = requireReviewer(user);
+    if (reviewErr) return reviewErr;
     const id = approveMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
+
+    if (user.role === "manager") {
+      // First review step: the manager signs off, then the task waits for an admin. It is NOT completed here.
+      const { data: cur } = await supabase.from("tasks").select("status, review_stage, assignee_id").eq("id", id).eq("org_id", user.org_id).maybeSingle();
+      if (!cur) return json({ error: "Task not found" }, 404);
+      if (cur.status !== "submitted" || cur.review_stage !== "manager") {
+        return json({ error: "This task is not waiting for manager approval." }, 409);
+      }
+      if (!(await managerOverseesTask(user, id, cur))) return json({ error: "This task is not in one of your teams." }, 403);
+      const now = new Date().toISOString();
+      const { data: moved, error: mErr } = await supabase.from("tasks")
+        .update({ review_stage: "admin", manager_approved_by: user.id, manager_approved_at: now, approval_notes: note || null, updated_at: now })
+        .eq("id", id).eq("org_id", user.org_id).select("*").maybeSingle();
+      if (mErr) return json({ error: mErr.message }, 400);
+      if (!moved) return json({ error: "Task not found" }, 404);
+      const mOut = (await shapeTasksWithJoins([moved]))[0];
+      scheduleAudit(() => logTaskHistory(id, user.id, user.org_id, "manager_approved", { review_stage: { from: "manager", to: "admin" } }, note || null));
+      scheduleNotify(async () => {
+        const who = await getActorDisplayName(supabase, user.id);
+        const admins = await orgAdminIds(user.org_id);
+        await notifyUsersEdge(supabase, {
+          userIds: [...admins, ...(mOut.assignee_ids || [])],
+          excludeUserId: user.id,
+          category: "task_update",
+          title: "Task ready for admin approval",
+          body: `${who} approved "${mOut.title}". It now needs admin approval.`,
+          data: { type: "task", taskId: id, url: "/" },
+        });
+      });
+      return json(mOut);
+    }
+
     let uq = supabase
       .from("tasks")
       .update({
         status: "completed",
         kanban_column: "done",
+        review_stage: null,
         kanban_approved_at: new Date().toISOString(),
         approval_notes: note || null,
         updated_at: new Date().toISOString(),
@@ -4134,19 +4289,25 @@ async function handleTasks(req: Request, path: string) {
   // POST /tasks/:id/request-changes — admin sends task back for rework.
   const requestChangesMatchT = path.match(/^\/tasks\/([^/]+)\/request-changes$/);
   if (req.method === "POST" && requestChangesMatchT) {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    const reviewErr = requireReviewer(user);
+    if (reviewErr) return reviewErr;
     const id = requestChangesMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
     if (!note) return json({ error: "Please describe the changes requested" }, 400);
-    let beforeQuery = supabase.from("tasks").select("status").eq("id", id);
+    let beforeQuery = supabase.from("tasks").select("status, review_stage, assignee_id").eq("id", id);
     if (user.org_id) beforeQuery = beforeQuery.eq("org_id", user.org_id);
     const { data: before, error: beforeError } = await beforeQuery.maybeSingle();
     if (beforeError) return json({ error: beforeError.message }, 400);
     if (!before) return json({ error: "Task not found" }, 404);
+    if (user.role === "manager") {
+      if (before.status !== "submitted" || before.review_stage !== "manager") {
+        return json({ error: "This task is not waiting for manager approval." }, 409);
+      }
+      if (!(await managerOverseesTask(user, id, before))) return json({ error: "This task is not in one of your teams." }, 403);
+    }
     const reviewRejected = before.status === "submitted";
     const nextStatus = reviewRejected ? "rejected" : "changes_requested";
     const nextColumn = reviewRejected ? "in_progress" : "backlog";
@@ -4156,6 +4317,7 @@ async function handleTasks(req: Request, path: string) {
         status: nextStatus,
         kanban_column: nextColumn,
         kanban_approved_at: null,
+        review_stage: null,
         approval_notes: note,
         updated_at: new Date().toISOString(),
       })
@@ -5403,6 +5565,137 @@ async function handleDrive(req: Request, path: string) {
   }
 }
 
+// ── Leave portal ──
+// Employees request leave; an admin of the same organisation approves or rejects it. Every route is org-scoped, an
+// employee only ever sees and changes their own requests, and only an admin can change a request's status.
+const LEAVE_TYPES = ["sick", "exam", "emergency", "trip"];
+const LEAVE_MAX_DAYS = 366;
+
+function leaveIsoDate(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(s + "T00:00:00Z");
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+function leaveDayCount(start: string, end: string): number {
+  return Math.round((Date.parse(end + "T00:00:00Z") - Date.parse(start + "T00:00:00Z")) / 86400000) + 1;
+}
+// Validate the user-supplied part of a request. Returns the columns to store, or an error message.
+function leaveParseInput(body: any): { error: string } | { fields: { leave_type: string; is_custom: boolean; duration: string; start_date: string; end_date: string; reason: string | null } } {
+  const rawType = String(body?.leave_type ?? "").trim();
+  let leave_type: string; let is_custom = false;
+  if (LEAVE_TYPES.includes(rawType.toLowerCase())) leave_type = rawType.toLowerCase();
+  else if (rawType.toLowerCase() === "custom") {
+    const custom = String(body?.custom_type ?? "").replace(/\s+/g, " ").trim();
+    if (custom.length < 2 || custom.length > 60) return { error: "Enter a custom leave type (2–60 characters)." };
+    leave_type = custom; is_custom = true;
+  } else return { error: "Choose a leave type: sick, exam, emergency, trip or custom." };
+  const duration = String(body?.duration ?? "").toLowerCase();
+  if (duration !== "single" && duration !== "multi") return { error: "Choose one day or multiple days." };
+  const start_date = leaveIsoDate(body?.start_date);
+  if (!start_date) return { error: "Enter a valid From date." };
+  const end_date = duration === "single" ? start_date : leaveIsoDate(body?.end_date);
+  if (!end_date) return { error: "Enter a valid To date." };
+  if (end_date < start_date) return { error: "The To date can't be before the From date." };
+  if (leaveDayCount(start_date, end_date) > LEAVE_MAX_DAYS) return { error: `Leave can't be longer than ${LEAVE_MAX_DAYS} days.` };
+  const reason = String(body?.reason ?? "").trim().slice(0, 1000) || null;
+  return { fields: { leave_type, is_custom, duration, start_date, end_date, reason } };
+}
+async function leaveNames(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const map = new Map<string, string>();
+  if (!unique.length) return map;
+  const { data } = await supabase.from("profiles").select("id, full_name, email").in("id", unique);
+  for (const p of (data || []) as any[]) map.set(p.id, p.full_name || p.email || "Unknown");
+  return map;
+}
+function leaveShape(r: any, names: Map<string, string>) {
+  return {
+    id: r.id, user_id: r.user_id, employee_name: names.get(r.user_id) || "Unknown",
+    leave_type: r.leave_type, is_custom: !!r.is_custom, duration: r.duration,
+    start_date: r.start_date, end_date: r.end_date, days: leaveDayCount(r.start_date, r.end_date),
+    reason: r.reason, status: r.status,
+    reviewed_by_name: r.reviewed_by ? (names.get(r.reviewed_by) || null) : null,
+    reviewed_at: r.reviewed_at, review_note: r.review_note, created_at: r.created_at,
+  };
+}
+
+async function handleLeaves(req: Request, path: string) {
+  if (path !== "/leaves" && !path.startsWith("/leaves/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+  const isAdmin = user.role === "admin";
+
+  if (path === "/leaves" && req.method === "GET") {
+    let q = supabase.from("leave_requests").select("*").eq("org_id", user.org_id)
+      .order("start_date", { ascending: false }).order("created_at", { ascending: false }).limit(500);
+    if (!isAdmin) q = q.eq("user_id", user.id);
+    const { data, error } = await q;
+    if (error) return json({ error: error.message }, 400);
+    const rows = (data || []) as any[];
+    const names = await leaveNames(rows.flatMap((r) => [r.user_id, r.reviewed_by]));
+    return json(rows.map((r) => leaveShape(r, names)));
+  }
+
+  if (path === "/leaves" && req.method === "POST") {
+    const parsed = leaveParseInput(await parseBody(req));
+    if ("error" in parsed) return json({ error: parsed.error }, 400);
+    const f = parsed.fields;
+    const { data: clash } = await supabase.from("leave_requests").select("id").eq("user_id", user.id)
+      .in("status", ["pending", "approved"]).lte("start_date", f.end_date).gte("end_date", f.start_date).limit(1);
+    if (clash && clash.length) return json({ error: "You already have a pending or approved leave request on those dates." }, 409);
+    const { data, error } = await supabase.from("leave_requests")
+      .insert([{ org_id: user.org_id, user_id: user.id, ...f, status: "pending" }]).select("*").single();
+    if (error) return json({ error: error.message }, 400);
+    return json(leaveShape(data, await leaveNames([user.id])), 201);
+  }
+
+  const m = path.match(/^\/leaves\/([0-9a-f-]{36})$/i);
+  if (!m) return json({ error: "Not found" }, 404);
+  const { data: row, error: rowErr } = await supabase.from("leave_requests").select("*").eq("id", m[1]).eq("org_id", user.org_id).maybeSingle();
+  if (rowErr) return json({ error: rowErr.message }, 400);
+  if (!row) return json({ error: "Leave request not found" }, 404);
+  const isOwner = row.user_id === user.id;
+
+  if (req.method === "DELETE") {
+    if (!isAdmin && !(isOwner && row.status === "pending")) return json({ error: "You can only cancel your own pending requests." }, 403);
+    const { error } = await supabase.from("leave_requests").delete().eq("id", row.id);
+    return error ? json({ error: error.message }, 400) : json({ ok: true });
+  }
+
+  if (req.method === "PATCH") {
+    const body: any = await parseBody(req);
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.status !== undefined) {
+      if (!isAdmin) return json({ error: "Only an admin can approve or reject leave." }, 403);
+      const status = String(body.status).toLowerCase();
+      if (!["pending", "approved", "rejected"].includes(status)) return json({ error: "Status must be pending, approved or rejected." }, 400);
+      update.status = status;
+      update.reviewed_by = status === "pending" ? null : user.id;
+      update.reviewed_at = status === "pending" ? null : new Date().toISOString();
+      update.review_note = String(body.review_note ?? "").trim().slice(0, 500) || null;
+    } else {
+      if (!isOwner) return json({ error: "You can only edit your own requests." }, 403);
+      if (row.status !== "pending") return json({ error: "Only pending requests can be edited." }, 409);
+      const current = row.is_custom ? { ...row, leave_type: "custom", custom_type: row.leave_type } : row;
+      const parsed = leaveParseInput({ ...current, ...body });
+      if ("error" in parsed) return json({ error: parsed.error }, 400);
+      const f = parsed.fields;
+      const { data: clash } = await supabase.from("leave_requests").select("id").eq("user_id", user.id).neq("id", row.id)
+        .in("status", ["pending", "approved"]).lte("start_date", f.end_date).gte("end_date", f.start_date).limit(1);
+      if (clash && clash.length) return json({ error: "You already have a pending or approved leave request on those dates." }, 409);
+      Object.assign(update, f);
+    }
+    const { data, error } = await supabase.from("leave_requests").update(update).eq("id", row.id).select("*").single();
+    if (error) return json({ error: error.message }, 400);
+    return json(leaveShape(data, await leaveNames([data.user_id, data.reviewed_by])));
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
 async function handleProjects(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -5530,6 +5823,137 @@ async function handleProjects(req: Request, path: string) {
   return null;
 }
 
+// ── Manager panel: teams and adding people ──
+// Managers run teams of employees, add new employees and assign them work. Admins can read every team.
+async function managerTeamsShape(teams: any[]): Promise<any[]> {
+  if (!teams.length) return [];
+  const { data: links } = await supabase.from("team_members").select("team_id, user_id").in("team_id", teams.map((t) => t.id));
+  const ids = [...new Set([...(links ?? []).map((l: any) => l.user_id), ...teams.map((t) => t.manager_id)])];
+  const { data: profs } = ids.length ? await supabase.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] as any[] };
+  const byId = new Map((profs ?? []).map((p: any) => [p.id, p]));
+  return teams.map((t) => ({
+    id: t.id, name: t.name, manager_id: t.manager_id,
+    manager_name: byId.get(t.manager_id)?.full_name || byId.get(t.manager_id)?.email || "",
+    created_at: t.created_at,
+    members: (links ?? []).filter((l: any) => l.team_id === t.id).map((l: any) => ({
+      id: l.user_id, full_name: byId.get(l.user_id)?.full_name || "", email: byId.get(l.user_id)?.email || "",
+    })),
+  }));
+}
+
+/** Keeps only ids that are plain employees of this organisation (never managers/admins, never the caller). */
+async function validTeamMemberIds(orgId: string, ids: unknown, selfId: string): Promise<string[]> {
+  const wanted = [...new Set((Array.isArray(ids) ? ids : []).map(String))].filter((id) => id && id !== selfId);
+  if (!wanted.length) return [];
+  const { data } = await supabase.from("profiles").select("id").eq("org_id", orgId).eq("role", "employee").in("id", wanted);
+  return (data ?? []).map((r: { id: string }) => r.id);
+}
+
+async function handleManager(req: Request, path: string) {
+  if (path !== "/manager" && !path.startsWith("/manager/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  const roleErr = requireManager(user);
+  if (roleErr) return roleErr;
+  if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+  const isManager = user.role === "manager";
+  const writeErr = () => json({ error: "Only managers can change teams." }, 403);
+
+  // People a manager can put on a team: the organisation's employees.
+  if (req.method === "GET" && path === "/manager/people") {
+    const { data, error } = await supabase.from("profiles").select("id, full_name, email, phone")
+      .eq("org_id", user.org_id).eq("role", "employee").order("full_name", { ascending: true });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  if (req.method === "GET" && path === "/manager/teams") {
+    let q = supabase.from("teams").select("*").eq("org_id", user.org_id).order("created_at", { ascending: true });
+    if (isManager) q = q.eq("manager_id", user.id);
+    const { data, error } = await q;
+    if (error) return json({ error: error.message }, 400);
+    return json(await managerTeamsShape(data ?? []));
+  }
+
+  if (req.method === "POST" && path === "/manager/teams") {
+    if (!isManager) return writeErr();
+    const body = await parseBody(req) as Record<string, unknown>;
+    const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+    if (name.length < 1 || name.length > 80) return json({ error: "Enter a team name (1–80 characters)." }, 400);
+    const { data: team, error } = await supabase.from("teams")
+      .insert([{ org_id: user.org_id, manager_id: user.id, name }]).select("*").single();
+    if (error) return json({ error: error.code === "23505" ? "You already have a team with that name." : error.message }, error.code === "23505" ? 409 : 400);
+    const members = await validTeamMemberIds(user.org_id, body.member_ids, user.id);
+    if (members.length) await supabase.from("team_members").insert(members.map((user_id) => ({ team_id: team.id, user_id })));
+    return json((await managerTeamsShape([team]))[0], 201);
+  }
+
+  const teamMatch = path.match(/^\/manager\/teams\/([0-9a-f-]{36})$/i);
+  if (teamMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+    if (!isManager) return writeErr();
+    const { data: team } = await supabase.from("teams").select("*").eq("id", teamMatch[1]).eq("org_id", user.org_id).eq("manager_id", user.id).maybeSingle();
+    if (!team) return json({ error: "Team not found." }, 404);
+    if (req.method === "DELETE") {
+      const { error } = await supabase.from("teams").delete().eq("id", team.id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+    const body = await parseBody(req) as Record<string, unknown>;
+    if (body.name !== undefined) {
+      const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+      if (name.length < 1 || name.length > 80) return json({ error: "Enter a team name (1–80 characters)." }, 400);
+      const { error } = await supabase.from("teams").update({ name }).eq("id", team.id);
+      if (error) return json({ error: error.code === "23505" ? "You already have a team with that name." : error.message }, error.code === "23505" ? 409 : 400);
+    }
+    if (body.member_ids !== undefined) {
+      const members = await validTeamMemberIds(user.org_id, body.member_ids, user.id);
+      await supabase.from("team_members").delete().eq("team_id", team.id);
+      if (members.length) await supabase.from("team_members").insert(members.map((user_id) => ({ team_id: team.id, user_id })));
+    }
+    const { data: fresh } = await supabase.from("teams").select("*").eq("id", team.id).single();
+    return json((await managerTeamsShape([fresh]))[0]);
+  }
+
+  // Add a new employee to the workspace (managers can only create employees), optionally straight into one of their teams.
+  if (req.method === "POST" && path === "/manager/users") {
+    if (!isManager) return writeErr();
+    const body = await parseBody(req) as Record<string, unknown>;
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const password = String(body.password ?? "");
+    const fullName = String(body.fullName ?? "").trim();
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    if (!email || !password || !fullName) return json({ error: "Email, password and full name are required" }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    let teamId: string | null = null;
+    if (body.team_id) {
+      const { data: team } = await supabase.from("teams").select("id").eq("id", String(body.team_id)).eq("manager_id", user.id).eq("org_id", user.org_id).maybeSingle();
+      if (!team) return json({ error: "Team not found." }, 404);
+      teamId = team.id;
+    }
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { full_name: fullName, role: "employee", org_id: String(user.org_id), phone: phone || null },
+    });
+    if (error) return json({ error: error.message }, (error as any).status || 400);
+    const userId = created.user?.id;
+    if (userId) {
+      const { error: upErr } = await supabase.from("profiles").upsert(
+        { id: userId, email, full_name: fullName, role: "employee", org_id: user.org_id, phone: phone || null },
+        { onConflict: "id" },
+      );
+      if (upErr) {
+        const { data: row } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle();
+        if (!row) return json({ error: "User created but profile linking failed", detail: upErr.message }, 500);
+      }
+      if (teamId) await supabase.from("team_members").insert([{ team_id: teamId, user_id: userId }]);
+    }
+    return json({ message: "User created", user_id: userId, email, full_name: fullName, role: "employee", team_id: teamId }, 201);
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
 async function handleAdmin(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -5635,7 +6059,7 @@ async function handleAdmin(req: Request, path: string) {
     if (!user.org_id) {
       return json({ error: "Your profile has no organization; cannot create users." }, 400);
     }
-    const role = rawRole === "admin" ? "admin" : "employee";
+    const role = rawRole === "admin" ? "admin" : rawRole === "manager" ? "manager" : "employee";
 
     const { data: created, error } = await supabase.auth.admin.createUser({
       email,
@@ -5715,9 +6139,34 @@ async function handleAdmin(req: Request, path: string) {
     if (typeof (body as any).fullName === "string" && (body as any).fullName.trim()) {
       updates.full_name = (body as any).fullName.trim();
     }
+    const rawRole = (body as any).role;
+    let newRole: "admin" | "manager" | "employee" | null = null;
+    let wasManager = false;
+    if (rawRole !== undefined) {
+      if (rawRole !== "admin" && rawRole !== "manager" && rawRole !== "employee") return json({ error: "Role must be admin, manager or employee." }, 400);
+      const { data: cur } = await supabase.from("profiles").select("role").eq("id", targetId).maybeSingle();
+      if (cur && cur.role !== rawRole) {
+        if (targetId === user.id) return json({ error: "You cannot change your own role." }, 400);
+        if (cur.role === "admin") {
+          const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true })
+            .eq("org_id", user.org_id).eq("role", "admin");
+          if ((count ?? 0) <= 1) return json({ error: "A workspace needs at least one admin." }, 400);
+        }
+        newRole = rawRole;
+        wasManager = cur.role === "manager";
+        updates.role = rawRole;
+      }
+    }
     if (Object.keys(updates).length === 0) return json({ error: "Nothing to update." }, 400);
     const { error: upErr } = await supabase.from("profiles").update(updates).eq("id", targetId);
     if (upErr) return json({ error: upErr.message }, 500);
+    // A user who stops being a manager no longer runs teams; their former members then report straight to the admin.
+    if (wasManager && newRole !== "manager") await supabase.from("teams").delete().eq("manager_id", targetId);
+    if (newRole) {
+      // Keep the auth metadata in step with the profile (best effort: the profile is what the API reads).
+      const { data: au } = await supabase.auth.admin.getUserById(targetId);
+      if (au?.user) await supabase.auth.admin.updateUserById(targetId, { user_metadata: { ...(au.user.user_metadata || {}), role: newRole } });
+    }
     const { data: updated } = await supabase
       .from("profiles").select("id, email, full_name, role, phone, created_at").eq("id", targetId).maybeSingle();
     return json({ message: "User updated", user: updated });
@@ -5804,6 +6253,517 @@ async function handleAdmin(req: Request, path: string) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GitHub integration (GitHub App): per-user account connection, org-level App
+// installation, secure webhook, task linking and auto-submit for admin approval.
+// Pure logic + webhook orchestration live in ./github.ts (unit-tested in Node);
+// this block is the HTTP / database / notification glue.
+// Setup: docs/github-integration.md
+// ─────────────────────────────────────────────────────────────────────────────
+const GH_API_HEADERS = {
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+  "User-Agent": "TaskFlow-GitHub-Integration",
+};
+
+// Each value comes from the function's env, or public.app_settings (key = lower-cased name).
+async function ghConf(name: string): Promise<string> {
+  return (Deno.env.get(name) || (await getAppSetting(name.toLowerCase())) || "").trim();
+}
+
+async function ghSettings() {
+  const [appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, stateSecret, returnOrigins, tokenEncKey, pollSecret] = await Promise.all([
+    ghConf("GITHUB_APP_ID"), ghConf("GITHUB_APP_SLUG"), ghConf("GITHUB_APP_CLIENT_ID"), ghConf("GITHUB_APP_CLIENT_SECRET"),
+    ghConf("GITHUB_APP_PRIVATE_KEY"), ghConf("GITHUB_WEBHOOK_SECRET"), ghConf("GITHUB_API_PUBLIC_URL"), ghConf("GITHUB_STATE_SECRET"),
+    ghConf("GITHUB_RETURN_ORIGINS"), ghConf("GITHUB_TOKEN_ENC_KEY"), ghConf("GITHUB_POLL_SECRET"),
+  ]);
+  return {
+    appId, appSlug, clientId, clientSecret, privateKey, webhookSecret, publicUrl, returnOrigins, tokenEncKey, pollSecret,
+    stateSecret: stateSecret || clientSecret || webhookSecret,
+  };
+}
+type GhSettings = Awaited<ReturnType<typeof ghSettings>>;
+
+// Public base URL of this API (what GitHub redirects the browser to). Behind the Supabase
+// gateway the request URL is an internal host, so GITHUB_API_PUBLIC_URL can pin it.
+function ghApiBase(req: Request, s: GhSettings): string {
+  if (s.publicUrl) return s.publicUrl.replace(/\/+$/, "");
+  const u = new URL(req.url);
+  const host = req.headers.get("x-forwarded-host") || u.host;
+  const proto = req.headers.get("x-forwarded-proto") || u.protocol.replace(":", "");
+  const prefix = u.pathname.startsWith("/functions/v1/api") ? "/functions/v1/api" : u.pathname.startsWith("/api") ? "/api" : "";
+  return `${proto}://${host}${prefix}`;
+}
+
+// The browser is sent back to the page that started the flow, but only to an origin we trust:
+// the one that made the (authenticated) request, FRONTEND_URL, or GITHUB_RETURN_ORIGINS.
+function ghSafeReturnTo(req: Request, s: GhSettings, returnTo: unknown): string | null {
+  let target: URL;
+  try { target = new URL(String(returnTo)); } catch { return null; }
+  if (target.protocol !== "http:" && target.protocol !== "https:") return null;
+  const allowed = new Set<string>();
+  const origin = req.headers.get("origin");
+  if (origin) allowed.add(origin);
+  for (const o of `${Deno.env.get("FRONTEND_URL") || ""},${s.returnOrigins}`.split(",")) {
+    const t = o.trim();
+    if (!t) continue;
+    try { allowed.add(new URL(t).origin); } catch { /* ignore */ }
+  }
+  if (!allowed.has(target.origin)) return null;
+  target.hash = "";
+  return target.toString();
+}
+
+function ghRedirect(returnTo: string, code: string, reason?: string): Response {
+  const u = new URL(returnTo);
+  u.searchParams.set("github", code);
+  if (reason) u.searchParams.set("reason", reason);
+  return new Response(null, { status: 302, headers: { Location: u.toString(), "Cache-Control": "no-store" } });
+}
+
+function ghErrorPage(message: string, status = 400): Response {
+  const safe = message.replace(/[<>&]/g, "");
+  return new Response(`<!doctype html><meta charset="utf-8"><title>TaskFlow</title><body style="font-family:system-ui;padding:40px"><h3>GitHub</h3><p>${safe}</p><p>Close this tab and try again from TaskFlow Settings.</p></body>`, {
+    status, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
+}
+
+function ghManageUrl(inst: { installation_id: number; account_login: string; account_type: string | null }): string {
+  return inst.account_type === "Organization"
+    ? `https://github.com/organizations/${inst.account_login}/settings/installations/${inst.installation_id}`
+    : `https://github.com/settings/installations/${inst.installation_id}`;
+}
+
+// Hooks that plug the webhook processor into TaskFlow's existing timers, history and push notifications.
+const ghHooks: GithubHooks = {
+  closeTimers: async (taskId, orgId, endedAtIso) => {
+    const { error } = await supabase.from("task_timer_sessions")
+      .update({ ended_at: endedAtIso }).eq("task_id", taskId).eq("org_id", orgId).is("ended_at", null);
+    if (error) console.error("[github] could not close timers:", error.message);
+  },
+  logHistory: (taskId, actorId, orgId, action, changes, note) => logTaskHistory(taskId, actorId, orgId, action, changes, note),
+  notifyReview: async ({ orgId, task, actorId, actorLogin, summary }) => {
+    // The webhook response must not return before the push goes out: the edge runtime can
+    // terminate background work once the response is sent.
+    try {
+      const assignees = taskAssigneeIds(task);
+      const admins = await orgAdminIds(orgId);
+      const who = await getActorDisplayName(supabase, actorId);
+      await notifyUsers({
+        userIds: [...assignees, ...admins],
+        excludeUserId: actorId,
+        category: "task_update",
+        title: "Task ready for review",
+        body: `${who} pushed work to GitHub (@${actorLogin}); "${task.title}" was submitted automatically for your review.`,
+        data: { type: "task", taskId: task.id, url: "/" },
+      });
+      await notifyUsers({
+        userIds: [actorId],
+        category: "task_update",
+        title: "Task submitted from GitHub",
+        body: `"${task.title}" was moved to Done (pending admin approval) after ${summary}.`,
+        data: { type: "task", taskId: task.id, url: "/" },
+      });
+    } catch (err) {
+      console.error("[github] review notification failed:", (err as Error)?.message);
+    }
+  },
+};
+
+// ── Polling fallback: repositories without the GitHub App, via the user's own saved token ──
+const ghApiFetch: GhFetch = async (path, token) => {
+  const res = await fetchTimeout(`https://api.github.com${path}`, {
+    headers: { ...GH_API_HEADERS, Authorization: `Bearer ${token}` },
+  }, 15_000);
+  if (!res) return { status: 0, json: null };
+  const json = res.status === 200 ? await res.json().catch(() => null) : null;
+  return { status: res.status, json };
+};
+
+let ghPolling = false;
+async function runGithubPoll(userId?: string) {
+  const s = await ghSettings();
+  if (!s.tokenEncKey) return { ok: false as const, error: "GITHUB_TOKEN_ENC_KEY is not configured." };
+  if (ghPolling) return { ok: true as const, skipped: "a poll is already running" };
+  ghPolling = true;
+  try {
+    const summary = await pollGithubTasks(supabase, ghHooks, ghApiFetch, (blob) => decryptToken(s.tokenEncKey, blob), { userId });
+    return { ok: true as const, ...summary };
+  } finally {
+    ghPolling = false;
+  }
+}
+
+// Self-hosted / local runs can poll from inside the process; hosted runs call POST /github/poll from a cron.
+const ghPollEvery = Number(Deno.env.get("GITHUB_POLL_INTERVAL_SECONDS") || 0);
+if (ghPollEvery >= 20) {
+  setInterval(() => {
+    runGithubPoll().then((r) => {
+      if ("submitted" in r && (r.submitted || r.linked)) console.log("[github] poll:", JSON.stringify({ submitted: r.submitted, linked: r.linked }));
+    }).catch((e) => console.error("[github] poll failed:", (e as Error)?.message));
+  }, ghPollEvery * 1000);
+  console.log(`[github] polling every ${ghPollEvery}s`);
+}
+
+async function handleGithubWebhook(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  if (!s.webhookSecret) return json({ error: "GitHub webhook secret is not configured." }, 503);
+  const raw = new Uint8Array(await req.arrayBuffer());
+  if (raw.length > 5_000_000) return json({ error: "Payload too large" }, 413);
+  if (!(await verifyGithubSignature(s.webhookSecret, raw, req.headers.get("x-hub-signature-256")))) {
+    return json({ error: "Invalid signature" }, 401);
+  }
+  const event = req.headers.get("x-github-event") || "";
+  const deliveryId = req.headers.get("x-github-delivery") || "";
+  if (!event || !deliveryId) return json({ error: "Missing GitHub headers" }, 400);
+  let payload: unknown;
+  try { payload = JSON.parse(new TextDecoder().decode(raw)); } catch { return json({ error: "Webhook content type must be application/json" }, 400); }
+  try {
+    const out = await processGithubDelivery(supabase, ghHooks, { id: deliveryId, event, payload });
+    if (Math.random() < 0.02) {
+      // Keep the idempotency table small; deliveries older than 30 days can never be redelivered.
+      void supabase.from("github_events").delete().lt("received_at", new Date(Date.now() - 30 * 86_400_000).toISOString());
+    }
+    return json({ ok: true, result: out.result });
+  } catch (err) {
+    console.error("[github] webhook processing failed:", (err as Error)?.message);
+    return json({ error: "Processing failed; GitHub may redeliver." }, 500);
+  }
+}
+
+async function handleGithubOauthCallback(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  const url = new URL(req.url);
+  const state = await verifyState(s.stateSecret, url.searchParams.get("state"));
+  if (!state || state.p !== "connect" || typeof state.rt !== "string" || typeof state.uid !== "string") {
+    return ghErrorPage("This GitHub sign-in link is invalid or has expired.");
+  }
+  const rt: string = state.rt;
+  if (url.searchParams.get("error")) return ghRedirect(rt, "denied");
+  const code = url.searchParams.get("code");
+  if (!code || !s.clientId || !s.clientSecret) return ghRedirect(rt, "error", "not_configured");
+
+  const tokenRes = await fetchTimeout("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": GH_API_HEADERS["User-Agent"] },
+    body: JSON.stringify({
+      client_id: s.clientId, client_secret: s.clientSecret, code,
+      redirect_uri: `${ghApiBase(req, s)}/github/oauth/callback`,
+    }),
+  }, 10_000);
+  const tokenJson = tokenRes ? await tokenRes.json().catch(() => ({})) : {};
+  const accessToken: string = tokenJson?.access_token || "";
+  if (!accessToken) return ghRedirect(rt, "error", "token_exchange_failed");
+
+  try {
+    const meRes = await fetchTimeout("https://api.github.com/user", {
+      headers: { ...GH_API_HEADERS, Authorization: `Bearer ${accessToken}` },
+    }, 10_000);
+    const me = meRes && meRes.ok ? await meRes.json().catch(() => null) : null;
+    if (!me?.id || !me?.login) return ghRedirect(rt, "error", "github_profile_unavailable");
+
+    const { data: prof } = await supabase.from("profiles").select("org_id").eq("id", state.uid).maybeSingle();
+    if (!prof) return ghRedirect(rt, "error", "user_not_found");
+    if (!prof.org_id) return ghRedirect(rt, "error", "no_organization");
+
+    const { data: taken } = await supabase.from("github_connections").select("user_id").eq("github_user_id", me.id).maybeSingle();
+    if (taken && taken.user_id !== state.uid) return ghRedirect(rt, "error", "already_linked");
+
+    const { error } = await supabase.from("github_connections").upsert([{
+      user_id: state.uid, org_id: prof.org_id, github_user_id: me.id, github_login: String(me.login),
+      avatar_url: me.avatar_url ?? null, connected_at: new Date().toISOString(),
+    }], { onConflict: "user_id" });
+    if (error) return ghRedirect(rt, "error", error.code === "23505" ? "already_linked" : "save_failed");
+    return ghRedirect(rt, "connected");
+  } finally {
+    // We only needed the token to read the user's identity — invalidate it, never store it.
+    void fetchTimeout(`https://api.github.com/applications/${s.clientId}/token`, {
+      method: "DELETE",
+      headers: { ...GH_API_HEADERS, Authorization: `Basic ${btoa(`${s.clientId}:${s.clientSecret}`)}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+    }, 8_000);
+  }
+}
+
+async function handleGithubInstallCallback(req: Request): Promise<Response> {
+  const s = await ghSettings();
+  const url = new URL(req.url);
+  const state = await verifyState(s.stateSecret, url.searchParams.get("state"));
+  if (!state || state.p !== "install" || typeof state.rt !== "string") {
+    return ghErrorPage("This GitHub installation link is invalid or has expired. Start again from TaskFlow Settings.");
+  }
+  const rt: string = state.rt;
+  if (url.searchParams.get("setup_action") === "request") return ghRedirect(rt, "install_requested");
+  const installationId = Number(url.searchParams.get("installation_id"));
+  if (!Number.isSafeInteger(installationId) || installationId <= 0) return ghRedirect(rt, "error", "bad_installation");
+  if (!s.appId || !s.privateKey) return ghRedirect(rt, "error", "app_not_configured");
+
+  // The person finishing the install must still belong to the organization that started it and
+  // have connected their GitHub account (so a personal-account installation can be tied to them).
+  const { data: prof } = await supabase.from("profiles").select("role, org_id").eq("id", state.uid).maybeSingle();
+  if (!prof || !prof.org_id || prof.org_id !== state.org) return ghRedirect(rt, "error", "not_member");
+  const { data: instConn } = await supabase.from("github_connections").select("github_user_id").eq("user_id", state.uid).maybeSingle();
+  if (!instConn) return ghRedirect(rt, "error", "connect_first");
+
+  let jwt: string;
+  try { jwt = await createAppJwt(s.appId, s.privateKey); } catch { return ghRedirect(rt, "error", "bad_private_key"); }
+  // Ask GitHub (as the App) whether this installation really exists — the query string is user-controlled.
+  const res = await fetchTimeout(`https://api.github.com/app/installations/${installationId}`, {
+    headers: { ...GH_API_HEADERS, Authorization: `Bearer ${jwt}` },
+  }, 10_000);
+  const info = res && res.ok ? await res.json().catch(() => null) : null;
+  if (!info?.id || String(info.app_id) !== String(s.appId) || !info.account?.login) return ghRedirect(rt, "error", "installation_not_verified");
+
+  // A personal-account installation can only be linked by that GitHub account's owner.
+  if (info.account.type === "User" && Number(info.account.id) !== Number(instConn.github_user_id)) {
+    return ghRedirect(rt, "error", "installation_not_yours");
+  }
+
+  const { data: existing } = await supabase.from("github_installations").select("org_id").eq("installation_id", installationId).maybeSingle();
+  if (existing && existing.org_id !== prof.org_id) return ghRedirect(rt, "error", "installation_claimed");
+
+  const { error } = await supabase.from("github_installations").upsert([{
+    installation_id: installationId, org_id: prof.org_id, account_login: String(info.account.login),
+    account_type: info.account.type ?? null, repository_selection: info.repository_selection ?? null,
+    installed_by: state.uid, suspended_at: info.suspended_at ?? null,
+  }], { onConflict: "installation_id" });
+  if (error) return ghRedirect(rt, "error", "save_failed");
+  return ghRedirect(rt, "installed");
+}
+
+async function handleGithub(req: Request, path: string): Promise<Response | null> {
+  const taskRoute = path.match(/^\/tasks\/([^/]+)\/github(?:\/links(?:\/([^/]+))?|\/(repo))?$/);
+  if (!path.startsWith("/github/") && !taskRoute) return null;
+
+  // Public endpoints: authenticated by a signed `state` (browser redirects) or HMAC (GitHub).
+  if (req.method === "POST" && path === "/github/webhook") return await handleGithubWebhook(req);
+  if (req.method === "POST" && path === "/github/poll") {
+    // For an external scheduler (cron): authenticated by a shared secret header.
+    const s = await ghSettings();
+    const given = req.headers.get("x-taskflow-secret") || "";
+    if (!s.pollSecret || !safeEqual(given, s.pollSecret)) {
+      return json({ error: "Forbidden" }, 403);
+    }
+    const out = await runGithubPoll();
+    return json(out, out.ok ? 200 : 503);
+  }
+  if (req.method === "GET" && path === "/github/oauth/callback") return await handleGithubOauthCallback(req);
+  if (req.method === "GET" && path === "/github/install/callback") return await handleGithubInstallCallback(req);
+
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+
+  if (req.method === "GET" && path === "/github/status") {
+    const s = await ghSettings();
+    const { data: connection } = await supabase.from("github_connections")
+      .select("github_login, avatar_url, connected_at").eq("user_id", user.id).maybeSingle();
+    let installations: unknown[] = [];
+    if (user.org_id) {
+      const { data } = await supabase.from("github_installations")
+        .select("installation_id, account_login, account_type, repository_selection, suspended_at, created_at, installed_by")
+        .eq("org_id", user.org_id).order("created_at", { ascending: true });
+      installations = (data ?? []).map((i: any) => {
+        const { installed_by, ...rest } = i;
+        return { ...rest, manage_url: ghManageUrl(i), can_manage: user.role === "admin" || installed_by === user.id };
+      });
+    }
+    const { data: tokenRow } = await supabase.from("github_user_tokens")
+      .select("github_login, token_hint, created_at, last_checked_at, last_error").eq("user_id", user.id).maybeSingle();
+    return json({
+      token: tokenRow ?? null,
+      configured: {
+        polling: !!s.tokenEncKey,
+        oauth: !!(s.clientId && s.clientSecret),
+        app: !!(s.appId && s.privateKey && s.appSlug),
+        webhook: !!s.webhookSecret,
+      },
+      is_admin: user.role === "admin",
+      connection: connection ?? null,
+      installations,
+      // Only admins need the values they paste into the GitHub App settings.
+      setup: user.role === "admin"
+        ? { webhook_url: `${ghApiBase(req, s)}/github/webhook`, callback_url: `${ghApiBase(req, s)}/github/oauth/callback`, setup_url: `${ghApiBase(req, s)}/github/install/callback` }
+        : null,
+    });
+  }
+
+  if (req.method === "POST" && path === "/github/connect") {
+    const s = await ghSettings();
+    if (!s.clientId || !s.clientSecret) return json({ error: "GitHub is not configured on this server yet. Ask an administrator." }, 503);
+    if (!user.org_id) return json({ error: "Join or create an organization before connecting GitHub." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const rt = ghSafeReturnTo(req, s, body.return_to);
+    if (!rt) return json({ error: "Invalid return address." }, 400);
+    const state = await signState(s.stateSecret, { p: "connect", uid: user.id, rt, n: crypto.randomUUID() }, 600);
+    const authorize = new URL("https://github.com/login/oauth/authorize");
+    authorize.searchParams.set("client_id", s.clientId);
+    authorize.searchParams.set("redirect_uri", `${ghApiBase(req, s)}/github/oauth/callback`);
+    authorize.searchParams.set("state", state);
+    authorize.searchParams.set("prompt", "select_account");
+    return json({ url: authorize.toString() });
+  }
+
+  if (req.method === "PUT" && path === "/github/token") {
+    const s = await ghSettings();
+    if (!s.tokenEncKey) return json({ error: "Saving a GitHub token is not enabled on this server (GITHUB_TOKEN_ENC_KEY)." }, 503);
+    if (!user.org_id) return json({ error: "Join or create an organization first." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const token = String(body.token ?? "").trim();
+    if (token.length < 20 || token.length > 400 || /\s/.test(token)) return json({ error: "That does not look like a GitHub token." }, 400);
+    const me = await ghApiFetch("/user", token);
+    if (me.status === 401) return json({ error: "GitHub rejected that token." }, 400);
+    if (me.status !== 200 || !me.json?.id || !me.json?.login) return json({ error: "Could not verify the token with GitHub. Try again." }, 502);
+    // The token must belong to the GitHub account already connected, so activity is attributed to the right person.
+    const { data: conn } = await supabase.from("github_connections").select("github_user_id, github_login").eq("user_id", user.id).maybeSingle();
+    if (conn && Number(conn.github_user_id) !== Number(me.json.id)) {
+      return json({ error: `That token belongs to @${me.json.login}, but you connected @${conn.github_login}. Use a token from the same account or switch the connected account first.` }, 400);
+    }
+    if (!conn) {
+      const { data: taken } = await supabase.from("github_connections").select("user_id").eq("github_user_id", me.json.id).maybeSingle();
+      if (taken && taken.user_id !== user.id) return json({ error: "That GitHub account is already connected to another TaskFlow user." }, 400);
+      const { error: cErr } = await supabase.from("github_connections").upsert([{
+        user_id: user.id, org_id: user.org_id, github_user_id: me.json.id, github_login: String(me.json.login),
+        avatar_url: me.json.avatar_url ?? null, connected_at: new Date().toISOString(),
+      }], { onConflict: "user_id" });
+      if (cErr) return json({ error: cErr.message }, 400);
+    }
+    const token_enc = await encryptToken(s.tokenEncKey, token);
+    const { error } = await supabase.from("github_user_tokens").upsert([{
+      user_id: user.id, org_id: user.org_id, github_user_id: me.json.id, github_login: String(me.json.login),
+      token_enc, token_hint: token.slice(-4), created_at: new Date().toISOString(), last_checked_at: null, last_error: null,
+    }], { onConflict: "user_id" });
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true, github_login: me.json.login });
+  }
+
+  if (req.method === "DELETE" && path === "/github/token") {
+    await supabase.from("github_poll_state").delete().eq("user_id", user.id);
+    const { error } = await supabase.from("github_user_tokens").delete().eq("user_id", user.id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (req.method === "POST" && path === "/github/poll/me") {
+    const out = await runGithubPoll(user.id);
+    return json(out, out.ok ? 200 : 503);
+  }
+
+  if (req.method === "DELETE" && path === "/github/connection") {
+    await supabase.from("github_poll_state").delete().eq("user_id", user.id);
+    await supabase.from("github_user_tokens").delete().eq("user_id", user.id);
+    const { error } = await supabase.from("github_connections").delete().eq("user_id", user.id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (req.method === "POST" && path === "/github/install-url") {
+    const s = await ghSettings();
+    if (!s.appSlug || !s.appId || !s.privateKey) return json({ error: "The GitHub App is not configured on this server yet (GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY)." }, 503);
+    if (!user.org_id) return json({ error: "No organization." }, 400);
+    const { data: ownConn } = await supabase.from("github_connections").select("user_id").eq("user_id", user.id).maybeSingle();
+    if (!ownConn) return json({ error: "Connect your GitHub account first, then install the app." }, 400);
+    const body = (await parseBody(req)) as Record<string, unknown>;
+    const rt = ghSafeReturnTo(req, s, body.return_to);
+    if (!rt) return json({ error: "Invalid return address." }, 400);
+    const state = await signState(s.stateSecret, { p: "install", uid: user.id, org: user.org_id, rt, n: crypto.randomUUID() }, 1800);
+    return json({ url: `https://github.com/apps/${encodeURIComponent(s.appSlug)}/installations/new?state=${encodeURIComponent(state)}` });
+  }
+
+  const instDel = path.match(/^\/github\/installations\/(\d+)$/);
+  if (req.method === "DELETE" && instDel) {
+    if (!user.org_id) return json({ error: "No organization." }, 400);
+    const { data: inst } = await supabase.from("github_installations").select("installed_by")
+      .eq("installation_id", Number(instDel[1])).eq("org_id", user.org_id).maybeSingle();
+    if (!inst) return json({ error: "Installation not found" }, 404);
+    if (user.role !== "admin" && inst.installed_by !== user.id) {
+      return json({ error: "Only an administrator or the person who linked this installation can unlink it." }, 403);
+    }
+    const { error } = await supabase.from("github_installations").delete().eq("installation_id", Number(instDel[1])).eq("org_id", user.org_id);
+    if (error) return json({ error: error.message }, 400);
+    return json({ ok: true });
+  }
+
+  if (taskRoute) {
+    const taskId = taskRoute[1];
+    const linkId = taskRoute[2] ?? null;
+    const isLinksRoot = /\/github\/links$/.test(path);
+    const deny = await assertTaskAccess(user, taskId);
+    if (deny) return deny;
+
+    if (req.method === "GET" && !isLinksRoot && !linkId) {
+      const [{ data: links, error }, { data: conn }, { data: repoRow }] = await Promise.all([
+        supabase.from("task_github_links")
+          .select("id, kind, repo_full_name, ref, url, title, state, author_login, source, created_at")
+          .eq("task_id", taskId).order("created_at", { ascending: false }).limit(200),
+        supabase.from("github_connections").select("github_login").eq("user_id", user.id).maybeSingle(),
+        supabase.from("tasks").select("github_repo, github_branch").eq("id", taskId).maybeSingle(),
+      ]);
+      if (error) return json({ error: error.message }, 400);
+      return json({
+        task_ref: taskRefOf(taskId), links: links ?? [], connected: !!conn,
+        github_repo: repoRow?.github_repo ?? null, github_branch: repoRow?.github_branch ?? null,
+      });
+    }
+
+    if (req.method === "PUT" && taskRoute[3] === "repo") {
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const r = normalizeRepo(body.repo);
+      if ("error" in r) return json({ error: r.error }, 400);
+      const b = normalizeBranch(body.branch);
+      if ("error" in b) return json({ error: b.error }, 400);
+      const { data: before } = await supabase.from("tasks").select("github_repo, github_branch").eq("id", taskId).maybeSingle();
+      const patch: Record<string, unknown> = { github_repo: r.repo, github_branch: r.repo ? b.branch : null, updated_at: new Date().toISOString() };
+      // Commits made after the repository is attached (or changed) are the ones that count.
+      if (r.repo && (r.repo !== before?.github_repo || b.branch !== before?.github_branch)) patch.github_repo_set_at = new Date().toISOString();
+      let uq = supabase.from("tasks").update(patch).eq("id", taskId);
+      if (user.org_id) uq = uq.eq("org_id", user.org_id);
+      const { error } = await uq;
+      if (error) return json({ error: error.message }, 400);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "updated", {
+        github_repo: { from: before?.github_repo ?? null, to: patch.github_repo },
+        ...(before?.github_branch !== patch.github_branch ? { github_branch: { from: before?.github_branch ?? null, to: patch.github_branch } } : {}),
+      }, null));
+      return json({ github_repo: patch.github_repo, github_branch: patch.github_branch });
+    }
+
+    if (req.method === "POST" && isLinksRoot) {
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const parsed = parseExplicitLink(body.input);
+      if ("error" in parsed) return json({ error: parsed.error }, 400);
+      const { count } = await supabase.from("task_github_links").select("id", { count: "exact", head: true })
+        .eq("task_id", taskId).eq("source", "manual");
+      if ((count ?? 0) >= 50) return json({ error: "This task already has the maximum number of manual GitHub links." }, 400);
+      const { data: conn } = await supabase.from("github_connections").select("github_login").eq("user_id", user.id).maybeSingle();
+      const { data: inserted, error } = await supabase.from("task_github_links").upsert([{
+        org_id: user.org_id, task_id: taskId, kind: parsed.kind, repo_full_name: parsed.repo, ref: parsed.ref, url: parsed.url,
+        title: parsed.kind === "branch" ? parsed.ref : parsed.kind === "pull_request" ? `${parsed.repo}#${parsed.ref}` : parsed.ref.slice(0, 7),
+        state: null, author_login: conn?.github_login ?? null, author_user_id: user.id, source: "manual",
+      }], { onConflict: "task_id,kind,repo_full_name,ref", ignoreDuplicates: true })
+        .select("id, kind, repo_full_name, ref, url, title, state, author_login, source, created_at");
+      if (error) return json({ error: error.message }, 400);
+      if (!inserted?.length) return json({ error: "That GitHub item is already linked to this task." }, 409);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "github_linked", {}, `Linked ${parsed.kind.replace("_", " ")} ${parsed.repo}${parsed.kind === "pull_request" ? "#" : "@"}${parsed.ref}`));
+      return json(inserted[0], 201);
+    }
+
+    if (req.method === "DELETE" && linkId) {
+      const { data: link } = await supabase.from("task_github_links").select("id, source, kind, repo_full_name, ref")
+        .eq("id", linkId).eq("task_id", taskId).maybeSingle();
+      if (!link) return json({ error: "Link not found" }, 404);
+      if (link.source !== "manual" && user.role !== "admin") {
+        return json({ error: "Links detected automatically from GitHub can only be removed by an administrator." }, 403);
+      }
+      const { error } = await supabase.from("task_github_links").delete().eq("id", linkId).eq("task_id", taskId);
+      if (error) return json({ error: error.message }, 400);
+      scheduleAudit(() => logTaskHistory(taskId, user.id, user.org_id, "github_unlinked", {}, `Removed ${String(link.kind).replace("_", " ")} ${link.repo_full_name}@${link.ref}`));
+      return json({ ok: true });
+    }
+  }
+
+  return null;
+}
+
 Deno.serve(async (req): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -5845,8 +6805,16 @@ Deno.serve(async (req): Promise<Response> => {
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
 
+    // Must run before handlers that require a login for every path (e.g. handleProjects): the
+    // GitHub webhook and OAuth/installation callbacks are public and authenticate themselves.
+    const githubResp = await handleGithub(req, path);
+    if (githubResp) return githubResp;
+
     const driveResp = await handleDrive(req, path);
     if (driveResp) return driveResp;
+
+    const leavesResp = await handleLeaves(req, path);
+    if (leavesResp) return leavesResp;
 
     const projectsResp = await handleProjects(req, path);
     if (projectsResp) return projectsResp;
@@ -5856,6 +6824,9 @@ Deno.serve(async (req): Promise<Response> => {
 
     const meetingsResp = await handleMeetings(req, path);
     if (meetingsResp) return meetingsResp;
+
+    const managerResp = await handleManager(req, path);
+    if (managerResp) return managerResp;
 
     const adminResp = await handleAdmin(req, path);
     if (adminResp) return adminResp;

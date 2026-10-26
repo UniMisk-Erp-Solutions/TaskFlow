@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, ClipboardCheck, ClipboardList } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { ThemeToggle } from '../ThemeContext';
 
 const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
@@ -14,6 +13,7 @@ const ADMIN_NAV = [
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'files', icon: FolderOpen, label: 'Files' },
   { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
+  { id: 'leave', icon: CalendarOff, label: 'Leave' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
@@ -28,18 +28,33 @@ const EMPLOYEE_NAV = [
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'files', icon: FolderOpen, label: 'Files' },
   { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
+  { id: 'leave', icon: CalendarOff, label: 'Leave' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
 ];
 
+const MANAGER_NAV = [
+  { id: 'tasks', icon: CheckSquare, label: 'My Tasks' },
+  { id: 'reviews', icon: ClipboardCheck, label: 'Approvals' },
+  { id: 'assign', icon: ClipboardList, label: 'Assign Task' },
+  { id: 'team', icon: UsersRound, label: 'Teams' },
+  { id: 'people', icon: UserPlus, label: 'Add User' },
+  ...EMPLOYEE_NAV.filter((n) => n.id !== 'tasks'),
+];
+
 export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
-  const isEmployee = role === 'employee';
-  const navItems = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
+  const isEmployee = role === 'employee' || role === 'manager';
+  const navItems = role === 'manager' ? MANAGER_NAV : isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
   const activeButtonRef = useRef(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
-    try { return window.localStorage.getItem('taskflow:sidebar-collapsed') === '1'; } catch { return false; }
+    // First visit on a tablet-sized screen (e.g. iPad mini portrait, 761–1100 px): start with the slim icon rail so the
+    // page gets the width. Once the user toggles it, their choice is remembered.
+    let stored = null;
+    try { stored = window.localStorage.getItem('taskflow:sidebar-collapsed'); } catch { /* storage unavailable */ }
+    if (stored !== null) return stored === '1';
+    return typeof window !== 'undefined' && window.innerWidth > 760 && window.innerWidth <= 1100;
   });
   const toggleCollapsed = useCallback(() => {
     setCollapsed((current) => {
@@ -227,7 +242,6 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
             </div>
           </div>
           </button>
-          <ThemeToggle size={15} />
         </div>
         <button
           type="button"

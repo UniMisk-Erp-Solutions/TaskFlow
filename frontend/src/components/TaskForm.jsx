@@ -14,6 +14,8 @@ const DEFAULT = {
   due_date: '',
   due_time: '',
   project_id: '',
+  github_repo: '',
+  github_branch: '',
 };
 
 export default function TaskForm({
@@ -24,6 +26,7 @@ export default function TaskForm({
   parentTaskId = '',
   parentOptions = [],
   initialAssigneeIds = [],
+  allowedAssigneeIds = null, // when set, only these people can be picked (a manager's team)
 }) {
   const [form, setForm] = useState({
     ...DEFAULT,
@@ -178,8 +181,35 @@ export default function TaskForm({
           </div>
 
           <div className="form-group">
+            <label className="form-label">GitHub repository (optional)</label>
+            <input
+              className="input"
+              value={form.github_repo}
+              onChange={(e) => set('github_repo', e.target.value)}
+              placeholder="owner/repo, e.g. UniMisk-Erp-Solutions/TaskFlow"
+              autoComplete="off"
+              maxLength={300}
+            />
+            {form.github_repo.trim() && (
+              <input
+                className="input"
+                style={{ marginTop: 6 }}
+                value={form.github_branch}
+                onChange={(e) => set('github_branch', e.target.value)}
+                placeholder="Branch (optional) — leave empty for any branch"
+                autoComplete="off"
+                maxLength={250}
+                aria-label="GitHub branch"
+              />
+            )}
+            <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 4 }}>
+              When the assignee pushes or opens a pull request in this repository, the task moves to Done for approval.
+            </div>
+          </div>
+
+          <div className="form-group">
             <label className="form-label">Assign to</label>
-            <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
+            <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} onlyIds={allowedAssigneeIds} />
           </div>
 
           {/* Files: staged now, uploaded right after the task is created. */}

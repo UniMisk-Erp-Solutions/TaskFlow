@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, RefreshCw, Trash2, KeyRound, Pencil } from 'lucide-react';
+import { Plus, RefreshCw, Trash2, KeyRound, Pencil, ChevronDown } from 'lucide-react';
 import api from '../api';
+import { useAuth } from '../AuthContext';
+import SelectMenu from './SelectMenu';
+
+const ROLE_OPTIONS = [
+  { value: 'employee', label: 'Employee' },
+  { value: 'manager', label: 'Manager' },
+  { value: 'admin', label: 'Admin' },
+];
 import { formatDate } from '../lib/dateFormat';
 import JoinRequests from './JoinRequests';
 import Pagination, { usePagination } from './Pagination';
@@ -70,6 +78,7 @@ function PhoneInput({ code, setCode, number, setNumber }) {
 
 function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
   const paging = usePagination(users);
+  const [openId, setOpenId] = useState(null); // phone view: which user's details are expanded
   if (!users.length) {
     return (
       <div className="empty">
@@ -80,7 +89,33 @@ function UsersTable({ users, onEdit, onDelete, onChangePassword, busyId }) {
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="tf-users-cards">
+        {paging.pageItems.map((u) => {
+          const open = openId === u.id;
+          return (
+            <div key={u.id} className="tf-user-card">
+              <button type="button" className="tf-user-card-head" aria-expanded={open} onClick={() => setOpenId(open ? null : u.id)}>
+                <span className="tf-user-card-name">{u.full_name || '—'}</span>
+                <span className="tf-user-card-role">{u.role}</span>
+                <ChevronDown size={16} style={{ flexShrink: 0, transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none', color: 'var(--tf-muted)' }} />
+              </button>
+              {open && (
+                <div className="tf-user-card-body">
+                  <div className="tf-user-card-row"><span>Email</span><span>{u.email}</span></div>
+                  <div className="tf-user-card-row"><span>Phone</span><span>{u.phone || '—'}</span></div>
+                  <div className="tf-user-card-row"><span>Created</span><span>{formatDate(u.created_at)}</span></div>
+                  <div className="tf-user-card-actions">
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" title="Edit user" aria-label="Edit user" disabled={busyId === u.id} onClick={() => onEdit(u)}><Pencil size={14} /></button>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" title="Change password" aria-label="Change password" disabled={busyId === u.id} onClick={() => onChangePassword(u)}><KeyRound size={14} /></button>
+                    <button type="button" className="btn btn-ghost btn-sm btn-icon" title="Delete user" aria-label="Delete user" disabled={busyId === u.id} onClick={() => onDelete(u)} style={{ color: 'var(--status-danger)' }}>{busyId === u.id ? <span className="spinner" /> : <Trash2 size={14} />}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <table className="tf-users-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead style={{ background: 'var(--tf-panel)' }}>
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Name</th>
@@ -270,14 +305,7 @@ function AddUserModal({ open, onClose, onCreated }) {
 
           <div className="form-group">
             <label className="form-label">Role</label>
-            <select
-              className="input select"
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value)}
-            >
-              <option value="employee">Employee — tasks & meetings only</option>
-              <option value="admin">Admin — full workspace + admin panel</option>
-            </select>
+            <SelectMenu value={inviteRole} onChange={setInviteRole} options={ROLE_OPTIONS} ariaLabel="Role" />
             <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>
               Admins you add can sign in at the same login URL and open the admin dashboard.
             </div>
@@ -308,12 +336,16 @@ function EditUserModal({ user, onClose, onDone }) {
   const [fullName, setFullName] = useState('');
   const [phoneCode, setPhoneCode] = useState('91');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [role, setRole] = useState('employee');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { profile: me } = useAuth();
+  const isSelf = !!user && me?.id === user.id;
 
   useEffect(() => {
     if (user) {
       setFullName(user.full_name || '');
+      setRole(user.role === 'admin' || user.role === 'manager' ? user.role : 'employee');
       const sp = splitPhone(user.phone);
       setPhoneCode(sp.code);
       setPhoneNumber(sp.number);
@@ -332,7 +364,7 @@ function EditUserModal({ user, onClose, onDone }) {
     }
     setLoading(true);
     try {
-      await api.patch(`/admin/users/${user.id}`, { fullName: fullName.trim(), phone: combinePhone(phoneCode, phoneNumber) });
+      await api.patch(`/admin/users/${user.id}`, { fullName: fullName.trim(), phone: combinePhone(phoneCode, phoneNumber), role });
       if (onDone) await onDone();
       onClose();
     } catch (err) {
@@ -369,6 +401,11 @@ function EditUserModal({ user, onClose, onDone }) {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
             />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="edit-user-role">Role</label>
+            <SelectMenu id="edit-user-role" value={role} onChange={setRole} options={ROLE_OPTIONS} disabled={isSelf} ariaLabel="Role" />
+            {isSelf && <div style={{ fontSize: 11, color: 'var(--tf-muted)', marginTop: 6 }}>You can’t change your own role.</div>}
           </div>
           <div className="form-group">
             <label className="form-label">

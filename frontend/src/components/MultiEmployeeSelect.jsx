@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 
 /** Org-wide assignee picker: employees + admins (same workspace). */
-export default function MultiEmployeeSelect({ value = [], onChange }) {
+export default function MultiEmployeeSelect({ value = [], onChange, onlyIds = null }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -10,7 +10,7 @@ export default function MultiEmployeeSelect({ value = [], onChange }) {
     api
       .get('/auth/profiles')
       .then(({ data }) => {
-        setMembers(data || []);
+        setMembers((data || []).filter((p) => !onlyIds || onlyIds.includes(p.id)));
       })
       .catch(() => setMembers([]))
       .finally(() => setLoading(false));

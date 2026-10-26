@@ -7,6 +7,7 @@ import ProjectSelect from './ProjectSelect';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import HistoryTimeline from './HistoryTimeline';
 import AttachmentsSection from './AttachmentsSection';
+import TaskGithubSection from './TaskGithubSection';
 import { formatDate, formatDateTime } from '../lib/dateFormat';
 
 function assigneeNames(task, profileById) {
@@ -76,6 +77,7 @@ export default function TaskDetailModal({
   open,
   task,
   isAdmin = false,
+  isManager = false,
   profile = null,
   projects = [],
   profileById = {},
@@ -224,7 +226,10 @@ export default function TaskDetailModal({
   const status = record?.status || 'pending';
   const canSubmit = !!submitTask && isMyTask
     && (status === 'pending' || status === 'in_progress' || status === 'rejected' || status === 'changes_requested' || status === 'blocked');
-  const canReview = isAdmin && !!approveTask && !!requestTaskChanges && status === 'submitted';
+  // Two-step review: a manager signs off first (review_stage 'manager'), then the admin gives the final approval.
+  const waitingOnManager = status === 'submitted' && record?.review_stage === 'manager';
+  const managerReviews = isManager && waitingOnManager && !isMyTask;
+  const canReview = (isAdmin || managerReviews) && !!approveTask && !!requestTaskChanges && status === 'submitted';
   const canReopen = isAdmin && !!requestTaskChanges && (status === 'completed' || status === 'changes_requested');
   const canAddSubtask = !!record && (isAdmin || isMyTask);
 
@@ -497,6 +502,12 @@ export default function TaskDetailModal({
               </div>
             )}
 
+            {status === 'submitted' && (
+              <div role="status" style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 12, fontSize: 13, color: 'var(--tf-muted)' }}>
+                {waitingOnManager ? 'Waiting for manager approval, then admin approval.' : record?.manager_approved_at ? 'Approved by the manager. Waiting for admin approval.' : 'Waiting for admin approval.'}
+              </div>
+            )}
+
             {(canSubmit || canReview || canReopen) && (
               <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {canSubmit && (
@@ -550,7 +561,7 @@ export default function TaskDetailModal({
                         onClick={handleApprove}
                         disabled={actionBusy === 'approve'}
                       >
-                        {actionBusy === 'approve' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Approve'}
+                        {actionBusy === 'approve' ? <span className="spinner" style={{ width: 14, height: 14 }} /> : managerReviews ? 'Approve and send to admin' : 'Approve'}
                       </button>
                     </div>
                   </>
@@ -585,6 +596,13 @@ export default function TaskDetailModal({
             )}
 
             {error && <div className="form-error">{error}</div>}
+
+            <TaskGithubSection
+              taskId={record.id}
+              canEdit={isAdmin || isMyTask}
+              isAdmin={isAdmin}
+              refreshKey={`${record.status}:${history.length}`}
+            />
 
             <AttachmentsSection kind="task" itemId={record.id} canEdit={isAdmin || isMyTask} />
 

@@ -23,8 +23,10 @@ import AiChat from './components/AiChat';
 import CalenderView from './components/CalenderView';
 import NotificationSettings from './components/NotificationSettings';
 import ProfilePage from './components/ProfilePage';
+import LeavePortal from './components/LeavePortal';
 import ChatPage from './components/ChatPage';
 import FileExplorer from './components/FileExplorer';
+import { AddUserPage, ApprovalsPage, AssignTaskPage, TeamsPage, useManagerTeams } from './components/ManagerPanels';
 import { lazy, Suspense } from 'react';
 const WhiteboardPage = lazy(() => import('./components/WhiteboardPage'));
 
@@ -102,20 +104,42 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
   );
 }
 
-export default function EmployeeDashboard() {
+export default function EmployeeDashboard({ role = 'employee' }) {
+  const isManager = role === 'manager';
+  const basePath = isManager ? '/manager' : '/dashboard';
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const selfAssigneePreset = profile?.id ? [profile.id] : [];
-  const { tasks, loading, refetch, updateStatus, moveTaskBoard, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
+  const { tasks: allTasks, loading, refetch, updateStatus, moveTaskBoard, createTask, updateTask, submitTask, approveTask, requestTaskChanges, getTaskHistory } = useTasks();
   const { meetings, refetch: refetchMeetings, createMeeting, updateMeeting, updateStatus: updateMeetingStatus, submitMeeting, approveMeeting, requestMeetingChanges, getMeetingHistory } = useMeetings();
   const { projects, refetch: refetchProjects, createProject, getProgress, loading: projectsLoading } = useProjects();
+  // A manager's task list also contains their teams' tasks (for approvals); everything personal shows only their own.
+  const tasks = useMemo(
+    () => (isManager ? allTasks.filter((t) => t.assignee_id === profile?.id || (t.assignee_ids || []).includes(profile?.id)) : allTasks),
+    [allTasks, isManager, profile?.id],
+  );
   const taskTimers = useTaskTimers();
   const refreshTimers = taskTimers.refetch;
+  const [refreshKey, setRefreshKey] = useState(0); // bumping it remounts the open tab so every tab reloads its own data
+  const [refreshing, setRefreshing] = useState(false);
+  async function refreshAll() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([refetch({ silent: true }), refetchMeetings(), refetchProjects({ silent: true }), refreshTimers?.(), managerData.refetch?.()]);
+    } finally {
+      setRefreshKey((k) => k + 1);
+      setRefreshing(false);
+    }
+  }
   const [showAI, setShowAI] = useState(false);
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment;
-  const validPages = ['tasks', 'kanban', 'timer', 'calender', 'projects', 'chat', 'files', 'whiteboard', 'notifications', 'profile'];
+  const managerPages = ['reviews', 'assign', 'team', 'people'];
+  const isManagerPage = isManager && managerPages.includes(page);
+  const validPages = ['tasks', 'kanban', 'timer', 'calender', 'projects', 'chat', 'files', 'whiteboard', 'leave', 'notifications', 'profile', ...(isManager ? managerPages : [])];
+  const managerData = useManagerTeams(isManager);
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
   const [detailMeeting, setDetailMeeting] = useState(null);
@@ -145,16 +169,16 @@ export default function EmployeeDashboard() {
   }, [allProfiles, profile]);
 
   useEffect(() => {
-    if (!validPages.includes(page)) navigate('/dashboard/tasks', { replace: true });
+    if (!validPages.includes(page)) navigate(`${basePath}/tasks`, { replace: true });
   }, [page, navigate]);
 
   function navigateToPage(nextPage) {
     const segment = nextPage === 'calender' ? 'calendar' : nextPage;
-    navigate(`/dashboard/${segment}`);
+    navigate(`${basePath}/${segment}`);
   }
 
   function launchTaskForm(ctx = {}) {
-    setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '' });
+    setTaskFormCtx({ projectId: ctx.projectId || '', parentTaskId: ctx.parentTaskId || '', assign: !!ctx.assign });
     setTaskFormKey((k) => k + 1);
     setShowTaskForm(true);
   }
@@ -190,7 +214,7 @@ export default function EmployeeDashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex' }}>
-      <Sidebar active={page} onNav={navigateToPage} role="employee" />
+      <Sidebar active={page} onNav={navigateToPage} role={role} />
       <main style={{ flex: 1, minWidth: 0 }}>
       <div className="employee-dashboard-content" style={{ width: '100%', minWidth: 0, padding: '24px' }}>
         <div className="employee-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
@@ -201,7 +225,7 @@ export default function EmployeeDashboard() {
                   <span>{greeting()},</span>
                   <span>{profile?.full_name?.split(' ')[0] || 'there'}</span>
                 </span>
-              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'profile' ? 'Profile' : 'Notifications'}
+              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'leave' ? 'Leave Portal' : page === 'profile' ? 'Profile' : page === 'reviews' ? 'Approvals' : page === 'assign' ? 'Assign Task' : page === 'team' ? 'Teams' : page === 'people' ? 'Add User' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -212,14 +236,14 @@ export default function EmployeeDashboard() {
             <button type="button" className="btn btn-ghost btn-sm btn-icon tf-header-ai-button" onClick={() => setShowAI(true)} aria-label="Open AI Assistant" title="AI Assistant">
               <Sparkles size={20} strokeWidth={2.2} />
             </button>
-            <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={refetch} aria-label="Refresh">
+            <button type="button" className={`btn btn-ghost btn-sm btn-icon${refreshing ? ' tf-refresh-spin' : ''}`} onClick={refreshAll} disabled={refreshing} aria-label="Refresh" title="Refresh this page">
               <RefreshCw size={20} strokeWidth={2} />
             </button>
             <ThemeToggle size={16} />
           </div>
         </div>
 
-        {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'kanban' && <div className="tf-dashboard-actions" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'kanban' && page !== 'leave' && !isManagerPage && <div className="tf-dashboard-actions" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
@@ -230,12 +254,17 @@ export default function EmployeeDashboard() {
           </span>
         </div>}
 
-        {page === 'profile' && <ProfilePage />}
-        {page === 'chat' && <ChatPage />}
-        {page === 'files' && <FileExplorer />}
-        {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage /></Suspense>}
+        {page === 'team' && <TeamsPage data={managerData} />}
+        {page === 'people' && <AddUserPage data={managerData} />}
+        {page === 'reviews' && <ApprovalsPage tasks={allTasks} profileById={profileById} onOpen={setDetailTask} currentUserId={profile?.id} />}
+        {page === 'assign' && <AssignTaskPage tasks={allTasks} memberIds={managerData.memberIds} profileById={profileById} currentUserId={profile?.id} onOpen={setDetailTask} onNewTask={() => launchTaskForm({ assign: true })} />}
+        {page === 'profile' && <ProfilePage key={refreshKey} />}
+        {page === 'leave' && <LeavePortal key={refreshKey} />}
+        {page === 'chat' && <ChatPage key={refreshKey} />}
+        {page === 'files' && <FileExplorer key={refreshKey} />}
+        {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage key={refreshKey} /></Suspense>}
 
-        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && (
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && (
         <div className="tf-stat-row" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, display: 'flex', background: 'var(--tf-panel)', marginBottom: 28, overflow: 'hidden', boxShadow: 'none' }}>
           <Stat label="Total" value={stats.total} />
           <Stat label="Pending" value={stats.pending} color="var(--status-warning)" />
@@ -244,7 +273,7 @@ export default function EmployeeDashboard() {
         </div>
         )}
 
-        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && stats.overdue > 0 && (
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && stats.overdue > 0 && (
           <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
             <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
               {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.
@@ -261,7 +290,7 @@ export default function EmployeeDashboard() {
               padding: '24px 28px',
             }}
           >
-            <NotificationSettings />
+            <NotificationSettings key={refreshKey} />
           </div>
         )}
 
@@ -356,6 +385,7 @@ export default function EmployeeDashboard() {
         open={!!detailTask}
         task={detailTask}
         isAdmin={false}
+        isManager={isManager}
         profile={profile}
         projects={projects}
         profileById={profileById}
@@ -399,7 +429,8 @@ export default function EmployeeDashboard() {
           defaultProjectId={taskFormCtx.projectId}
           parentTaskId={taskFormCtx.parentTaskId}
           parentOptions={tasks}
-          initialAssigneeIds={selfAssigneePreset}
+          initialAssigneeIds={taskFormCtx.assign ? [] : selfAssigneePreset}
+          allowedAssigneeIds={isManager ? [profile?.id, ...managerData.memberIds].filter(Boolean) : null}
           onSubmit={createTask}
           onClose={() => {
             setShowTaskForm(false);

@@ -28,6 +28,7 @@ import { useProjects } from './useProjects';
 import { useTaskTimers } from './useTaskTimers';
 import api from './api';
 import ProfilePage from './components/ProfilePage';
+import LeavePortal from './components/LeavePortal';
 import ChatPage from './components/ChatPage';
 import FileExplorer from './components/FileExplorer';
 import { lazy, Suspense } from 'react';
@@ -86,10 +87,22 @@ export default function AdminDashboard() {
   const { projects, archivedProjects, refetch: refetchProjects, createProject, updateProject, archiveProject, restoreProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
   const refreshTimers = taskTimers.refetch;
+  const [refreshKey, setRefreshKey] = useState(0); // bumping it remounts the open tab so every tab reloads its own data
+  const [refreshing, setRefreshing] = useState(false);
+  async function refreshAll() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([refetch({ silent: true }), refetchMeetings(), refetchProjects({ silent: true }), refreshTimers?.()]);
+    } finally {
+      setRefreshKey((k) => k + 1);
+      setRefreshing(false);
+    }
+  }
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
-  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'files', 'whiteboard', 'notifications', 'email', 'profile'];
+  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'files', 'whiteboard', 'leave', 'notifications', 'email', 'profile'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -296,6 +309,8 @@ export default function AdminDashboard() {
                           ? 'Files'
                         : page === 'whiteboard'
                           ? 'Whiteboard'
+                        : page === 'leave'
+                          ? 'Leave Portal'
                         : page === 'notifications'
                           ? 'Notifications'
                             : page === 'profile'
@@ -346,42 +361,47 @@ export default function AdminDashboard() {
             {sendMsg && page === 'email' && (
               <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
-            {page !== 'notifications' && page !== 'users' && page !== 'profile' && (
-              <>
-                <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending}>
-                  {sending ? <span className="spinner" /> : <Send size={12} />}
-                  Send Reminders
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  title="Bulk import tasks from a CSV"
-                  onClick={() => setImportKind('task')}
-                >
-                  <Upload size={13} /> Import tasks
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  title="Bulk import meetings from a CSV"
-                  onClick={() => setImportKind('meeting')}
-                >
-                  <Upload size={13} /> Import meetings
-                </button>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
-                  <Plus size={13} /> New Task
-                </button>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
-                  <Plus size={13} /> New Meeting
-                </button>
-              </>
-            )}
             <button className="btn btn-ghost btn-sm btn-icon tf-header-ai-button" type="button" onClick={() => setShowAI(true)} aria-label="Open AI Assistant" title="AI Assistant">
               <Sparkles size={20} strokeWidth={2.2} />
+            </button>
+            <button type="button" className={`btn btn-ghost btn-sm btn-icon${refreshing ? ' tf-refresh-spin' : ''}`} onClick={refreshAll} disabled={refreshing} aria-label="Refresh" title="Refresh this page">
+              <RefreshCw size={18} strokeWidth={2} />
             </button>
             <ThemeToggle size={16} />
           </div>
         </div>
+
+        {/* Same layout as the employee panel: icons beside the title, action buttons in their own row below. */}
+        {page !== 'notifications' && page !== 'users' && page !== 'profile' && page !== 'leave' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && (
+          <div className="tf-dashboard-actions tf-admin-actions">
+            <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending} title="Send reminders" aria-label="Send reminders">
+              {sending ? <span className="spinner" /> : <Send size={13} />}
+              <span className="tf-btn-label">Send Reminders</span>
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              title="Bulk import tasks from a CSV"
+              onClick={() => setImportKind('task')}
+            >
+              <Upload size={13} /> <span className="tf-btn-label">Import tasks</span>
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              title="Bulk import meetings from a CSV"
+              onClick={() => setImportKind('meeting')}
+            >
+              <Upload size={13} /> <span className="tf-btn-label">Import meetings</span>
+            </button>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
+              <Plus size={13} /> New Task
+            </button>
+            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
+              <Plus size={13} /> New Meeting
+            </button>
+          </div>
+        )}
 
         <div className="admin-dashboard-content" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '24px' }}>
 
@@ -389,6 +409,7 @@ export default function AdminDashboard() {
           {page === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div
+                className="tf-stat-grid"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))',
@@ -678,7 +699,7 @@ export default function AdminDashboard() {
           {/* ── USER MANAGEMENT ── */}
           {page === 'users' && (
             <div style={{ maxWidth: 900 }}>
-              <UserManagement />
+              <UserManagement key={refreshKey} />
             </div>
           )}
 
@@ -692,14 +713,15 @@ export default function AdminDashboard() {
                 maxWidth: 720,
               }}
             >
-              <NotificationSettings />
+              <NotificationSettings key={refreshKey} />
             </div>
           )}
 
-          {page === 'profile' && <ProfilePage />}
-          {page === 'chat' && <ChatPage />}
-          {page === 'files' && <FileExplorer />}
-          {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage /></Suspense>}
+          {page === 'profile' && <ProfilePage key={refreshKey} />}
+          {page === 'leave' && <LeavePortal isAdmin key={refreshKey} />}
+          {page === 'chat' && <ChatPage key={refreshKey} />}
+          {page === 'files' && <FileExplorer key={refreshKey} />}
+          {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage key={refreshKey} /></Suspense>}
 
           {/* ── REMINDERS ── */}
           {page === 'email' && (

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, Loader2 } from 'lucide-react';
 import api from '../api';
 import GoogleConnectCard from './GoogleConnectCard';
+import GithubConnectCard from './GithubConnectCard';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -143,7 +144,10 @@ export default function NotificationSettings() {
           Connect external accounts. Each user signs in for themselves — admin
           never sees the credentials.
         </p>
-        <GoogleConnectCard variant="card" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <GoogleConnectCard variant="card" />
+          <GithubConnectCard />
+        </div>
       </section>
 
       <section>

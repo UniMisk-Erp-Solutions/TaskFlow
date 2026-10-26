@@ -80,19 +80,10 @@ export default function AiChat({ onClose }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Esc closes the panel (same as the X button).
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) onClose?.();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
-
   // Restore the server-side conversation + saved notes so a refresh doesn't lose context.
   useEffect(() => {
     let cancelled = false;
-    Promise.resolve().then(() => api.get('/ai/state')).then(({ data }) => {
+    api.get('/ai/state').then(({ data }) => {
       if (cancelled) return;
       if (Array.isArray(data?.messages) && data.messages.length) setMessages([WELCOME, ...data.messages]);
       if (Array.isArray(data?.memories)) setMemories(data.memories);

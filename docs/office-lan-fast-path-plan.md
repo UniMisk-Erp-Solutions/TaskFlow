@@ -23,16 +23,6 @@ A trusted certificate is required: browsers reject Cloudflare origin certificate
 
 Remove the added certificate files and dynamic config entry, and delete the router DNS record.
 
-## Status (17/10/2026)
+## Status
 
-**Server side DONE, office DNS step still TODO.**
-
-Done on the server:
-- Added `/traefik/dynamic/taskflow-backend-lan.yaml` inside the `coolify-proxy` container (Traefik file provider, live reload). It adds an HTTPS router for `taskflow-backend.unimisk.com` only, pointing to TaskFlow's Kong (`supabase-kong-l5srp6yqmhmj7kf1dqbtsaxf:8000`), with `certResolver: letsencrypt`. Traefik already had a Let's Encrypt HTTP-challenge resolver, so no Cloudflare API token was needed; the certificate was issued through the existing tunnel.
-- The public path (Cloudflare tunnel to Traefik on port 80) is unchanged.
-- Verified from a PC on the office network with `curl --resolve taskflow-backend.unimisk.com:443:192.168.23.15`: HTTPS answers with a **trusted certificate** (verify OK). Health endpoint timing, 3 runs: LAN about 0.03 to 0.06 s total (2 ms connect) versus Cloudflare 0.68 to 0.95 s (150 ms connect).
-- Large-upload throughput was not measured reliably; no verified MB/s figure exists yet.
-
-Still to do (needs the office router): add the DNS record `taskflow-backend.unimisk.com -> 192.168.23.15` on `192.168.23.254`. Until then office PCs keep resolving the public (Cloudflare) address. After adding it, flush DNS on a client (`ipconfig /flushdns`) and check `nslookup taskflow-backend.unimisk.com` returns `192.168.23.15`.
-
-Rollback: delete `/traefik/dynamic/taskflow-backend-lan.yaml` in the `coolify-proxy` container (and the router DNS record).
+Planned. Blocked on: the Cloudflare DNS-edit token being stored on the server (`~/cf-dns-token`) and the router DNS record. Nothing on the server has been changed for this feature yet.

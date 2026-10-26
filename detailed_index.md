@@ -275,18 +275,6 @@ Explains how TaskFlow is installable on Android, iOS and desktop: the web manife
 
 ---
 
-**Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
+**Document:** [docs/github-integration.md](docs/github-integration.md)
 
-Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged), a folder_id move option on the drive PATCH endpoints with ownership and cycle checks, a Moved activity entry, tests and the Edge Function redeploy.
-
----
-
-**Document:** [docs/ai-chat-esc-close.md](docs/ai-chat-esc-close.md)
-
-The AI Assistant panel now also closes when Esc is pressed (document keydown listener added on open and removed on unmount, ignoring already-handled keys), with a unit test.
-
----
-
-**Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
-
-Stacks the profile and theme buttons vertically in the 68px sidebar rail used on narrow screens and in the installed PWA (they previously overlapped), removes a dead CSS rule, and adds standalone-mode safe-area and 100dvh handling for the sidebar.
+Describes the GitHub App integration in the Supabase Edge API: per-user GitHub connection (identity only, no stored tokens), admin installation linked to the organization, the HMAC-verified webhook, task matching by the TF-xxxxxxxx reference in branch names, commits and pull requests, by explicitly linked branches/PRs, or by an optional per-task repository, installation by any connected user, a polling fallback that uses each user's encrypted GitHub token when the app is not installed on the repository, and the assignee-only authorization rules. It explains what counts as qualifying activity, the atomic In Progress to Done (pending admin approval) transition with duplicate-delivery and replay protection, admin push notification and the existing approve / request-changes flow, the task detail GitHub section, API routes, the migration, GitHub App settings and secrets, `--no-verify-jwt` deployment, the local webhook simulator, automated tests, troubleshooting and limitations.

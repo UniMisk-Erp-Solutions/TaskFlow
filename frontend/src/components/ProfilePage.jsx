@@ -53,7 +53,7 @@ export default function ProfilePage() {
     }
   }
 
-  const role = profile?.role === 'admin' ? 'Administrator' : 'Employee';
+  const role = profile?.role === 'admin' ? 'Administrator' : profile?.role === 'manager' ? 'Manager' : 'Employee';
   const joined = profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
 
   return (

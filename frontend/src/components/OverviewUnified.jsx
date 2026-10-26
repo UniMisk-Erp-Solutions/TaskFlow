@@ -210,7 +210,7 @@ export default function OverviewUnified({
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="tf-data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead style={{ background: 'var(--tf-pearl)' }}>
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Type" sortKey="kind" sort={sort} onSort={handleSort} />
@@ -248,7 +248,7 @@ export default function OverviewUnified({
                   {row.kind}
                 </span>
               </td>
-              <td
+              <td className="tf-col-title"
                 style={{
                   padding: '11px 14px',
                   maxWidth: 220,

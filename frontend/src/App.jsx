@@ -109,6 +109,7 @@ function RoleRouter() {
 
   const userRole = profile?.role;
   if (userRole === 'admin') return <Navigate to="/admin" replace />;
+  if (userRole === 'manager') return <Navigate to="/manager" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -120,7 +121,17 @@ function ProtectedAdmin({ children }) {
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
 
   const userRole = profile?.role;
-  if (userRole !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (userRole !== 'admin') return <Navigate to={userRole === 'manager' ? '/manager' : '/dashboard'} replace />;
+  return children;
+}
+
+function ProtectedManager({ children }) {
+  const { user, profile, loading } = useAuth();
+  if (loading && !profile) return <FullLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <ProfileLoadError />;
+  if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
+  if (profile.role !== 'manager') return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -130,6 +141,7 @@ function ProtectedEmployee({ children }) {
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
+  if (profile.role === 'manager') return <Navigate to="/manager" replace />;
   return children;
 }
 
@@ -165,6 +177,8 @@ export default function App() {
             <Route path="/admin"     element={<Navigate to="/admin/overview" replace />} />
             <Route path="/admin/*"  element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
             <Route path="/dashboard" element={<Navigate to="/dashboard/tasks" replace />} />
+            <Route path="/manager" element={<Navigate to="/manager/tasks" replace />} />
+            <Route path="/manager/*" element={<ProtectedManager><EmployeeDashboard role="manager" /></ProtectedManager>} />
             <Route path="/dashboard/*" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
 
             <Route path="*"          element={<Navigate to="/" replace />} />
