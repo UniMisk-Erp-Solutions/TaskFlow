@@ -118,6 +118,7 @@ export default function AdminDashboard() {
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
   const [detailTask, setDetailTask] = useState(null);
+  const [detailEdit, setDetailEdit] = useState(false); // open the task window straight in edit mode
   const [detailMeeting, setDetailMeeting] = useState(null);
 
   const profileById = useMemo(() => {
@@ -609,6 +610,7 @@ export default function AdminDashboard() {
                       onUpdateStatus={updateStatus}
                       profileById={profileById}
                       onOpenTask={setDetailTask}
+                      onEditTask={(t) => { setDetailEdit(true); setDetailTask(t); }}
                       onApprove={handleApproveTaskInline}
                       onRequestChanges={handleRequestChangesTaskInline}
                       onReopen={handleReopenTaskInline}
@@ -794,7 +796,8 @@ export default function AdminDashboard() {
         getTaskHistory={getTaskHistory}
         onTasksChanged={() => refetch({ silent: true })}
         refreshSignal={tasks.length}
-        onClose={() => setDetailTask(null)}
+        initialEdit={detailEdit}
+        onClose={() => { setDetailTask(null); setDetailEdit(false); }}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>
           launchTaskForm({ parentTaskId: parentId, projectId: ctx.projectId || '' })

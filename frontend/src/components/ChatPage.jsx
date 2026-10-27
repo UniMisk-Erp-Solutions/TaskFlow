@@ -79,23 +79,100 @@ function Avatar({ name, size = 34, group = false, team = false }) {
   );
 }
 
+// Signed links for chat attachments are cached (and shared between messages asking at the same time). A long chat otherwise
+// requests one link per image on every open or refresh, which piles up behind the auth lock and slows everything down.
+const chatUrlCache = new Map(); // path -> { promise, at }
+const CHAT_URL_TTL_MS = 50 * 60 * 1000; // links are signed for an hour
+function chatFileUrl(path) {
+  const hit = chatUrlCache.get(path);
+  if (hit && Date.now() - hit.at < CHAT_URL_TTL_MS) return hit.promise;
+  const promise = (async () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const { data } = await supabase.storage.from('chat-files').createSignedUrl(path, 3600);
+        if (data?.signedUrl) return data.signedUrl;
+      } catch { /* try once more, then give up quietly */ }
+      await new Promise((r) => { window.setTimeout(r, 400); });
+    }
+    chatUrlCache.delete(path); // do not remember a failure
+    return null;
+  })();
+  chatUrlCache.set(path, { promise, at: Date.now() });
+  return promise;
+}
+
+/** Full-screen image viewer: opens in the same tab and closes with the X, Esc, or a click outside the picture. */
+function ImageLightbox({ url, name, onClose }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey, true); document.body.style.overflow = previousOverflow; };
+  }, [onClose]);
+
+  const round = { position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(30,30,30,0.7)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', textDecoration: 'none' };
+  // Events inside a portal still bubble to the message underneath (double-click = reply, swipe = reply): stop them here.
+  const stop = (e) => e.stopPropagation();
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={name || 'Image'}
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+      onPointerDown={stop}
+      onPointerMove={stop}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onDoubleClick={stop}
+      style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: '64px 16px 16px' }}
+    >
+      <button ref={closeRef} type="button" aria-label="Close image" title="Close (Esc)" onClick={onClose} style={{ ...round, right: 12 }}><X size={20} /></button>
+      <a aria-label="Download image" title="Download" href={url} download={name} style={{ ...round, right: 60 }}><Download size={18} /></a>
+      {/* Sized from the screen (not from the box around it, which has no fixed height): never bigger than ~90% of the width or
+          ~75% of the height, never stretched beyond its real size. */}
+      <img src={url} alt={name} style={{ width: 'auto', height: 'auto', maxWidth: 'min(90vw, 900px)', maxHeight: 'min(75vh, 700px)', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} />
+    </div>,
+    document.body,
+  );
+}
+
 function Attachment({ msg }) {
   const [url, setUrl] = useState(null);
+  const [viewing, setViewing] = useState(false); // image opened full screen
   useEffect(() => {
     let alive = true;
-    supabase.storage.from('chat-files').createSignedUrl(msg.attachment_path, 3600)
-      .then(({ data }) => { if (alive) setUrl(data?.signedUrl || null); });
+    chatFileUrl(msg.attachment_path).then((signed) => { if (alive) setUrl(signed); });
     return () => { alive = false; };
   }, [msg.attachment_path]);
   const type = msg.attachment_type || '';
   if (!url) return <div style={{ fontSize: 12, opacity: 0.7 }}>Loading attachment…</div>;
   if (type.startsWith('image/')) {
-    return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} /></a>;
+    return (
+      <>
+        <a
+          className="tf-chat-attach"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) return; // Ctrl/Cmd-click still opens a new tab
+            e.preventDefault();
+            setViewing(true);
+          }}
+        >
+          <img draggable={false} src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} />
+        </a>
+        {viewing && <ImageLightbox url={url} name={msg.attachment_name} onClose={() => setViewing(false)} />}
+      </>
+    );
   }
   if (type.startsWith('audio/')) return <audio src={url} controls preload="metadata" style={{ maxWidth: 260 }} />;
   if (type.startsWith('video/')) return <video src={url} controls preload="metadata" style={{ maxWidth: 280, borderRadius: 10 }} />;
   return (
-    <a href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
+    <a className="tf-chat-attach" href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
       style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none' }}>
       <FileText size={20} />
       <span style={{ minWidth: 0 }}>
@@ -150,12 +227,17 @@ export function Linkified({ text, linkColor, mine }) {
 }
 
 /** One chat bubble with swipe-right / double-click to reply and hover actions. */
-function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
+export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
   const bubbleRef = useRef(null);
   const drag = useRef(null);
+  const swallowClick = useRef(false); // a swipe that began on an image/file must not also open it
 
   function onPointerDown(e) {
-    if (e.target.closest('button, a, audio, video, input')) return;
+    // Swipe-to-reply is a touch gesture (phones and the installed app). With a mouse or pen, dragging sideways means
+    // "select this text", so desktop users reply from the three-dot menu or by double-clicking.
+    if (e.pointerType !== 'touch') return;
+    // Controls keep their own gestures; attachments (images, files) are fine to swipe from.
+    if (e.target.closest('audio, video, input, .tf-chat-actions, a:not(.tf-chat-attach), button:not(.tf-chat-attach)')) return;
     drag.current = { x: e.clientX, y: e.clientY, active: false, pointerId: e.pointerId };
   }
   function onPointerMove(e) {
@@ -182,6 +264,7 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
       bubbleRef.current.style.transform = 'translateX(0)';
       window.setTimeout(() => { if (bubbleRef.current) bubbleRef.current.style.transition = ''; }, 180);
     }
+    if (d?.active) { swallowClick.current = true; window.setTimeout(() => { swallowClick.current = false; }, 400); }
     if (d?.active && d.shift >= SWIPE_TRIGGER) onReply(msg);
   }
 
@@ -201,6 +284,7 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onClickCapture={(e) => { if (swallowClick.current) { e.preventDefault(); e.stopPropagation(); } }}
       onDoubleClick={(e) => { if (!e.target.closest('button, a, audio, video')) onReply(msg); }}
     >
       {showName && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', margin: '6px 4px 2px' }}>{senderName}</span>}

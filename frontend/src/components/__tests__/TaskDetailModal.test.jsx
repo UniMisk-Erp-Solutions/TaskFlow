@@ -32,16 +32,18 @@ vi.mock('../AttachmentsSection', () => ({ default: () => <div data-testid="attac
 import api from '../../api';
 import TaskDetailModal from '../TaskDetailModal';
 
-function Harness({ historyFn, isAdmin = true, profile = { id: 'u1', role: 'admin' } }) {
+function Harness({ historyFn, isAdmin = true, isManager = false, initialEdit = false, updateTask = vi.fn(async (_id, payload) => ({ id: 't1', ...payload })), profile = { id: 'u1', role: 'admin' } }) {
   return (
     <TaskDetailModal
       open
       task={{ id: 't1' }}
       isAdmin={isAdmin}
+      isManager={isManager}
+      initialEdit={initialEdit}
       profile={profile}
       projects={[]}
       profileById={{ u1: 'Una', u2: 'Bo' }}
-      updateTask={vi.fn(async (_id, payload) => ({ id: 't1', ...payload }))}
+      updateTask={updateTask}
       getTaskHistory={historyFn}
       onClose={() => {}}
       onNavigateTask={() => {}}
@@ -118,5 +120,29 @@ describe('TaskDetailModal', () => {
     render(<Harness historyFn={async () => []} isAdmin={false} profile={{ id: 'u9', role: 'employee' }} />);
     await screen.findByText('Parent task');
     expect(screen.queryByLabelText('New subtask title')).not.toBeInTheDocument();
+  });
+
+  it('lets a manager edit a task (name, dates and everything else) but not an employee', async () => {
+    const user = userEvent.setup();
+    const updateTask = vi.fn(async (_id, payload) => ({ id: 't1', ...payload }));
+    const { unmount } = render(<Harness historyFn={async () => []} isAdmin={false} isManager updateTask={updateTask} profile={{ id: 'm1', role: 'manager' }} />);
+    await screen.findByText('Parent task');
+    await user.click(screen.getByLabelText('Edit task'));
+    const title = await screen.findByDisplayValue('Parent task');
+    await user.clear(title);
+    await user.type(title, 'Manager renamed it');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('t1', expect.objectContaining({ title: 'Manager renamed it' })));
+    unmount();
+
+    render(<Harness historyFn={async () => []} isAdmin={false} profile={{ id: 'u2', role: 'employee' }} />);
+    await screen.findByText('Parent task');
+    expect(screen.queryByLabelText('Edit task')).not.toBeInTheDocument();
+  });
+
+  it('opens straight in edit mode when opened from an Edit button', async () => {
+    render(<Harness historyFn={async () => []} initialEdit />);
+    expect(await screen.findByDisplayValue('Parent task')).toBeInTheDocument();
+    expect(screen.getByText('Edit task')).toBeInTheDocument();
   });
 });

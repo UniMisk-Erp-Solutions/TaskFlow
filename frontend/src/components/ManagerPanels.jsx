@@ -222,21 +222,28 @@ export function AddUserPage({ data }) {
   );
 }
 
-function TaskRow({ task, profileById, onOpen, badge }) {
+function TaskRow({ task, profileById, onOpen, onEdit, badge }) {
   const who = (task.assignee_ids?.length ? task.assignee_ids : [task.assignee_id]).filter(Boolean).map((id) => profileById[id] || 'Unknown').join(', ');
   return (
-    <button type="button" onClick={() => onOpen(task)} style={{ ...card, borderLeft: `4px solid ${priorityColor(task.priority)}`, textAlign: 'left', cursor: 'pointer', display: 'grid', gap: 6, font: 'inherit', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{task.title}</span>
-        <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {task.priority && <PriorityBadge priority={task.priority} />}
-          <StatusBadge status={task.status} />
-          {badge}
-        </span>
-      </div>
-      <div style={muted}>{who || 'Unassigned'}{task.due_date ? ` · due ${task.due_date}` : ''}</div>
-      {task.submission_notes && <div style={{ fontSize: 13, color: 'var(--tf-subhead)', overflowWrap: 'anywhere' }}>“{task.submission_notes}”</div>}
-    </button>
+    <div style={{ ...card, borderLeft: `4px solid ${priorityColor(task.priority)}`, display: 'flex', alignItems: 'flex-start', gap: 8, padding: 0, width: '100%', boxSizing: 'border-box' }}>
+      <button type="button" onClick={() => onOpen(task)} style={{ flex: 1, minWidth: 0, textAlign: 'left', cursor: 'pointer', display: 'grid', gap: 6, font: 'inherit', padding: 16, background: 'transparent', border: 0, color: 'inherit' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{task.title}</span>
+          <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {task.priority && <PriorityBadge priority={task.priority} />}
+            <StatusBadge status={task.status} />
+            {badge}
+          </span>
+        </div>
+        <div style={muted}>{who || 'Unassigned'}{task.due_date ? ` · due ${task.due_date}` : ''}</div>
+        {task.submission_notes && <div style={{ fontSize: 13, color: 'var(--tf-subhead)', overflowWrap: 'anywhere' }}>“{task.submission_notes}”</div>}
+      </button>
+      {onEdit && (
+        <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label={`Edit ${task.title}`} title="Edit task" onClick={() => onEdit(task)} style={{ margin: 10, flexShrink: 0 }}>
+          <Pencil size={15} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -245,7 +252,7 @@ const pill = (text, color) => (
 );
 
 /** Submitted work waiting on this manager, then what they've already passed to the admin. */
-export function ApprovalsPage({ tasks, profileById, onOpen, currentUserId }) {
+export function ApprovalsPage({ tasks, profileById, onOpen, onEdit, currentUserId }) {
   const waiting = tasks.filter((t) => t.status === 'submitted' && t.review_stage === 'manager');
   const passed = tasks.filter((t) => t.status === 'submitted' && t.review_stage === 'admin' && t.manager_approved_by === currentUserId);
   return (
@@ -253,13 +260,13 @@ export function ApprovalsPage({ tasks, profileById, onOpen, currentUserId }) {
       <p style={{ margin: 0, ...muted, fontSize: 14 }}>Your team submits work to you first. When you approve it, it goes to an admin for the final approval.</p>
       <section style={{ display: 'grid', gap: 10 }}>
         <h2 style={{ fontSize: 14, margin: 0, color: 'var(--tf-muted)' }}>Waiting for your approval ({waiting.length})</h2>
-        {waiting.length ? waiting.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} badge={pill('Needs your review', 'var(--status-warning)')} />)
+        {waiting.length ? waiting.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} onEdit={onEdit} badge={pill('Needs your review', 'var(--status-warning)')} />)
           : <div style={{ ...card, borderStyle: 'dashed', textAlign: 'center', color: 'var(--tf-muted)' }}><CheckCircle2 size={22} /><div style={{ marginTop: 6 }}>Nothing is waiting for you.</div></div>}
       </section>
       {passed.length > 0 && (
         <section style={{ display: 'grid', gap: 10 }}>
           <h2 style={{ fontSize: 14, margin: 0, color: 'var(--tf-muted)' }}>Approved by you, waiting for an admin ({passed.length})</h2>
-          {passed.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} badge={pill('Awaiting admin', 'var(--color-primary)')} />)}
+          {passed.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} onEdit={onEdit} badge={pill('Awaiting admin', 'var(--color-primary)')} />)}
         </section>
       )}
     </div>
@@ -278,7 +285,7 @@ const STATUS_FILTERS = [
 const assigneeIdsOf = (t) => (t.assignee_ids?.length ? t.assignee_ids : [t.assignee_id]).filter(Boolean);
 
 /** Everything assigned to your teammates, filtered by person and status so a big team isn't one long list. */
-export function AssignTaskPage({ tasks, memberIds, profileById, onNewTask, onOpen, currentUserId }) {
+export function AssignTaskPage({ tasks, memberIds, profileById, onNewTask, onOpen, onEdit, currentUserId }) {
   const [member, setMember] = useState('all');
   const [status, setStatus] = useState('all');
   const teamTasks = useMemo(
@@ -317,7 +324,7 @@ export function AssignTaskPage({ tasks, memberIds, profileById, onNewTask, onOpe
       {teamTasks.length > 0 && <div style={muted}>Showing {shown.length} of {teamTasks.length} task{teamTasks.length === 1 ? '' : 's'}</div>}
       {shown.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
-          {shown.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} />)}
+          {shown.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} onEdit={onEdit} />)}
         </div>
       ) : memberIds.length > 0 && <div style={{ ...card, borderStyle: 'dashed', textAlign: 'center', color: 'var(--tf-muted)' }}>{teamTasks.length ? 'No tasks match these filters.' : 'No tasks have been assigned to your teams yet.'}</div>}
     </div>

@@ -8,6 +8,7 @@ import EmployeeDashboard from './EmployeeDashboard';
 import Onboarding from './Onboarding';
 import PendingApproval from './PendingApproval';
 import PwaPrompt from './components/PwaPrompt';
+import PushPrompt from './components/PushPrompt';
 
 // Marketing (public) surfaces — ported from the standalone "quest" landing
 // page. They are Tailwind v4 + framer-motion and live entirely under
@@ -184,6 +185,7 @@ export default function App() {
             <Route path="*"          element={<Navigate to="/" replace />} />
           </Routes>
           <PwaPrompt />
+          <PushPrompt />
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

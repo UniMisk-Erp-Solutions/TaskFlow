@@ -78,6 +78,8 @@ export default function TaskDetailModal({
   task,
   isAdmin = false,
   isManager = false,
+  assigneeOptionIds = null, // when set (managers), only these people can be picked as assignees
+  initialEdit = false, // open straight in edit mode (the Edit buttons in the lists)
   profile = null,
   projects = [],
   profileById = {},
@@ -217,11 +219,16 @@ export default function TaskDetailModal({
     return () => { cancelled = true; };
   }, [open, task?.id, refreshSignal, hydrateDraft]);
 
+  // Opened from an Edit button: go straight to the edit form (runs after the effect above that resets edit mode).
+  useEffect(() => {
+    if (open && initialEdit && task?.id && (isAdmin || isManager) && updateTask) setEditMode(true);
+  }, [open, initialEdit, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!open || !task?.id) return null;
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
 
-  const canEdit = isAdmin && !!updateTask;
+  const canEdit = (isAdmin || isManager) && !!updateTask;
   const isMyTask = userIsAssignee(record, profile?.id);
   const status = record?.status || 'pending';
   const canSubmit = !!submitTask && isMyTask
@@ -646,7 +653,11 @@ export default function TaskDetailModal({
             </div>
             <div className="form-group">
               <label className="form-label">Assignees</label>
-              <MultiEmployeeSelect value={draft.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
+              <MultiEmployeeSelect
+                value={draft.assignee_ids}
+                onChange={(ids) => set('assignee_ids', ids)}
+                onlyIds={!assigneeOptionIds ? null : [...new Set([...assigneeOptionIds, ...(record?.assignee_ids || []), ...(draft.assignee_ids || [])])]}
+              />
             </div>
 
             {subtasks.length > 0 && (

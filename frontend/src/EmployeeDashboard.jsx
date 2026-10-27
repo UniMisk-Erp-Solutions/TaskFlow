@@ -144,6 +144,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
   const managerData = useManagerTeams(isManager);
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
+  const [detailEdit, setDetailEdit] = useState(false); // managers: open the task window straight in edit mode
+  const editTask = (t) => { setDetailEdit(true); setDetailTask(t); };
   const [detailMeeting, setDetailMeeting] = useState(null);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
@@ -262,8 +264,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
 
         {page === 'team' && <TeamsPage data={managerData} />}
         {page === 'people' && <AddUserPage data={managerData} />}
-        {page === 'reviews' && <ApprovalsPage tasks={allTasks} profileById={profileById} onOpen={setDetailTask} currentUserId={profile?.id} />}
-        {page === 'assign' && <AssignTaskPage tasks={allTasks} memberIds={managerData.memberIds} profileById={profileById} currentUserId={profile?.id} onOpen={setDetailTask} onNewTask={() => launchTaskForm({ assign: true })} />}
+        {page === 'reviews' && <ApprovalsPage tasks={allTasks} profileById={profileById} onOpen={setDetailTask} onEdit={editTask} currentUserId={profile?.id} />}
+        {page === 'assign' && <AssignTaskPage tasks={allTasks} memberIds={managerData.memberIds} profileById={profileById} currentUserId={profile?.id} onOpen={setDetailTask} onEdit={editTask} onNewTask={() => launchTaskForm({ assign: true })} />}
         {page === 'profile' && <ProfilePage key={refreshKey} />}
         {page === 'leave' && <LeavePortal key={refreshKey} canSummary={isManager} />}
         {page === 'chat' && <ChatPage key={refreshKey} />}
@@ -408,6 +410,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         task={detailTask}
         isAdmin={false}
         isManager={isManager}
+        assigneeOptionIds={isManager ? [profile?.id, ...managerData.memberIds].filter(Boolean) : null}
+        initialEdit={detailEdit}
         profile={profile}
         projects={projects}
         profileById={profileById}
@@ -418,7 +422,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         getTaskHistory={getTaskHistory}
         onTasksChanged={() => refetch({ silent: true })}
         refreshSignal={tasks.length}
-        onClose={() => setDetailTask(null)}
+        onClose={() => { setDetailTask(null); setDetailEdit(false); }}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>
           launchTaskForm({ parentTaskId: parentId, projectId: ctx.projectId || '' })

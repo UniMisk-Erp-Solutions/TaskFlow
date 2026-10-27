@@ -15,6 +15,10 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    // Every request reads the session under a lock. The default (5 s) steals a lock that is still held after 5 s, which makes the
+    // request that held it fail with "AbortError: Lock broken by another request with the steal option" when the server is slow
+    // or many requests start at once (a chat full of images). Wait longer instead; only a truly orphaned lock gets stolen.
+    lockAcquireTimeout: 30000,
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
   },
 });

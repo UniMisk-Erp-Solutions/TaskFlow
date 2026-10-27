@@ -4034,11 +4034,26 @@ async function handleTasks(req: Request, path: string) {
   const patchTaskDetail = path.match(/^\/tasks\/([^/]+)$/);
   if (req.method === "PATCH" && patchTaskDetail) {
     const id = patchTaskDetail[1];
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    // Admins edit any task. Managers edit the tasks they can open (their own and their teams'), and may only put people from
+    // their teams (or themselves, or people already on the task) on it.
+    const roleErr = requireManager(user);
+    if (roleErr) return roleErr;
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
+    if (user.role === "manager" && (body.assignee_ids !== undefined || body.assigneeIds !== undefined)) {
+      const { data: curLinks } = await supabase.from("task_assignees").select("profile_id").eq("task_id", id);
+      const { data: curRow } = await supabase.from("tasks").select("assignee_id").eq("id", id).maybeSingle();
+      const allowed = new Set([
+        user.id,
+        ...(await managedMemberIds(user.id, user.org_id)),
+        ...(curLinks ?? []).map((r: { profile_id: string }) => r.profile_id),
+        ...(curRow?.assignee_id ? [curRow.assignee_id] : []),
+      ]);
+      if (normalizeAssigneeIds(body).some((x) => !allowed.has(x))) {
+        return json({ error: "You can only assign tasks to people in your teams (or yourself)." }, 403);
+      }
+    }
     const {
       title,
       description,
