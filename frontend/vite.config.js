@@ -25,6 +25,7 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test/setup.js',
     css: false,
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'], // e2e/ is Playwright, not Vitest
   },
   build: {
     rollupOptions: {

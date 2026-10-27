@@ -1,0 +1,128 @@
+// Static guarantees about the pipeline definition, Jenkins isolation and branch protection.
+// These can run anywhere (no Docker, no Jenkins, no GitHub). Run: node --test ci/tests/
+import test from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { REPO_ROOT, REQUIRED_CHECKS, STAGES, GITHUB_CHECK_NAME } from "../pipeline/config.mjs";
+import { buildPayload, REPO_SETTINGS } from "../github/branch-protection.mjs";
+
+// Normalise line endings: a Windows checkout (core.autocrlf) has CRLF, which would defeat the comment-stripping regexes below.
+const read = (...p) => fs.readFileSync(path.join(REPO_ROOT, ...p), "utf8").replace(/\r\n/g, "\n");
+const here = path.dirname(fileURLToPath(import.meta.url));
+/** Drops // and # comment text so assertions look at configuration, not explanations. */
+const code = (s) => s.split("\n").map((l) => l.replace(/^\s*(\/\/|#).*$/, "").replace(/\s+(\/\/|#)\s.*$/, "")).join("\n");
+
+// ── pipeline definition ───────────────────────────────────────────────────────
+test("every required check has a stage, and the Jenkinsfile runs every stage", () => {
+  const jf = read("Jenkinsfile");
+  for (const name of REQUIRED_CHECKS) {
+    assert.ok(STAGES[name], `${name} has no stage`);
+    assert.ok(jf.includes(`run-stage.mjs ${name}`), `Jenkinsfile never runs "${name}", so the gate could never be satisfied`);
+  }
+  for (const m of jf.matchAll(/run-stage\.mjs (\S+?)'/g)) assert.ok(STAGES[m[1]], `Jenkinsfile runs unknown stage ${m[1]}`);
+});
+
+test("the required checks cover BUILD (lint, typecheck, build) and TEST (unit, backend, e2e, trivy)", () => {
+  for (const n of ["lint", "typecheck", "build", "unit-tests", "backend-tests", "e2e", "trivy-deps", "trivy-secrets"]) assert.ok(REQUIRED_CHECKS.includes(n), n);
+});
+
+test("the Jenkinsfile never deploys, merges or pushes", () => {
+  const jf = code(read("Jenkinsfile"));
+  for (const bad of [/git\s+push/i, /git\s+merge/i, /gh\s+pr\s+merge/i, /vercel\s+(deploy|--prod|promote)/i, /--auto/i, /docker\s+(run|stop|rm|compose)/i]) assert.doesNotMatch(jf, bad);
+});
+
+test("the Jenkinsfile only binds secrets through the credential store (no literals)", () => {
+  const jf = read("Jenkinsfile");
+  assert.doesNotMatch(jf, /(ghp_|github_pat_|BEGIN [A-Z ]*PRIVATE KEY|password\s*=)/i);
+  for (const id of ["taskflow-attest-private-key", "taskflow-github-app-key", "taskflow-github-app-id"]) assert.ok(jf.includes(id), id);
+});
+
+test("sources that may run on production-adjacent hosts never default to a production URL", () => {
+  for (const f of ["ci/pipeline/config.mjs", "frontend/playwright.config.js", "frontend/e2e/fixtures.js"]) {
+    const t = read(f).replace(/PRODUCTION_HOSTS\s*=\s*\[[^\]]*\]/s, "");
+    assert.doesNotMatch(t, /https?:\/\/taskflow-(backend|api)\.unimisk\.com/i, f);
+  }
+});
+
+// ── Jenkins isolation ─────────────────────────────────────────────────────────
+const compose = code(read("ci", "jenkins", "docker-compose.yml"));
+test("Jenkins compose: no docker.sock, not privileged, no host network/pid", () => {
+  assert.doesNotMatch(compose, /docker\.sock/);
+  assert.doesNotMatch(compose, /privileged:\s*true/);
+  assert.doesNotMatch(compose, /network_mode:\s*host/);
+  assert.doesNotMatch(compose, /pid:\s*host/);
+  assert.match(compose, /no-new-privileges:true/);
+  assert.match(compose, /cap_drop:\s*\[ALL\]/);
+});
+
+test("Jenkins compose: hard resource limits, loopback-only port, own network + volume", () => {
+  assert.match(compose, /mem_limit:\s*4g/);
+  assert.match(compose, /cpus:\s*2\.0/);
+  assert.match(compose, /pids_limit:\s*\d+/);
+  assert.match(compose, /"127\.0\.0\.1:8088:8080"/);
+  assert.match(compose, /name:\s*taskflow_ci/);
+  assert.match(compose, /name:\s*taskflow_jenkins_home/);
+  assert.doesNotMatch(compose, /^\s*-\s*"?0\.0\.0\.0:/m);
+});
+
+test("Jenkins compose: every secret is required (':?'), none has a default value", () => {
+  const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
+  assert.ok(env.length >= 4);
+  for (const [, key, , rest] of env) assert.match(rest, /^:\?/, `${key} must fail when unset`);
+});
+
+test("Jenkins image pins versions and verifies checksums; JCasC has no literal secrets", () => {
+  const df = read("ci", "jenkins", "Dockerfile");
+  assert.doesNotMatch(df, /^FROM .*:(latest|lts)\s*$/m);
+  assert.match(df, /sha256sum -c/g);
+  assert.match(df, /NODE_SHA256=[0-9a-f]{64}/);
+  assert.match(df, /TRIVY_SHA256=[0-9a-f]{64}/);
+  const casc = read("ci", "jenkins", "casc", "jenkins.yaml");
+  for (const m of casc.matchAll(/(?:password|secret|secretBytes):\s*"([^"]*)"/g)) assert.match(m[1], /^\$\{/, `literal secret in JCasC: ${m[1].slice(0, 8)}`);
+  assert.match(casc, /allowsSignup:\s*false/);
+  assert.doesNotMatch(casc, /anonymous/i);
+});
+
+test("install script refuses to run without an approval on record", () => {
+  if (process.platform === "win32") return; // bash script; exercised on Linux
+  const r = spawnSync("bash", [path.join(REPO_ROOT, "ci/jenkins/install-on-15.sh")], { env: { PATH: process.env.PATH }, encoding: "utf8" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /APPROVED_BY/);
+});
+
+// ── branch protection ─────────────────────────────────────────────────────────
+test("branch protection: verified check bound to the Jenkins App, admins bound too, no force-push, no auto-merge", () => {
+  const p = buildPayload({ appId: "12345", admins: ["alice"] });
+  assert.deepEqual(p.required_status_checks.checks, [{ context: GITHUB_CHECK_NAME, app_id: 12345 }]);
+  assert.equal(p.required_status_checks.strict, true);
+  assert.equal(p.enforce_admins, true);
+  assert.equal(p.required_pull_request_reviews.require_code_owner_reviews, true);
+  assert.equal(p.required_pull_request_reviews.dismiss_stale_reviews, true);
+  assert.equal(p.required_pull_request_reviews.required_approving_review_count, 1);
+  assert.equal(p.allow_force_pushes, false);
+  assert.equal(p.allow_deletions, false);
+  assert.deepEqual(p.restrictions.users, ["alice"]);
+  assert.equal(REPO_SETTINGS.allow_auto_merge, false);
+});
+
+test("branch protection refuses to build without the App id or an admin list", () => {
+  assert.throws(() => buildPayload({ appId: "", admins: ["a"] }), /GITHUB_APP_ID/);
+  assert.throws(() => buildPayload({ appId: "abc", admins: ["a"] }), /GITHUB_APP_ID/);
+  assert.throws(() => buildPayload({ appId: "1", admins: [] }), /ADMIN_LOGINS/);
+});
+
+test("branch protection CLI is a dry run by default and refuses --apply without approval/token", () => {
+  const run = (args, env) => spawnSync(process.execPath, [path.join(here, "../github/branch-protection.mjs"), ...args], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
+  const dry = run([], { GITHUB_APP_ID: "1", ADMIN_LOGINS: "a" });
+  assert.equal(dry.status, 0);
+  assert.match(dry.stdout, /DRY RUN/);
+  const noApproval = run(["--apply"], { GITHUB_APP_ID: "1", ADMIN_LOGINS: "a", GITHUB_ADMIN_TOKEN: "x" });
+  assert.notEqual(noApproval.status, 0);
+  assert.match(noApproval.stderr, /APPROVED_BY/);
+  const noToken = run(["--apply"], { GITHUB_APP_ID: "1", ADMIN_LOGINS: "a", APPROVED_BY: "x" });
+  assert.notEqual(noToken.status, 0);
+  assert.match(noToken.stderr, /GITHUB_ADMIN_TOKEN/);
+});

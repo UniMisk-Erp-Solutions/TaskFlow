@@ -22,6 +22,8 @@ The employee submission confirmation and admin review lifecycle are documented i
 
 The GitHub App setup, task matching rules, security model, API routes, migration, and testing steps are in [docs/github-integration.md](docs/github-integration.md).
 
+The developer CI/CD pipeline (Jenkins build and test, the signed pre-PR gate, admin-only merge, and Vercel shipping after the merge) is documented in [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md).
+
 Dashboard route and priority color details are in [docs/portal-routes-and-priority-colors.md](docs/portal-routes-and-priority-colors.md).
 
 ## Technology
@@ -30,6 +32,7 @@ Dashboard route and priority color details are in [docs/portal-routes-and-priori
 - **API:** Supabase Edge Function (`supabase/functions/api`) or the Express API in `backend/`.
 - **Data and identity:** Supabase Postgres, Auth, Realtime, and Storage.
 - **Deployment:** Render configuration is in `render.yaml`; the frontend can also be served with Vercel using `frontend/vercel.json`.
+- **CI/CD:** `Jenkinsfile` and `ci/` (build, test, signed pre-PR verification); see [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md).
 
 The repository has no root npm workspace. Install and run the frontend and backend from their own directories.
 

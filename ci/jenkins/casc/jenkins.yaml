@@ -1,0 +1,82 @@
+# Jenkins Configuration as Code for the TaskFlow pipeline.
+# Every ${VAR} below is REQUIRED: JCasC refuses to start when one is unset, so a missing secret
+# fails loudly instead of falling back to a default.
+jenkins:
+  systemMessage: "TaskFlow CI — configured as code (ci/jenkins). Changes made in the UI are lost on restart."
+  numExecutors: 1            # one build at a time: keeps the shared host safe
+  scmCheckoutRetryCount: 2
+  mode: EXCLUSIVE
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:admin"
+        - "Overall/Read:authenticated"
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+  remotingSecurity:
+    enabled: true
+
+security:
+  queueItemAuthenticator:
+    authenticators: []
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "taskflow-github-app-id"
+              secret: "${GITHUB_APP_ID}"
+          - string:
+              scope: GLOBAL
+              id: "taskflow-github-app-installation-id"
+              secret: "${GITHUB_APP_INSTALLATION_ID}"
+          - file:
+              scope: GLOBAL
+              id: "taskflow-github-app-key"
+              description: "GitHub App private key (PEM) — publishes the unimisk/verified check"
+              fileName: "github-app.pem"
+              secretBytes: "${base64:${GITHUB_APP_PRIVATE_KEY_FILE}}"
+          - file:
+              scope: GLOBAL
+              id: "taskflow-attest-private-key"
+              description: "Ed25519 private key that signs verification attestations"
+              fileName: "attest.pem"
+              secretBytes: "${base64:${CI_ATTEST_PRIVATE_KEY_FILE}}"
+
+jobs:
+  - script: |
+      multibranchPipelineJob('taskflow') {
+        displayName('TaskFlow')
+        branchSources {
+          github {
+            id('taskflow-github')
+            repoOwner('UniMisk-Erp-Solutions')
+            repository('TaskFlow')
+            // Read-only discovery. Jenkins never needs write access to code; it only publishes
+            // check runs through the GitHub App credential used by ci/gate/attest.mjs.
+            traits {
+              gitHubBranchDiscovery { strategyId(1) }
+              gitHubPullRequestDiscovery { strategyId(2) } // build the PR HEAD commit (not a synthetic merge) so the check lands on the commit branch protection looks at
+              // Pull requests from forks are NOT built: they could run a hostile Jenkinsfile with credentials.
+            }
+          }
+        }
+        factory { workflowBranchProjectFactory { scriptPath('Jenkinsfile') } }
+        orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+        triggers { periodicFolderTrigger { interval('5m') } } // polling until a webhook route is approved
+      }

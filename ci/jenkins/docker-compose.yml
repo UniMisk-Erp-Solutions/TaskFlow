@@ -1,0 +1,59 @@
+# Jenkins for TaskFlow — isolated and resource-limited. NOT started by anything in this repository;
+# an admin runs ci/jenkins/install-on-15.sh after approving it (see docs/ci-cd-pipeline.md).
+#
+# Isolation guarantees (asserted by ci/tests/jenkins-config.test.mjs):
+#   * no /var/run/docker.sock and no privileged mode — Jenkins cannot control other containers
+#   * its own network and its own named volume
+#   * published on 127.0.0.1 only (reach it through an SSH tunnel or an approved Cloudflare route)
+#   * hard CPU / memory / pid limits
+name: taskflow-ci
+
+services:
+  jenkins:
+    image: unimisk/taskflow-jenkins:2.580.1
+    build: .
+    container_name: taskflow-jenkins
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}"
+      JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"
+      GITHUB_APP_ID: "${GITHUB_APP_ID:?set GITHUB_APP_ID}"
+      GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?set GITHUB_APP_INSTALLATION_ID}"
+      GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_key
+      CI_ATTEST_PRIVATE_KEY_FILE: /run/secrets/attest_key
+    secrets:
+      - github_app_key
+      - attest_key
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    networks: [taskflow_ci]
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpus: 2.0
+    pids_limit: 1024
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/login >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  jenkins_home:
+    name: taskflow_jenkins_home
+
+networks:
+  taskflow_ci:
+    name: taskflow_ci
+    driver: bridge
+
+secrets:
+  github_app_key:
+    file: "${GITHUB_APP_PRIVATE_KEY_PATH:?path to the GitHub App .pem}"
+  attest_key:
+    file: "${CI_ATTEST_PRIVATE_KEY_PATH:?path to the Ed25519 private key}"
