@@ -51,16 +51,16 @@ jobs:
           cps {
             sandbox(true)
             script('''pipeline {
-  agent { label 'untrusted' }
-  options { timeout(time: 2, unit: 'MINUTES'); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '50')) }
-  stages {
-    stage('Check') {
-      steps {
-        sh 'if [ -z "$MONITOR_URL" ]; then echo "MONITOR_URL not set: nothing to check"; exit 0; fi; curl -fsS --max-time 20 -o /dev/null "$MONITOR_URL" && echo healthy'
-      }
-    }
-  }
-}''')
+              agent { label 'untrusted' }
+              options { timeout(time: 2, unit: 'MINUTES'); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '50')) }
+              stages {
+                stage('Check') {
+                  steps {
+                    sh 'if [ -z "$MONITOR_URL" ]; then echo "MONITOR_URL not set: nothing to check"; exit 0; fi; curl -fsS --max-time 20 -o /dev/null "$MONITOR_URL" && echo healthy'
+                  }
+                }
+              }
+            }''')
           }
         }
       }

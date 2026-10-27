@@ -258,3 +258,12 @@ test("CENTRAL PIPELINE: the Jenkinsfile stored in Jenkins is byte-identical to t
   assert.match(read("ci/jenkins/plugins.txt"), /pipeline-multibranch-defaults/);
   assert.match(read("Jenkinsfile"), /overlay.mjs/);
 });
+
+test("every Jenkins configuration YAML file parses (a broken file puts Jenkins into a restart loop)", async () => {
+  const { createRequire } = await import("node:module");
+  let yaml;
+  try { yaml = createRequire(path.join(REPO_ROOT, "frontend", "package.json"))("js-yaml"); } catch { return; } // parser not installed here
+  for (const f of fs.readdirSync(path.join(REPO_ROOT, "ci/jenkins/casc")).filter((n) => n.endsWith(".yaml"))) {
+    assert.doesNotThrow(() => yaml.load(read(`ci/jenkins/casc/${f}`)), f);
+  }
+});
