@@ -9,7 +9,7 @@ for f in github-read-token gate-github-token; do
 done
 grep -q '^GITHUB_READ_USER=.\+' "$E" || { echo "✘ GITHUB_READ_USER missing in $E"; exit 1; }
 sed -i 's/^GATE_STATUS_MODE=.*/GATE_STATUS_MODE=github-status/' "$E"
-grep -q 'github.yaml' "$E" || sed -i 's#^CASC_FILES=.*#&,/usr/share/jenkins/ref/casc/github.yaml#' "$E"
+grep -q '^CASC_FILES=.*github.yaml' "$E" || sed -i 's#^CASC_FILES=.*#&,/usr/share/jenkins/ref/casc/github.yaml#' "$E"
 cd ~/taskflow-ci/repo/ci/jenkins && set -a && . "$E" && set +a
 eval "$(../gate-service/pins.sh)"; export GATE_PIN_JENKINSFILE GATE_PIN_CI_PIPELINE GATE_PIN_CI_LIB GATE_PIN_CI_GATE GATE_PIN_CI_VERIFY
 docker compose up -d --force-recreate jenkins gate
