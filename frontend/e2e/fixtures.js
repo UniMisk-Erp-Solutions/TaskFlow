@@ -32,6 +32,12 @@ export const test = base.extend({
         }
         if (p === '/auth/v1/user') return json(route, 200, { id: FIXTURE_EMPLOYEE.id, email: FIXTURE_EMPLOYEE.email, aud: 'authenticated', role: 'authenticated' });
         if (p === '/auth/me') return json(route, 200, FIXTURE_EMPLOYEE);
+        if (p === '/rest/v1/whiteboards' && route.request().method() === 'GET') {
+          // Synthetic whiteboard: PostgREST returns one object for maybeSingle(), a list otherwise.
+          const board = { id: 'wb-e2e-main', name: 'E2E board', is_main: true, visibility: 'public', owner_id: FIXTURE_EMPLOYEE.id, created_at: '2026-10-27T00:00:00Z', scene: { elements: [] } };
+          const single = String(route.request().headers().accept || '').includes('vnd.pgrst.object');
+          return json(route, 200, single ? board : [board]);
+        }
         if (route.request().method() === 'GET') return json(route, 200, []);
         return json(route, 200, {});
       }
