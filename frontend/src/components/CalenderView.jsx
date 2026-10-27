@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import GoogleConnectCard from './GoogleConnectCard';
+import { localYmd } from '../lib/localDate';
 
-function ymd(date) {
-  return date.toISOString().split('T')[0];
-}
+// Local-time day key (a UTC key would shift every date by one day in time zones ahead of UTC).
+const ymd = localYmd;
 
 function monthGrid(baseDate) {
   const year = baseDate.getFullYear();

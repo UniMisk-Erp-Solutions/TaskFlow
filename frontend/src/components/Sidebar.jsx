@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, ClipboardCheck, ClipboardList } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, Video, ClipboardCheck, ClipboardList } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 
 const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'meetings', icon: Video, label: 'Meetings' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
   { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
@@ -21,6 +22,7 @@ const ADMIN_NAV = [
 
 const EMPLOYEE_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'meetings', icon: Video, label: 'Meetings' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
   { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },

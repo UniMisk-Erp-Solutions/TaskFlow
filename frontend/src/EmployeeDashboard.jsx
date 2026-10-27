@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
+import { localYmd } from './lib/localDate';
 import { useProjects } from './useProjects';
 import ProjectsPanel from './components/ProjectsPanel';
 import TaskForm from './components/TaskForm';
@@ -17,6 +18,7 @@ import TaskDetailModal from './components/TaskDetailModal';
 import MeetingDetailModal from './components/MeetingDetailModal';
 import Sidebar from './components/Sidebar';
 import KanbanBoard from './components/KanbanBoard';
+import MeetingTable from './components/MeetingTable';
 import TimerAnalytics from './components/TimerAnalytics';
 import { useTaskTimers } from './useTaskTimers';
 import AiChat from './components/AiChat';
@@ -138,7 +140,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment;
   const managerPages = ['reviews', 'assign', 'team', 'people'];
   const isManagerPage = isManager && managerPages.includes(page);
-  const validPages = ['tasks', 'kanban', 'timer', 'calender', 'projects', 'chat', 'files', 'whiteboard', 'leave', 'notifications', 'profile', ...(isManager ? managerPages : [])];
+  const validPages = ['tasks', 'meetings', 'kanban', 'timer', 'calender', 'projects', 'chat', 'files', 'whiteboard', 'leave', 'notifications', 'profile', ...(isManager ? managerPages : [])];
   const managerData = useManagerTeams(isManager);
   const [filters, setFilters] = useState({ search: '', type: '', assignee_id: '' });
   const [detailTask, setDetailTask] = useState(null);
@@ -195,7 +197,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
   useLiveRefresh(useCallback(() => { void refetch({ silent: true }); void refetchProjects({ silent: true }); void refreshTimers?.(); }, [refetch, refetchProjects, refreshTimers]));
   useRealtime('meeting_assignees', useCallback(() => refetchMeetings(), [refetchMeetings]));
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localYmd();
 
   const groups = useMemo(() => ({
     overdue: tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed'),
@@ -225,7 +227,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
                   <span>{greeting()},</span>
                   <span>{profile?.full_name?.split(' ')[0] || 'there'}</span>
                 </span>
-              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'leave' ? 'Leave Portal' : page === 'profile' ? 'Profile' : page === 'reviews' ? 'Approvals' : page === 'assign' ? 'Team Tasks' : page === 'team' ? 'Teams' : page === 'people' ? 'Add User' : 'Notifications'}
+              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'meetings' ? 'Meetings' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'leave' ? 'Leave Portal' : page === 'profile' ? 'Profile' : page === 'reviews' ? 'Approvals' : page === 'assign' ? 'Team Tasks' : page === 'team' ? 'Teams' : page === 'people' ? 'Add User' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -245,12 +247,16 @@ export default function EmployeeDashboard({ role = 'employee' }) {
 
         {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'kanban' && page !== 'leave' && !isManagerPage && <div className="tf-dashboard-actions" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
+            {page !== 'meetings' && (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
               <Plus size={14} /> Task
             </button>
-            <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
+            )}
+            {page !== 'tasks' && (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
               <Plus size={14} /> Meeting
             </button>
+            )}
           </span>
         </div>}
 
@@ -259,12 +265,12 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         {page === 'reviews' && <ApprovalsPage tasks={allTasks} profileById={profileById} onOpen={setDetailTask} currentUserId={profile?.id} />}
         {page === 'assign' && <AssignTaskPage tasks={allTasks} memberIds={managerData.memberIds} profileById={profileById} currentUserId={profile?.id} onOpen={setDetailTask} onNewTask={() => launchTaskForm({ assign: true })} />}
         {page === 'profile' && <ProfilePage key={refreshKey} />}
-        {page === 'leave' && <LeavePortal key={refreshKey} />}
+        {page === 'leave' && <LeavePortal key={refreshKey} canSummary={isManager} />}
         {page === 'chat' && <ChatPage key={refreshKey} />}
         {page === 'files' && <FileExplorer key={refreshKey} />}
         {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage key={refreshKey} /></Suspense>}
 
-        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && (
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && page !== 'meetings' && (
         <div className="tf-stat-row" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, display: 'flex', background: 'var(--tf-panel)', marginBottom: 28, overflow: 'hidden', boxShadow: 'none' }}>
           <Stat label="Total" value={stats.total} />
           <Stat label="Pending" value={stats.pending} color="var(--status-warning)" />
@@ -273,7 +279,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         </div>
         )}
 
-        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && stats.overdue > 0 && (
+        {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && page !== 'meetings' && stats.overdue > 0 && (
           <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
             <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
               {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.
@@ -339,6 +345,22 @@ export default function EmployeeDashboard({ role = 'employee' }) {
               <Group label="Completed" tasks={groups.completed} onUpdateStatus={updateStatus} onSubmitTask={submitTask} accent="var(--status-success)" onOpenTaskDetail={setDetailTask} />
             </div>
           ))}
+
+        {page === 'meetings' && (
+          <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--tf-border)', fontSize: 12, fontWeight: 600, color: 'var(--tf-muted)', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+              {meetings.length} Meeting{meetings.length !== 1 ? 's' : ''}
+            </div>
+            <MeetingTable
+              meetings={meetings}
+              onUpdateStatus={updateMeetingStatus}
+              canDelete={false}
+              isAdmin={false}
+              profileById={profileById}
+              onOpenMeeting={setDetailMeeting}
+            />
+          </div>
+        )}
 
         {page === 'calender' && (
           <CalenderView

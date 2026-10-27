@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2, UserPlus, CheckCircle2 } from 'lucide-react';
 import api from '../api';
 import SelectMenu from './SelectMenu';
+import StatusBadge, { PriorityBadge } from './StatusBadge';
+import { priorityColor } from '../lib/kanban';
 
 const card = { background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 16, padding: 16 };
 const muted = { color: 'var(--tf-muted)', fontSize: 13 };
@@ -223,10 +225,14 @@ export function AddUserPage({ data }) {
 function TaskRow({ task, profileById, onOpen, badge }) {
   const who = (task.assignee_ids?.length ? task.assignee_ids : [task.assignee_id]).filter(Boolean).map((id) => profileById[id] || 'Unknown').join(', ');
   return (
-    <button type="button" onClick={() => onOpen(task)} style={{ ...card, textAlign: 'left', cursor: 'pointer', display: 'grid', gap: 6, font: 'inherit', width: '100%' }}>
+    <button type="button" onClick={() => onOpen(task)} style={{ ...card, borderLeft: `4px solid ${priorityColor(task.priority)}`, textAlign: 'left', cursor: 'pointer', display: 'grid', gap: 6, font: 'inherit', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{task.title}</span>
-        {badge}
+        <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {task.priority && <PriorityBadge priority={task.priority} />}
+          <StatusBadge status={task.status} />
+          {badge}
+        </span>
       </div>
       <div style={muted}>{who || 'Unassigned'}{task.due_date ? ` · due ${task.due_date}` : ''}</div>
       {task.submission_notes && <div style={{ fontSize: 13, color: 'var(--tf-subhead)', overflowWrap: 'anywhere' }}>“{task.submission_notes}”</div>}
@@ -311,7 +317,7 @@ export function AssignTaskPage({ tasks, memberIds, profileById, onNewTask, onOpe
       {teamTasks.length > 0 && <div style={muted}>Showing {shown.length} of {teamTasks.length} task{teamTasks.length === 1 ? '' : 's'}</div>}
       {shown.length ? (
         <div style={{ display: 'grid', gap: 10 }}>
-          {shown.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} badge={pill(String(t.status || '').replaceAll('_', ' '), 'var(--tf-muted)')} />)}
+          {shown.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} />)}
         </div>
       ) : memberIds.length > 0 && <div style={{ ...card, borderStyle: 'dashed', textAlign: 'center', color: 'var(--tf-muted)' }}>{teamTasks.length ? 'No tasks match these filters.' : 'No tasks have been assigned to your teams yet.'}</div>}
     </div>

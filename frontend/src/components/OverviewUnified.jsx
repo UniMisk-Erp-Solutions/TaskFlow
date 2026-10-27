@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { localYmd } from '../lib/localDate';
 import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
 import { formatDate, formatTime12 } from '../lib/dateFormat';
@@ -114,7 +115,7 @@ export default function OverviewUnified({
   const [deletingId, setDeletingId] = useState(null);
 
   const rows = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localYmd();
     const tRows = tasks.map((t) => ({
       kind: 'task',
       id: t.id,

@@ -49,15 +49,24 @@ async function getWebPush(): Promise<WebPushLib | null> {
 }
 
 let vapidReady = false;
+// VAPID keys come from the environment, or from public.app_settings (vapid_public_key / vapid_private_key / vapid_subject)
+// so they can be set with SQL without rebuilding the function container.
+async function vapidKeys(): Promise<{ pub: string; priv: string; subject: string }> {
+  return {
+    pub: Deno.env.get("VAPID_PUBLIC_KEY") || (await getAppSetting("vapid_public_key")),
+    priv: Deno.env.get("VAPID_PRIVATE_KEY") || (await getAppSetting("vapid_private_key")),
+    subject: Deno.env.get("VAPID_SUBJECT") || (await getAppSetting("vapid_subject")) || "mailto:noreply@localhost",
+  };
+}
+
 async function ensurePushLib(): Promise<WebPushLib | null> {
-  const pub = Deno.env.get("VAPID_PUBLIC_KEY") ?? "";
-  const priv = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
+  const { pub, priv, subject } = await vapidKeys();
   if (!pub || !priv) return null;
   const lib = await getWebPush();
   if (!lib) return null;
   if (!vapidReady) {
     try {
-      lib.setVapidDetails(Deno.env.get("VAPID_SUBJECT") ?? "mailto:noreply@localhost", pub, priv);
+      lib.setVapidDetails(subject, pub, priv);
       vapidReady = true;
     } catch (err) {
       console.warn("[push] setVapidDetails failed:", (err as Error)?.message);
@@ -197,7 +206,7 @@ async function handleNotificationRoutes(
   if (!path.startsWith("/notifications/")) return null;
 
   if (req.method === "GET" && path === "/notifications/vapid-public-key") {
-    const pub = Deno.env.get("VAPID_PUBLIC_KEY");
+    const { pub } = await vapidKeys();
     if (!pub) return jsonPush({ error: "Push notifications are not configured (missing VAPID keys)." }, 503);
     return jsonPush({ publicKey: pub });
   }
@@ -5149,6 +5158,21 @@ async function driveOwnerEmails(ids: string[]): Promise<Record<string, string>> 
   return out;
 }
 
+// Most files one prepare-batch / complete-batch request may carry.
+const DRIVE_BATCH_MAX = 100;
+
+/** Runs `worker` over `items`, at most `limit` at a time (workers record their own results and errors). */
+async function drivePool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await worker(items[index], index);
+    }
+  }));
+}
+
 async function handleDrive(req: Request, path: string) {
   if (!path.startsWith("/drive")) return null;
   const auth = await requireAuth(req);
@@ -5185,11 +5209,19 @@ async function handleDrive(req: Request, path: string) {
       const names = await driveOwnerNames(lookupIds);
       const emails = isAdminViewer ? await driveOwnerEmails(lookupIds) : {};
       const folderPath = crumbs.map((c) => c.name).join(" / ");
+      // A folder's size is everything inside it (subfolders included). Optional: older databases without the function just show no size.
+      const folderTotals = new Map<string, { total_bytes: number; file_count: number }>();
+      if (folders.length) {
+        const { data: totals, error: totalsErr } = await supabase.rpc("drive_folder_sizes", { p_org: user.org_id, p_viewer: user.id });
+        if (totalsErr) console.warn("[drive] folder sizes unavailable:", totalsErr.message);
+        for (const row of (totals ?? []) as any[]) folderTotals.set(row.folder_id, { total_bytes: Number(row.total_bytes) || 0, file_count: Number(row.file_count) || 0 });
+      }
       return json({
         folder_id: folderId,
         breadcrumbs: crumbs,
         folders: folders.sort((a, b) => a.name.localeCompare(b.name)).map((f) => ({
           kind: "folder", id: f.id, name: f.name, visibility: f.visibility, owner_id: f.owner_id,
+          ...(folderTotals.has(f.id) ? { size_bytes: folderTotals.get(f.id)!.total_bytes, file_count: folderTotals.get(f.id)!.file_count } : {}),
           owner_name: names[f.owner_id] || "Member", created_at: f.created_at, is_owner: f.owner_id === user.id,
           // Properties are only returned to administrators.
           ...(isAdminViewer ? { details: {
@@ -5323,6 +5355,84 @@ async function handleDrive(req: Request, path: string) {
       const { data, error } = await supabase.storage.from(DRIVE_BUCKET).createSignedUploadUrl(objectPath);
       if (error) return json({ error: error.message }, 400);
       return json({ file_id: fileId, bucket: DRIVE_BUCKET, path: objectPath, token: data.token });
+    }
+
+    // POST /drive/files/prepare-batch  { files: [{ name, folder_id? }] }
+    //   -> { results: [{ file_id, bucket, path, token } | { error }] }   (same order as the request)
+    // POST /drive/files/complete-batch { files: [{ file_id, name, folder_id?, content_type? }], visibility? }
+    //   -> { results: [{ id } | { error }] }
+    // Same job as prepare / complete, but for up to DRIVE_BATCH_MAX files per request. Uploading a big folder otherwise costs three
+    // requests per file, each re-reading the folder tree; batching it makes that one request per ~40 files.
+    if (req.method === "POST" && path === "/drive/files/prepare-batch") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const items = (Array.isArray(body.files) ? body.files : []).slice(0, DRIVE_BATCH_MAX) as any[];
+      if (!items.length) return json({ error: "No files to prepare." }, 400);
+      const { byId, visible } = await driveLoadFolders(user);
+      const results: unknown[] = new Array(items.length);
+      await drivePool(items, 8, async (it, i) => {
+        const displayName = driveCleanName(it?.name, 255);
+        if (!displayName) { results[i] = { error: "File name is required." }; return; }
+        const folderId = it?.folder_id ? String(it.folder_id) : null;
+        if (folderId && (!byId.has(folderId) || !visible(folderId))) { results[i] = { error: "Folder not found" }; return; }
+        const fileId = crypto.randomUUID();
+        const objectPath = `${user.org_id}/${user.id}/${fileId}-${displayName.replace(/[^\w.\-() ]+/g, "_")}`;
+        const { data, error } = await supabase.storage.from(DRIVE_BUCKET).createSignedUploadUrl(objectPath);
+        results[i] = error ? { error: error.message } : { file_id: fileId, bucket: DRIVE_BUCKET, path: objectPath, token: data.token };
+      });
+      return json({ results });
+    }
+
+    if (req.method === "POST" && path === "/drive/files/complete-batch") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const items = (Array.isArray(body.files) ? body.files : []).slice(0, DRIVE_BATCH_MAX) as any[];
+      if (!items.length) return json({ error: "No files to complete." }, 400);
+      const visibility = driveVisibility(body.visibility);
+      const { byId, visible } = await driveLoadFolders(user);
+      const results: any[] = new Array(items.length);
+      const rows: any[] = [];
+      const rowIndex: number[] = [];
+      await drivePool(items, 8, async (it, i) => {
+        const displayName = driveCleanName(it?.name, 255);
+        const fileId = String(it?.file_id || "");
+        if (!displayName || !/^[0-9a-f-]{36}$/i.test(fileId)) { results[i] = { error: "Invalid upload." }; return; }
+        const folderId = it?.folder_id ? String(it.folder_id) : null;
+        if (folderId && (!byId.has(folderId) || !visible(folderId))) { results[i] = { error: "Folder not found" }; return; }
+        // The path is rebuilt from the caller's own org/user ids, so nobody can register someone else's object.
+        const safe = displayName.replace(/[^\w.\-() ]+/g, "_");
+        const { data: found } = await supabase.storage.from(DRIVE_BUCKET)
+          .list(`${user.org_id}/${user.id}`, { search: `${fileId}-`, limit: 5 });
+        const stored = (found ?? []).find((entry: any) => entry.name === `${fileId}-${safe}`);
+        if (!stored) { results[i] = { error: "The upload did not reach storage." }; return; }
+        const size = Number((stored as any).metadata?.size ?? (stored as any).metadata?.contentLength ?? 0);
+        rows.push({
+          id: fileId, org_id: user.org_id, folder_id: folderId, owner_id: user.id, name: displayName,
+          bucket: DRIVE_BUCKET, path: `${user.org_id}/${user.id}/${fileId}-${safe}`,
+          content_type: it?.content_type ? String(it.content_type).slice(0, 200) : null, size_bytes: size, visibility,
+        });
+        rowIndex.push(i);
+      });
+      if (rows.length) {
+        const { data: inserted, error } = await supabase.from("drive_files").insert(rows)
+          .select("id, folder_id, name, content_type, size_bytes, visibility, owner_id");
+        if (error) {
+          await supabase.storage.from(DRIVE_BUCKET).remove(rows.map((r) => r.path));
+          rowIndex.forEach((i) => { results[i] = { error: error.message }; });
+        } else {
+          rows.forEach((r, k) => { results[rowIndex[k]] = { id: r.id }; });
+          try {
+            const { data: actor } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+            const actorName = actor?.full_name || actor?.email || "Member";
+            await supabase.from("drive_activity").insert((inserted ?? []).map((d: any) => ({
+              org_id: user.org_id, actor_id: user.id, actor_name: actorName, item_kind: "file", item_id: d.id, item_name: d.name,
+              item_owner_id: user.id, action: "uploaded", public_at_event: d.visibility === "public",
+              details: { size_bytes: d.size_bytes, content_type: d.content_type, visibility: d.visibility, folder_id: d.folder_id },
+            })));
+          } catch (e) {
+            console.error("[drive] batch activity log failed:", (e as Error).message);
+          }
+        }
+      }
+      return json({ results });
     }
 
     // POST /drive/files/complete  { file_id, name, folder_id?, visibility?, content_type? }
@@ -5634,7 +5744,10 @@ async function handleLeaves(req: Request, path: string) {
   if (path === "/leaves" && req.method === "GET") {
     let q = supabase.from("leave_requests").select("*").eq("org_id", user.org_id)
       .order("start_date", { ascending: false }).order("created_at", { ascending: false }).limit(500);
-    if (!isAdmin) q = q.eq("user_id", user.id);
+    if (user.role === "manager") {
+      // A manager sees their own leave plus the leave of the people in their teams (read-only: only an admin decides).
+      q = q.in("user_id", [user.id, ...(await managedMemberIds(user.id, user.org_id))]);
+    } else if (!isAdmin) q = q.eq("user_id", user.id);
     const { data, error } = await q;
     if (error) return json({ error: error.message }, 400);
     const rows = (data || []) as any[];
