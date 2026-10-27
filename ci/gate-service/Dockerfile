@@ -15,7 +15,7 @@ ARG GATE_PIN_CI_VERIFY
 RUN sed -i "s|deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
  && apt-get update && apt-get -y upgrade \
  && apt-get install -y --no-install-recommends git ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
  && mkdir -p /var/lib/gate && chown node:node /var/lib/gate
 
 WORKDIR /app
