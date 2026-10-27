@@ -70,6 +70,13 @@ test("Vercel env audit: shared prod+preview values, missing preview values and p
 });
 
 // ── GitHub check run ──────────────────────────────────────────────────────────
+test("publishCheck: GITHUB_APP_ID=0 means \"GitHub App not configured yet\" and sends nothing", async () => {
+  let called = false;
+  const r = await publishCheck({ repo: "o/r", sha: "a", name: "n", conclusion: "success", title: "t", summary: "s", env: { GITHUB_APP_ID: "0", GITHUB_APP_INSTALLATION_ID: "1", GITHUB_APP_PRIVATE_KEY: "x" }, fetchImpl: async () => { called = true; return {}; } });
+  assert.equal(r.skipped, true);
+  assert.equal(called, false);
+});
+
 test("publishCheck: skipped without App credentials, only success|failure, correct API calls", async () => {
   assert.equal((await publishCheck({ repo: "o/r", sha: "a", name: "unimisk/verified", conclusion: "success", title: "t", summary: "s", env: {} })).skipped, true);
 

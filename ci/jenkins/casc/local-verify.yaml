@@ -1,0 +1,24 @@
+# Pre-GitHub verification job, loaded only when CASC_FILES lists this file AND docker-compose.local.yml is used.
+# It builds a branch of a repository mounted READ-ONLY at /srv/taskflow-repo, so the whole pipeline (Jenkinsfile,
+# tools, attestation) can be proven on Jenkins before the GitHub App exists. It never pushes, merges or deploys.
+jobs:
+  - script: |
+      pipelineJob('taskflow-local-verify') {
+        description('Builds a branch of the repository mounted read-only at /srv/taskflow-repo. Verification only: no push, merge or deploy.')
+        parameters {
+          stringParam('TARGET_BRANCH', 'feature/ci-cd-pipeline', 'Branch of /srv/taskflow-repo to verify')
+          stringParam('ATTEST_TTL_SECONDS', '', 'TEST ONLY: shorten the attestation lifetime (30 to 604800 seconds); empty = 7 days')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('file:///srv/taskflow-repo') }
+                branch('*/${TARGET_BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }

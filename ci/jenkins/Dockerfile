@@ -38,4 +38,4 @@ ENV TRIVY_BIN=/usr/local/bin/trivy \
 USER jenkins
 COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
-COPY --chown=jenkins:jenkins casc/jenkins.yaml /usr/share/jenkins/ref/casc/jenkins.yaml
+COPY --chown=jenkins:jenkins casc/ /usr/share/jenkins/ref/casc/

@@ -21,6 +21,14 @@ export function collectChecks(fp, resultsDir = RESULTS_DIR, required = REQUIRED_
   });
 }
 
+/** CI_ATTEST_TTL_SECONDS shortens the attestation lifetime (test only); unset = the 7-day default. */
+export function ttlFromEnv(env) {
+  if (!env.CI_ATTEST_TTL_SECONDS) return undefined;
+  const sec = Number(env.CI_ATTEST_TTL_SECONDS);
+  if (!Number.isInteger(sec) || sec < 30 || sec > 604800) throw new Error("CI_ATTEST_TTL_SECONDS must be an integer between 30 and 604800");
+  return sec * 1000;
+}
+
 export async function attest({ cwd = REPO_ROOT, env = process.env } = {}) {
   const fp = currentFingerprint(cwd);
   const repo = env.CI_REPO || "UniMisk-Erp-Solutions/TaskFlow";
@@ -37,7 +45,7 @@ export async function attest({ cwd = REPO_ROOT, env = process.env } = {}) {
     return { ok: false, failing };
   }
 
-  const att = createAttestation({ repo, branch, commit: fp.commit, tree: fp.tree, checks, required: REQUIRED_CHECKS, privateKeyPem: env.CI_ATTEST_PRIVATE_KEY, buildUrl: env.BUILD_URL || null });
+  const att = createAttestation({ repo, branch, commit: fp.commit, tree: fp.tree, checks, required: REQUIRED_CHECKS, privateKeyPem: env.CI_ATTEST_PRIVATE_KEY, buildUrl: env.BUILD_URL || null, ttlMs: ttlFromEnv(env) });
   fs.mkdirSync(path.join(cwd, ".ci"), { recursive: true });
   fs.writeFileSync(path.join(cwd, ".ci", "attestation.json"), JSON.stringify(att, null, 2));
   const summary = `All ${REQUIRED_CHECKS.length} required checks passed for tree ${fp.tree.slice(0, 12)}.`;

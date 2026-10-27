@@ -19,6 +19,9 @@ pipeline {
     CI_REPO           = 'UniMisk-Erp-Solutions/TaskFlow'
     // Inert values only: CI never talks to a real backend (see CI_BUILD_ENV in ci/pipeline/config.mjs).
     NPM_CONFIG_AUDIT  = 'false'
+    // Chromium's sandbox needs user namespaces, which the locked-down Jenkins container (no capabilities, default
+    // seccomp) does not allow. The pages under test are our own build behind the E2E network jail.
+    PLAYWRIGHT_NO_SANDBOX = '1'
     NPM_CONFIG_FUND   = 'false'
   }
 
@@ -71,6 +74,8 @@ pipeline {
           set +x
           export CI_ATTEST_PRIVATE_KEY="$(cat "$ATTEST_KEY_FILE")"
           export GITHUB_APP_PRIVATE_KEY="$(cat "$GH_APP_KEY_FILE")"
+          # Test-only knob (job parameter on taskflow-local-verify): a short-lived attestation to prove expiry.
+          if [ -n "${ATTEST_TTL_SECONDS:-}" ]; then export CI_ATTEST_TTL_SECONDS="$ATTEST_TTL_SECONDS"; fi
           node ci/gate/attest.mjs || true
         '''
       }

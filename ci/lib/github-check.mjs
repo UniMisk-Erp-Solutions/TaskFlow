@@ -32,7 +32,7 @@ async function gh(fetchImpl, token, method, path, body) {
  */
 export async function publishCheck({ repo, sha, name, conclusion, title, summary, detailsUrl, env = process.env, fetchImpl = fetch }) {
   const { GITHUB_APP_ID: appId, GITHUB_APP_INSTALLATION_ID: inst, GITHUB_APP_PRIVATE_KEY: key } = env;
-  if (!appId || !inst || !key) return { ok: false, skipped: true, reason: "GITHUB_APP_ID / GITHUB_APP_INSTALLATION_ID / GITHUB_APP_PRIVATE_KEY not set" };
+  if (!appId || appId === "0" || !inst || !key) return { ok: false, skipped: true, reason: "GITHUB_APP_ID / GITHUB_APP_INSTALLATION_ID / GITHUB_APP_PRIVATE_KEY not set" };
   if (!["success", "failure"].includes(conclusion)) throw new Error('conclusion must be "success" or "failure"');
   const jwt = createAppJwt(appId, key);
   const { token } = await gh(fetchImpl, jwt, "POST", `/app/installations/${inst}/access_tokens`, {

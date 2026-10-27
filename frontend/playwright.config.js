@@ -31,7 +31,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0, // a flaky gate is a broken gate: no silent retries
   reporter: process.env.CI ? [['list'], ['json', { outputFile: '../.ci/playwright.json' }]] : [['list']],
-  use: { baseURL, trace: 'retain-on-failure', screenshot: 'only-on-failure', serviceWorkers: 'block' },
+  use: { baseURL, trace: 'retain-on-failure', screenshot: 'only-on-failure', serviceWorkers: 'block', launchOptions: { args: process.env.PLAYWRIGHT_NO_SANDBOX ? ['--no-sandbox', '--disable-dev-shm-usage'] : [] } },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: isLoopback ? {
     command: `npx vite preview --host 127.0.0.1 --port ${PORT} --strictPort`,

@@ -71,7 +71,8 @@ test("Jenkins compose: hard resource limits, loopback-only port, own network + v
 test("Jenkins compose: every secret is required (':?'), none has a default value", () => {
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
-  for (const [, key, , rest] of env) assert.match(rest, /^:\?/, `${key} must fail when unset`);
+  // CASC_JENKINS_CONFIG selects config files (a path, not a secret) and legitimately has a default.
+  for (const [, key, , rest] of env.filter(([, k]) => k !== "CASC_JENKINS_CONFIG")) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 
 test("Jenkins image pins versions and verifies checksums; JCasC has no literal secrets", () => {
@@ -91,8 +92,11 @@ test("JCasC loads the key FILES' contents (not the path text) and the job can re
   // ${base64:${SOME_FILE_VAR}} would encode the path string; the documented form is readFileBase64.
   assert.doesNotMatch(casc, /secretBytes:\s*"\$\{base64:/);
   assert.equal([...casc.matchAll(/secretBytes:\s*"\$\{readFileBase64:\$\{\w+\}\}"/g)].length, 2);
-  assert.match(casc, /gitHubApp:/);
-  assert.match(casc, /scanCredentialsId\('taskflow-github-app'\)/);
+  const github = read("ci", "jenkins", "casc", "github.yaml");
+  assert.match(github, /gitHubApp:/);
+  assert.match(github, /scanCredentialsId\('taskflow-github-app'\)/);
+  assert.match(github, /privateKey:\s*"\$\{readFile:/);
+  assert.doesNotMatch(casc, /gitHubApp:|jobs:/, "core config must not require the GitHub App");
 });
 
 test("install script refuses to run without an approval on record", () => {
@@ -150,4 +154,36 @@ test("process spawning keeps arguments containing spaces intact (Windows shell q
   const { spawnSyncPortable } = await import("../lib/spawn.mjs");
   const r = spawnSyncPortable("node", ["-e", "console.log(process.argv[1] + '|' + process.argv.length)", "C:/a folder/with space/file.txt"], { encoding: "utf8" });
   assert.equal(r.stdout.trim(), "C:/a folder/with space/file.txt|2");
+});
+
+// ── optional JCasC files, local-verification overlay, scan fallback ─────────────────────────────
+test("the optional JCasC files hold no literal secrets and the local job cannot push, merge or deploy", () => {
+  for (const f of ["github.yaml", "local-verify.yaml"]) {
+    const y = read("ci", "jenkins", "casc", f);
+    for (const m of y.matchAll(/(?:password|secret|secretBytes|privateKey):\s*"([^"]*)"/g)) assert.match(m[1], /^\$\{/, `literal secret in ${f}`);
+    assert.doesNotMatch(y, /\b(push|merge|deploy)\b\s*\(/i, `${f} must not call push/merge/deploy`);
+  }
+  assert.match(read("ci", "jenkins", "casc", "local-verify.yaml"), /file:\/\/\/srv\/taskflow-repo/);
+});
+
+test("compose: JCasC files are selected per phase, Chromium gets /dev/shm, local overlay is read-only and adds nothing else", () => {
+  const base = code(read("ci", "jenkins", "docker-compose.yml"));
+  assert.match(base, /CASC_JENKINS_CONFIG:\s*"\$\{CASC_FILES:-\/usr\/share\/jenkins\/ref\/casc\/jenkins\.yaml\}"/);
+  assert.match(base, /shm_size:\s*"1gb"/);
+  const local = code(read("ci", "jenkins", "docker-compose.local.yml"));
+  assert.match(local, /:\/srv\/taskflow-repo:ro"/);
+  assert.match(local, /ALLOW_LOCAL_CHECKOUT=true/);
+  for (const bad of [/ports:/, /docker\.sock/, /privileged/, /cap_add/, /network_mode/, /secrets:/]) assert.doesNotMatch(local, bad);
+});
+
+test("scan-image falls back to the Trivy inside the image without mounting docker.sock", () => {
+  const sh = code(read("ci", "jenkins", "scan-image.sh"));
+  assert.match(sh, /docker save/);
+  assert.match(sh, /--entrypoint trivy/);
+  assert.doesNotMatch(sh, /docker\.sock/);
+});
+
+test("shell scripts are executable in git (a fresh clone on Linux must be able to run them)", () => {
+  const out = spawnSync("git", ["ls-files", "-s", "ci/jenkins/install-on-15.sh", "ci/jenkins/scan-image.sh"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout;
+  for (const l of out.trim().split("\n")) assert.match(l, /^100755 /, l);
 });

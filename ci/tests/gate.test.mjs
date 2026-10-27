@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAttestation, currentFingerprint, evaluateAttestation } from "../lib/attestation.mjs";
-import { collectChecks } from "../gate/attest.mjs";
+import { collectChecks, ttlFromEnv } from "../gate/attest.mjs";
 import { checkPrReady } from "../gate/pr-ready.mjs";
 import { REQUIRED_CHECKS } from "../pipeline/config.mjs";
 
@@ -141,4 +141,13 @@ test("pr-ready: missing public key or missing attestation fails closed", async (
   r = await checkPrReady({ cwd: dir, publicKeyFile: keyFile });
   assert.equal(r.ok, false);
   assert.match(r.reasons.join("\n"), /no attestation/);
+});
+
+test("attestation lifetime can only be shortened within safe bounds (test knob)", () => {
+  assert.equal(ttlFromEnv({}), undefined);
+  assert.equal(ttlFromEnv({ CI_ATTEST_TTL_SECONDS: "60" }), 60_000);
+  for (const bad of ["29", "604801", "abc", "1.5", "-5"]) assert.throws(() => ttlFromEnv({ CI_ATTEST_TTL_SECONDS: bad }), /between 30 and 604800/, bad);
+  const short = createAttestation({ ...base, checks: allPass, privateKeyPem: jenkins.privateKeyPem, ttlMs: 60_000 });
+  assert.equal(ev(short).ok, true);
+  assert.match(ev(short, { now: Date.now() + 61_000 }).reasons.join(), /expired/);
 });

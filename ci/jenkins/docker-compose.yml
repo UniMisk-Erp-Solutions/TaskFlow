@@ -21,6 +21,7 @@ services:
       JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"
       GITHUB_APP_ID: "${GITHUB_APP_ID:?set GITHUB_APP_ID}"
       GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?set GITHUB_APP_INSTALLATION_ID}"
+      CASC_JENKINS_CONFIG: "${CASC_FILES:-/usr/share/jenkins/ref/casc/jenkins.yaml}"
       GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_key
       CI_ATTEST_PRIVATE_KEY_FILE: /run/secrets/attest_key
     secrets:
@@ -30,6 +31,7 @@ services:
       - jenkins_home:/var/jenkins_home
     networks: [taskflow_ci]
     mem_limit: 4g
+    shm_size: "1gb"
     memswap_limit: 4g
     cpus: 2.0
     pids_limit: 1024

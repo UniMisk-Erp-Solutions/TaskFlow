@@ -1,0 +1,38 @@
+# GitHub integration, loaded ONLY when CASC_FILES lists this file (after the GitHub App exists).
+# Adds the credential that scans/fetches the private repository and the multibranch job that builds every
+# branch and pull request. Same ${VAR} rules as jenkins.yaml: a missing value stops startup.
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - gitHubApp:
+              scope: GLOBAL
+              id: "taskflow-github-app"
+              description: "GitHub App used to scan and fetch the repository (read-only)"
+              appID: "${GITHUB_APP_ID}"
+              # Jenkins needs the key in PKCS#8 form (openssl pkcs8 -topk8 -nocrypt); readFile keeps the PEM text as-is.
+              privateKey: "${readFile:${GITHUB_APP_PRIVATE_KEY_FILE}}"
+
+jobs:
+  - script: |
+      multibranchPipelineJob('taskflow') {
+        displayName('TaskFlow')
+        branchSources {
+          github {
+            id('taskflow-github')
+            repoOwner('UniMisk-Erp-Solutions')
+            repository('TaskFlow')
+            scanCredentialsId('taskflow-github-app')
+            // Read-only discovery. Jenkins never needs write access to code; it only publishes
+            // check runs through the GitHub App credential used by ci/gate/attest.mjs.
+            traits {
+              gitHubBranchDiscovery { strategyId(1) }
+              gitHubPullRequestDiscovery { strategyId(2) } // build the PR HEAD commit (not a synthetic merge) so the check lands on the commit branch protection looks at
+              // Pull requests from forks are NOT built: they could run a hostile Jenkinsfile with credentials.
+            }
+          }
+        }
+        factory { workflowBranchProjectFactory { scriptPath('Jenkinsfile') } }
+        orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+        triggers { periodicFolderTrigger { interval('5m') } } // polling until a webhook route is approved
+      }
