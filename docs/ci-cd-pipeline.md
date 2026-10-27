@@ -426,6 +426,22 @@ Free-plan limit that stays true: private-repo branch protection is not enforceab
 
 **Limits:** GitHub Free cannot enforce branch protection on a private repo, so merge control is the release gate plus review, not GitHub. The webhook/Cloudflare tunnel is not confirmed from this host; without it Jenkins still picks pushes up on its scan interval (about 1 minute here).
 
+## Central pipeline: branches need no pipeline files (2026-10-27)
+
+Any branch of the repository is built by the same pipeline, whether or not it contains a `Jenkinsfile`.
+
+| Piece | Where it lives |
+| --- | --- |
+| Jenkinsfile for branches that have none | stored in Jenkins (`ci/jenkins/casc/Jenkinsfile.central`, loaded through JCasC config file `taskflow-central-jenkinsfile`; Pipeline Multibranch with defaults). A test keeps it byte-identical to the repository `Jenkinsfile`. |
+| `ci/` scripts, ESLint/TypeScript/Playwright setup | taken from the **trusted ref** (`CI_TOOLKIT_REF`, now `feature/ci-cd-pipeline`, **`main` once the pipeline is merged**) by `ci/pipeline/overlay.mjs` on every build. The branch's own copies are overwritten, so a branch cannot weaken the pipeline that judges it. Only missing lint/typecheck/e2e scripts and devDependencies are added to `package.json`; application code and runtime dependencies are never touched. |
+| Trust | the build records the toolkit commit (`.ci/toolkit.json`); the gate re-derives the toolkit's pipeline-file hashes from Git and signs only when they equal the admin-approved pin baked into the gate image. A branch that ships its own different `Jenkinsfile` is refused. |
+
+**After merging the pipeline into `main`:** set `CI_TOOLKIT_REF=main` in `~/taskflow-ci/.env` on `.15`, then `docker compose up -d jenkins` from `ci/jenkins`. **Changing any pipeline file** (`Jenkinsfile`, `ci/pipeline`, `ci/lib`, `ci/gate`, `ci/verify`) needs a gate re-pin: rebuild the gate image from the reviewed commit (`ci/gate-service/pins.sh`).
+
+**Honest limits:** a branch based on old `main` is judged by the full pipeline, so it can legitimately FAIL (for example `trivy-deps`) on vulnerabilities that `main` still carries; that is a real finding, not a pipeline fault. The repository is public, so the toolkit is fetched anonymously; a private repository would need a read credential for that step.
+
+**Manual test steps:** push any change to any branch (no pipeline files needed); within about 1-3 minutes GitHub shows `unimisk/verified` (pending, then success/failure) on the commit; Jenkins job `taskflow` shows the branch with stages Trusted pipeline, Install, Lint, Typecheck, Secrets, Vite build, Vitest, Backend tests, Dependencies, E2E.
+
 ## Revision log
 
 | Date | Change |
@@ -437,6 +453,7 @@ Free-plan limit that stays true: private-repo branch protection is not enforceab
 | 2026-10-27 | GitHub mode activated on .15 with the owner's two read-only tokens: Jenkins job `taskflow` (GitHub branch source, PR heads, forks off) loads and indexes the repo; gate reads commits from GitHub. Findings: (1) `traits {}` is not valid Job DSL, replaced by `buildOriginBranch/buildOriginBranchWithPR/buildOriginPRHead`; (2) Job DSL jobs need a Jenkins reload (now in the script); (3) **neither token can write commit statuses** (GitHub returns 403): the status token needs "Commit statuses: Read and write" and the org must allow it. Until then GitHub shows no `unimisk/verified` status. |
 | 2026-10-27 | Live push flow verified on GitHub: pushed `feature/ci-cd-pipeline@df2bf68` -> Jenkins built it automatically on the agent (build #3, all 8 stages PASS, E2E workers capped at 2) -> the gate verified it independently and published `unimisk/verified` = success on that exact commit. Fixes found live: classic PAT with `repo:status` is required (fine-grained tokens owned by a user cannot write statuses on an organization repo); gate state keys now include the Jenkins folder (a second job reusing branch+build numbers was silently skipped). Found: Vercel already creates a Preview deployment for pushed branches (status context `Vercel`); the Vercel audit stays BLOCKED until access to team `unimisk-erp-solutions-projects` is granted. |
 | 2026-10-27 | Final verification: d882ef2 detected and built automatically (build #4, 8/8) with a fresh `unimisk/verified` success; token-rotation and Vercel checklists recorded; Vercel audit and production deployment lock remain BLOCKED. |
+| 2026-10-27 | Central pipeline: Jenkinsfile stored in Jenkins plus a trusted CI toolkit overlay (`ci/pipeline/overlay.mjs`) so branches need no pipeline files; the gate pins the toolkit; tests added (84 pass). |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
