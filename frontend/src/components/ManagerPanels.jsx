@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Trash2, UserPlus, CheckCircle2 } from 'lucide-react';
 import api from '../api';
+import SelectMenu from './SelectMenu';
 
 const card = { background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 16, padding: 16 };
 const muted = { color: 'var(--tf-muted)', fontSize: 13 };
@@ -259,22 +260,60 @@ export function ApprovalsPage({ tasks, profileById, onOpen, currentUserId }) {
   );
 }
 
-/** Assign work to the people in your teams, and see what your team has been given. */
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'pending', label: 'To do' },
+  { value: 'in_progress', label: 'In progress' },
+  { value: 'submitted', label: 'Waiting for review' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'blocked', label: 'Blocked' },
+];
+
+const assigneeIdsOf = (t) => (t.assignee_ids?.length ? t.assignee_ids : [t.assignee_id]).filter(Boolean);
+
+/** Everything assigned to your teammates, filtered by person and status so a big team isn't one long list. */
 export function AssignTaskPage({ tasks, memberIds, profileById, onNewTask, onOpen, currentUserId }) {
-  const teamTasks = tasks.filter((t) => (t.assignee_ids?.length ? t.assignee_ids : [t.assignee_id]).some((id) => memberIds.includes(id) && id !== currentUserId));
+  const [member, setMember] = useState('all');
+  const [status, setStatus] = useState('all');
+  const teamTasks = useMemo(
+    () => tasks.filter((t) => assigneeIdsOf(t).some((id) => memberIds.includes(id) && id !== currentUserId)),
+    [tasks, memberIds, currentUserId],
+  );
+  const memberOptions = useMemo(() => [
+    { value: 'all', label: `All teammates (${teamTasks.length})` },
+    ...memberIds
+      .filter((id) => id !== currentUserId)
+      .map((id) => ({ value: id, label: `${profileById[id] || 'Unknown'} (${teamTasks.filter((t) => assigneeIdsOf(t).includes(id)).length})` }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ], [memberIds, teamTasks, profileById, currentUserId]);
+  const shown = teamTasks.filter((t) => (member === 'all' || assigneeIdsOf(t).includes(member)) && (status === 'all' || t.status === status));
+
   return (
     <div style={{ display: 'grid', gap: 14, maxWidth: 980 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <p style={{ margin: 0, ...muted, fontSize: 14 }}>
-          {memberIds.length ? 'Give a task to anyone in your teams.' : 'Make a team first, then you can assign tasks to its members.'}
+          {memberIds.length ? 'See what your teammates are working on, and give a task to anyone in your teams.' : 'Make a team first, then you can assign tasks to its members.'}
         </p>
         <button type="button" className="btn btn-primary btn-sm" onClick={onNewTask} disabled={!memberIds.length}><Plus size={14} /> Assign task</button>
       </div>
-      {teamTasks.length ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {teamTasks.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} badge={pill(String(t.status || '').replaceAll('_', ' '), 'var(--tf-muted)')} />)}
+      {teamTasks.length > 0 && (
+        <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Teammate</label>
+            <SelectMenu value={member} onChange={setMember} options={memberOptions} ariaLabel="Filter by teammate" />
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Status</label>
+            <SelectMenu value={status} onChange={setStatus} options={STATUS_FILTERS} ariaLabel="Filter by status" />
+          </div>
         </div>
-      ) : memberIds.length > 0 && <div style={{ ...card, borderStyle: 'dashed', textAlign: 'center', color: 'var(--tf-muted)' }}>No tasks have been assigned to your teams yet.</div>}
+      )}
+      {teamTasks.length > 0 && <div style={muted}>Showing {shown.length} of {teamTasks.length} task{teamTasks.length === 1 ? '' : 's'}</div>}
+      {shown.length ? (
+        <div style={{ display: 'grid', gap: 10 }}>
+          {shown.map((t) => <TaskRow key={t.id} task={t} profileById={profileById} onOpen={onOpen} badge={pill(String(t.status || '').replaceAll('_', ' '), 'var(--tf-muted)')} />)}
+        </div>
+      ) : memberIds.length > 0 && <div style={{ ...card, borderStyle: 'dashed', textAlign: 'center', color: 'var(--tf-muted)' }}>{teamTasks.length ? 'No tasks match these filters.' : 'No tasks have been assigned to your teams yet.'}</div>}
     </div>
   );
 }

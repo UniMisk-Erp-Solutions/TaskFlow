@@ -2,14 +2,20 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarOff, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
+import SelectMenu from './SelectMenu';
 
 const TYPE_OPTIONS = [
   { value: 'sick', label: 'Sick' },
   { value: 'exam', label: 'Exam' },
   { value: 'emergency', label: 'Emergency' },
   { value: 'trip', label: 'Trip' },
+  { value: 'half day', label: 'Half day' },
+  { value: 'late coming', label: 'Late coming' },
   { value: 'custom', label: 'Custom…' },
 ];
+
+// Half day / late coming are always a single day, and read better without the word "leave" after them.
+const SINGLE_DAY_TYPES = ['half day', 'late coming'];
 
 const STATUS = {
   pending: { label: 'Pending', color: '#b45309', bg: 'rgba(245, 158, 11, 0.16)' },
@@ -94,12 +100,15 @@ function LeaveForm({ name, initial, onCancel, onSaved }) {
           Name
           <input value={name} readOnly style={{ ...fieldStyle, opacity: 0.8 }} aria-readonly="true" />
         </label>
-        <label style={labelStyle}>
-          Leave type
-          <select value={form.leave_type} onChange={(e) => set('leave_type', e.target.value)} style={fieldStyle}>
-            {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </label>
+        <div style={labelStyle}>
+          <span>Leave type</span>
+          <SelectMenu
+            value={form.leave_type}
+            ariaLabel="Leave type"
+            options={TYPE_OPTIONS}
+            onChange={(value) => setForm((f) => (SINGLE_DAY_TYPES.includes(value) ? { ...f, leave_type: value, duration: 'single', end_date: f.start_date } : { ...f, leave_type: value }))}
+          />
+        </div>
         {form.leave_type === 'custom' && (
           <label style={labelStyle}>
             Custom type
@@ -116,6 +125,8 @@ function LeaveForm({ name, initial, onCancel, onSaved }) {
               key={value}
               type="button"
               aria-pressed={form.duration === value}
+              disabled={value === 'multi' && SINGLE_DAY_TYPES.includes(form.leave_type)}
+              title={value === 'multi' && SINGLE_DAY_TYPES.includes(form.leave_type) ? 'Half day and late coming are for a single day' : undefined}
               onClick={() => set('duration', value)}
               style={{ border: 0, padding: '9px 16px', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: form.duration === value ? 'var(--color-primary)' : 'var(--tf-page)', color: form.duration === value ? 'var(--color-on-primary)' : 'var(--tf-text)' }}
             >
@@ -276,7 +287,7 @@ export default function LeavePortal({ isAdmin = false }) {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{r.employee_name}</div>
                     <div style={{ fontSize: 13, color: 'var(--tf-muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
-                      {leaveTypeLabel(r)} leave · {r.duration === 'single' ? 'One day' : `${r.days} days`}
+                      {leaveTypeLabel(r)}{SINGLE_DAY_TYPES.includes(r.leave_type) ? '' : ' leave'} · {r.duration === 'single' ? 'One day' : `${r.days} days`}
                     </div>
                   </div>
                   <StatusBadge status={r.status} />

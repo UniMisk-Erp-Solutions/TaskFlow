@@ -5568,7 +5568,9 @@ async function handleDrive(req: Request, path: string) {
 // ── Leave portal ──
 // Employees request leave; an admin of the same organisation approves or rejects it. Every route is org-scoped, an
 // employee only ever sees and changes their own requests, and only an admin can change a request's status.
-const LEAVE_TYPES = ["sick", "exam", "emergency", "trip"];
+const LEAVE_TYPES = ["sick", "exam", "emergency", "trip", "half day", "late coming"];
+// These two only make sense within a single day.
+const SINGLE_DAY_LEAVE_TYPES = ["half day", "late coming"];
 const LEAVE_MAX_DAYS = 366;
 
 function leaveIsoDate(v: unknown): string | null {
@@ -5592,6 +5594,7 @@ function leaveParseInput(body: any): { error: string } | { fields: { leave_type:
   } else return { error: "Choose a leave type: sick, exam, emergency, trip or custom." };
   const duration = String(body?.duration ?? "").toLowerCase();
   if (duration !== "single" && duration !== "multi") return { error: "Choose one day or multiple days." };
+  if (duration === "multi" && SINGLE_DAY_LEAVE_TYPES.includes(leave_type)) return { error: "Half day and late coming are for a single day." };
   const start_date = leaveIsoDate(body?.start_date);
   if (!start_date) return { error: "Enter a valid From date." };
   const end_date = duration === "single" ? start_date : leaveIsoDate(body?.end_date);

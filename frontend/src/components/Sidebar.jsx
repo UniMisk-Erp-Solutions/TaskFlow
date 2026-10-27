@@ -36,7 +36,7 @@ const EMPLOYEE_NAV = [
 const MANAGER_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'My Tasks' },
   { id: 'reviews', icon: ClipboardCheck, label: 'Approvals' },
-  { id: 'assign', icon: ClipboardList, label: 'Assign Task' },
+  { id: 'assign', icon: ClipboardList, label: 'Team Tasks' },
   { id: 'team', icon: UsersRound, label: 'Teams' },
   { id: 'people', icon: UserPlus, label: 'Add User' },
   ...EMPLOYEE_NAV.filter((n) => n.id !== 'tasks'),
@@ -150,7 +150,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
             textTransform: 'uppercase',
           }}
         >
-          {isEmployee ? 'Employee' : 'Admin'}
+          {role === 'manager' ? 'Manager' : isEmployee ? 'Employee' : 'Admin'}
         </span>
         <button
           type="button"

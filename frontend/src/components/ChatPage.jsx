@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Hash, Lock, Search, Send, Trash2, ArrowLeft, MessageSquarePlus, Paperclip, Mic, Square, Pencil, X,
-  FileText, Download, Reply, Users, Plus, Check, LogOut, Crown, UserPlus, Info, PanelLeftClose, PanelLeftOpen,
+  FileText, Download, Reply, MoreVertical, Copy, Users, Plus, Check, LogOut, Crown, UserPlus, Info, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
@@ -235,18 +236,86 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
           <Linkified text={msg.body} mine={mine} />
           {msg.edited_at && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 6 }}>(edited)</span>}
         </div>
-        <span className="tf-chat-actions" style={{ display: 'flex', flexShrink: 0 }}>
-          <button type="button" aria-label="Reply" title="Reply" onClick={() => onReply(msg)} style={iconBtn}><Reply size={14} /></button>
-          {mine && !msg.attachment_path && (
-            <button type="button" aria-label="Edit message" title="Edit" onClick={() => onEdit(msg)} style={iconBtn}><Pencil size={13} /></button>
-          )}
-          {mine && (
-            <button type="button" aria-label="Delete message" title="Delete" onClick={() => onDelete(msg.id)} style={iconBtn}><Trash2 size={13} /></button>
-          )}
-        </span>
+        <MessageMenu msg={msg} mine={mine} onReply={onReply} onEdit={onEdit} onDelete={onDelete} iconBtn={iconBtn} />
       </div>
       <span style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '2px 4px 0' }}>{timeLabel(msg.created_at)}</span>
     </div>
+  );
+}
+
+/** Three-dot menu on a message: Reply, Copy, and (for your own messages) Edit and Delete. Drawn in a portal so the chat list never clips it. */
+export function MessageMenu({ msg, mine, onReply, onEdit, onDelete, iconBtn }) {
+  const [pos, setPos] = useState(null); // { top, left } while open
+  const [copied, setCopied] = useState(false);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const canCopy = !!msg.body;
+  const canEdit = mine && !msg.attachment_path;
+
+  const close = useCallback(() => { setPos(null); setCopied(false); }, []);
+
+  function toggle() {
+    if (pos) { close(); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    const width = 176;
+    const height = 44 * (1 + (canCopy ? 1 : 0) + (canEdit ? 1 : 0) + (mine ? 1 : 0)) + 8;
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, mine ? r.right - width : r.left));
+    const below = r.bottom + 6;
+    const top = below + height > window.innerHeight - 8 ? Math.max(8, r.top - height - 6) : below;
+    setPos({ top, left });
+  }
+
+  useEffect(() => {
+    if (!pos) return undefined;
+    const onDown = (e) => { if (!menuRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btnRef.current?.focus(); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [pos, close]);
+
+  async function copy() {
+    const text = msg.body || '';
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement('textarea'); // older browsers / insecure origins
+      area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+      document.body.appendChild(area); area.select();
+      try { document.execCommand('copy'); } catch { /* nothing more we can do */ }
+      area.remove();
+    }
+    setCopied(true);
+    window.setTimeout(close, 700);
+  }
+
+  const item = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '0 12px', border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--tf-text)', font: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer' };
+  const run = (fn) => () => { close(); fn(); };
+
+  return (
+    <span className="tf-chat-actions" style={{ display: 'flex', flexShrink: 0 }}>
+      <button ref={btnRef} type="button" aria-label="Message options" title="More" aria-haspopup="menu" aria-expanded={!!pos} onClick={toggle} style={{ ...iconBtn, padding: 5, borderRadius: '50%' }}>
+        <MoreVertical size={16} />
+      </button>
+      {pos && createPortal(
+        <div ref={menuRef} role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left, width: 176, zIndex: 80, padding: 4, background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.35)' }}>
+          <button type="button" role="menuitem" style={item} onClick={run(() => onReply(msg))}><Reply size={16} /> Reply</button>
+          {canCopy && <button type="button" role="menuitem" style={item} onClick={copy}>{copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy'}</button>}
+          {canEdit && <button type="button" role="menuitem" style={item} onClick={run(() => onEdit(msg))}><Pencil size={16} /> Edit</button>}
+          {mine && <button type="button" role="menuitem" style={{ ...item, color: 'var(--status-danger)' }} onClick={run(() => onDelete(msg.id))}><Trash2 size={16} /> Delete</button>}
+        </div>,
+        document.body,
+      )}
+    </span>
   );
 }
 

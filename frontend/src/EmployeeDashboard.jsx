@@ -225,7 +225,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
                   <span>{greeting()},</span>
                   <span>{profile?.full_name?.split(' ')[0] || 'there'}</span>
                 </span>
-              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'leave' ? 'Leave Portal' : page === 'profile' ? 'Profile' : page === 'reviews' ? 'Approvals' : page === 'assign' ? 'Assign Task' : page === 'team' ? 'Teams' : page === 'people' ? 'Add User' : 'Notifications'}
+              ) : page === 'kanban' ? 'Kanban Board' : page === 'timer' ? 'Timer Analytics' : page === 'calender' ? 'Calendar' : page === 'projects' ? 'Projects' : page === 'chat' ? 'Chat' : page === 'files' ? 'Files' : page === 'whiteboard' ? 'Whiteboard' : page === 'leave' ? 'Leave Portal' : page === 'profile' ? 'Profile' : page === 'reviews' ? 'Approvals' : page === 'assign' ? 'Team Tasks' : page === 'team' ? 'Teams' : page === 'people' ? 'Add User' : 'Notifications'}
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}

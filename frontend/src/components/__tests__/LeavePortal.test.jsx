@@ -29,7 +29,8 @@ describe('LeavePortal', () => {
 
     fireEvent.click(screen.getByText('Request leave'));
     expect(screen.getByDisplayValue('Preet Mehta').readOnly).toBe(true);
-    fireEvent.change(screen.getByLabelText('Leave type'), { target: { value: 'custom' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Leave type' }));
+    fireEvent.click(screen.getByRole('option', { name: /Custom/ }));
     fireEvent.change(screen.getByLabelText('Custom type'), { target: { value: 'Wedding' } });
     fireEvent.click(screen.getByText('Multiple days'));
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-12-01' } });
