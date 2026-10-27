@@ -6,7 +6,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { REPO_ROOT, REQUIRED_CHECKS, STAGES, GITHUB_CHECK_NAME } from "../pipeline/config.mjs";
+import { REPO_ROOT, REQUIRED_CHECKS, STAGES } from "../pipeline/config.mjs";
+import { STATUS_CONTEXT as GITHUB_CHECK_NAME } from "../lib/github-status.mjs";
 import { buildPayload, REPO_SETTINGS } from "../github/branch-protection.mjs";
 
 // Normalise line endings: a Windows checkout (core.autocrlf) has CRLF, which would defeat the comment-stripping regexes below.
@@ -34,10 +35,11 @@ test("the Jenkinsfile never deploys, merges or pushes", () => {
   for (const bad of [/git\s+push/i, /git\s+merge/i, /gh\s+pr\s+merge/i, /vercel\s+(deploy|--prod|promote)/i, /--auto/i, /docker\s+(run|stop|rm|compose)/i]) assert.doesNotMatch(jf, bad);
 });
 
-test("the Jenkinsfile only binds secrets through the credential store (no literals)", () => {
-  const jf = read("Jenkinsfile");
-  assert.doesNotMatch(jf, /(ghp_|github_pat_|BEGIN [A-Z ]*PRIVATE KEY|password\s*=)/i);
-  for (const id of ["taskflow-attest-private-key", "taskflow-github-app-key", "taskflow-github-app-id"]) assert.ok(jf.includes(id), id);
+test("the Jenkinsfile holds no credentials at all: the build runs on an agent without secrets, and signing is the gate's job", () => {
+  const jf = code(read("Jenkinsfile"));
+  assert.doesNotMatch(jf, /withCredentials|credentials\(|credentialsId|PRIVATE KEY|ghp_|github_pat_|attest/i);
+  assert.match(jf, /agent \{ label 'untrusted' \}/);
+  assert.doesNotMatch(jf, /agent any/);
 });
 
 test("sources that may run on production-adjacent hosts never default to a production URL", () => {
@@ -72,7 +74,7 @@ test("Jenkins compose: every secret is required (':?'), none has a default value
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
   // These select files / mirrors (not secrets) and legitimately have defaults.
-  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD"]);
+  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE"]);
   for (const [, key, , rest] of env.filter(([, k]) => !NOT_SECRETS.has(k))) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 
@@ -89,16 +91,57 @@ test("Jenkins image pins versions and verifies checksums; JCasC has no literal s
   assert.doesNotMatch(casc, /anonymous/i);
 });
 
-test("JCasC loads the key FILES' contents (not the path text) and the job can read the private repository", () => {
-  const casc = read("ci", "jenkins", "casc", "jenkins.yaml");
-  // ${base64:${SOME_FILE_VAR}} would encode the path string; the documented form is readFileBase64.
-  assert.doesNotMatch(casc, /secretBytes:\s*"\$\{base64:/);
-  assert.equal([...casc.matchAll(/secretBytes:\s*"\$\{readFileBase64:\$\{\w+\}\}"/g)].length, 2);
+test("JCasC core: the controller runs no builds and holds no signing key or write token; the agent and gate user are least-privilege", () => {
+  const core = read("ci", "jenkins", "casc", "jenkins.yaml");
+  assert.match(core, /numExecutors: 0/);
+  assert.doesNotMatch(core, /^credentials:/m, "no credentials live in the core config");
+  assert.doesNotMatch(core, /attest|github-app|secretBytes|gitHubApp/i);
+  assert.match(core, /labelString: "untrusted"/);
+  assert.match(core, /webSocket: true/);
+  const perms = [...core.matchAll(/"USER:([^:"]+):gate"/g)].map((m) => m[1]);
+  assert.deepEqual(perms.sort(), ["Job/Build", "Job/Discover", "Job/Read"].sort().map((p) => p));
+  assert.doesNotMatch(core, /Administer:gate|Overall\/Manage:gate|Credentials/);
   const github = read("ci", "jenkins", "casc", "github.yaml");
-  assert.match(github, /gitHubApp:/);
-  assert.match(github, /scanCredentialsId\('taskflow-github-app'\)/);
-  assert.match(github, /privateKey:\s*"\$\{readFile:/);
-  assert.doesNotMatch(casc, /gitHubApp:|jobs:/, "core config must not require the GitHub App");
+  assert.match(github, /usernamePassword:/);
+  assert.match(github, /scanCredentialsId\('taskflow-github-read'\)/);
+  assert.match(github, /password:\s*"\$\{trim:\$\{readFile:/);
+  assert.doesNotMatch(github, /gitHubApp:|periodicFolderTrigger/, "no App credential, and no polling timer (the gate drives scans)");
+});
+
+// ── isolation between controller, build agent and gate ───────────────────────────
+const service = (name) => { const m = new RegExp("\\n  " + name + ":\\n([\\s\\S]*?)(?=\\n  [a-z]+:\\n|\\nvolumes:)").exec(compose); assert.ok(m, "service " + name); return m[1]; };
+const listOf = (block, key) => { const m = new RegExp("\\n    " + key + ":\\n((?:      - .*\\n?)+)").exec(block + "\n") || new RegExp("\\n    " + key + ": \\[(.*?)\\]").exec(block); return m ? m[1].split(/[\n,]/).map((x) => x.replace(/^\s*-\s*/, "").replace(/["\s]/g, "")).filter(Boolean) : []; };
+
+test("ISOLATION: the build agent has no secret but its own agent secret, no published port, and no route to the gate", () => {
+  const agent = service("agent");
+  assert.deepEqual(listOf(agent, "secrets"), ["agent_secret"]);
+  assert.deepEqual(listOf(agent, "networks"), ["taskflow_agent"]);
+  assert.doesNotMatch(agent, /\n    ports:/);
+  assert.doesNotMatch(agent, /jenkins_home|gate_state|attest|webhook|github/i);
+  assert.match(agent, /mem_limit: 4g/);
+});
+
+test("ISOLATION: the controller holds neither the signing key nor the webhook secret nor a GitHub write token", () => {
+  const jenkins = service("jenkins");
+  const secrets = listOf(jenkins, "secrets");
+  assert.deepEqual(secrets.sort(), ["gate_jenkins_password", "github_read_token"]);
+  assert.deepEqual(listOf(jenkins, "networks").sort(), ["taskflow_agent", "taskflow_ci"]);
+});
+
+test("ISOLATION: the gate alone holds the signing key, the webhook secret and the status token; it is off the agent network, read-only and loopback-published", () => {
+  const gate = service("gate");
+  assert.deepEqual(listOf(gate, "secrets").sort(), ["attest_key", "gate_github_token", "gate_jenkins_password", "gate_webhook_secret"]);
+  assert.deepEqual(listOf(gate, "networks"), ["taskflow_ci"]);
+  assert.match(gate, /read_only: true/);
+  for (const p of ["127.0.0.1:8089:8089", "127.0.0.1:8090:8090"]) assert.ok(gate.includes('"' + p + '"'), p);
+  assert.doesNotMatch(gate, /"0\.0\.0\.0:|"8089:8089"|"8090:8090"/);
+});
+
+test("the gate image pins the pipeline files and the Dockerfile copies only ci/", () => {
+  const df = read("ci", "gate-service", "Dockerfile");
+  for (const p of ["JENKINSFILE", "CI_PIPELINE", "CI_LIB", "CI_GATE", "CI_VERIFY"]) assert.match(df, new RegExp("ARG GATE_PIN_" + p));
+  assert.match(df, /COPY ci \.\/ci/);
+  assert.match(read(".dockerignore"), /^\*\n!ci/m);
 });
 
 test("install script refuses to run without an approval on record", () => {
@@ -109,7 +152,7 @@ test("install script refuses to run without an approval on record", () => {
 });
 
 // ── branch protection ─────────────────────────────────────────────────────────
-test("branch protection: verified check bound to the Jenkins App, admins bound too, no force-push, no auto-merge", () => {
+test("branch protection (for plans that can enforce it): verified status required, admins bound too, no force-push, no auto-merge", () => {
   const p = buildPayload({ appId: "12345", admins: ["alice"] });
   assert.deepEqual(p.required_status_checks.checks, [{ context: GITHUB_CHECK_NAME, app_id: 12345 }]);
   assert.equal(p.required_status_checks.strict, true);
@@ -123,8 +166,8 @@ test("branch protection: verified check bound to the Jenkins App, admins bound t
   assert.equal(REPO_SETTINGS.allow_auto_merge, false);
 });
 
-test("branch protection refuses to build without the App id or an admin list", () => {
-  assert.throws(() => buildPayload({ appId: "", admins: ["a"] }), /GITHUB_APP_ID/);
+test("branch protection refuses a malformed App id or an empty admin list; the App id is optional", () => {
+  assert.deepEqual(buildPayload({ admins: ["a"] }).required_status_checks.checks, [{ context: GITHUB_CHECK_NAME }]);
   assert.throws(() => buildPayload({ appId: "abc", admins: ["a"] }), /GITHUB_APP_ID/);
   assert.throws(() => buildPayload({ appId: "1", admins: [] }), /ADMIN_LOGINS/);
 });

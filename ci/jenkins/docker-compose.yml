@@ -1,15 +1,24 @@
-# Jenkins for TaskFlow — isolated and resource-limited. NOT started by anything in this repository;
-# an admin runs ci/jenkins/install-on-15.sh after approving it (see docs/ci-cd-pipeline.md).
+# CI for TaskFlow: three isolated containers, none of which can control other containers on the host.
 #
-# Isolation guarantees (asserted by ci/tests/jenkins-config.test.mjs):
-#   * no /var/run/docker.sock and no privileged mode — Jenkins cannot control other containers
-#   * its own network and its own named volume
-#   * published on 127.0.0.1 only (reach it through an SSH tunnel or an approved Cloudflare route)
+#   jenkins  controller: schedules builds, 0 executors, no signing key, no GitHub write token
+#   agent    "untrusted" build agent: runs branch code (npm scripts, tests, Playwright); NO secrets, own network
+#   gate     webhook intake + independent verification + signing + GitHub statuses; holds the only keys
+#
+# Isolation guarantees (asserted by ci/tests/config.test.mjs):
+#   * no /var/run/docker.sock and no privileged mode anywhere
+#   * the agent shares no network with the gate and mounts no secret except its own agent secret
+#   * published on 127.0.0.1 only (reach it through an SSH tunnel; expose ONLY the gate's port 8089 if a tunnel is approved)
 #   * hard CPU / memory / pid limits
 name: taskflow-ci
 
+x-hardening: &hardening
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
 services:
   jenkins:
+    <<: *hardening
     image: unimisk/taskflow-jenkins:2.580.1
     build:
       context: .
@@ -17,31 +26,26 @@ services:
         DEBIAN_MIRROR: "${DEBIAN_MIRROR:-deb.debian.org}"
         JENKINS_UC_DOWNLOAD: "${JENKINS_UC_DOWNLOAD:-}"
     container_name: taskflow-jenkins
-    restart: unless-stopped
     ports:
       - "127.0.0.1:8088:8080"
     environment:
       JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}"
       JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"
-      GITHUB_APP_ID: "${GITHUB_APP_ID:?set GITHUB_APP_ID}"
-      GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?set GITHUB_APP_INSTALLATION_ID}"
       CASC_JENKINS_CONFIG: "${CASC_FILES:-/usr/share/jenkins/ref/casc/jenkins.yaml}"
-      GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_key
-      CI_ATTEST_PRIVATE_KEY_FILE: /run/secrets/attest_key
+      GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
+      GITHUB_READ_TOKEN_FILE: /run/secrets/github_read_token
+      GITHUB_READ_USER: "${GITHUB_READ_USER:-unused}"
     secrets:
-      - github_app_key
-      - attest_key
+      - gate_jenkins_password
+      - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
-    networks: [taskflow_ci]
-    mem_limit: 4g
-    shm_size: "1gb"
-    memswap_limit: 4g
-    cpus: 2.0
-    pids_limit: 1024
-    cap_drop: [ALL]
+    networks: [taskflow_ci, taskflow_agent]
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 1.0
+    pids_limit: 512
     cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
-    security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/login >/dev/null || exit 1"]
       interval: 30s
@@ -49,17 +53,96 @@ services:
       retries: 5
       start_period: 120s
 
+  agent:
+    <<: *hardening
+    image: unimisk/taskflow-jenkins:2.580.1
+    container_name: taskflow-agent
+    entrypoint: ["java", "-jar", "/opt/agent.jar", "-url", "http://taskflow-jenkins:8080/", "-secret", "@/run/secrets/agent_secret", "-name", "untrusted-1", "-webSocket", "-workDir", "/home/jenkins/agent"]
+    environment:
+      HOME: /home/jenkins
+      TRIVY_CACHE_DIR: /home/jenkins/agent/.trivy-cache
+      NPM_CONFIG_CACHE: /home/jenkins/agent/.npm
+    secrets:
+      - agent_secret
+    volumes:
+      - agent_ws:/home/jenkins/agent
+    networks: [taskflow_agent]
+    mem_limit: 4g
+    memswap_limit: 4g
+    shm_size: "1gb"
+    cpus: 2.0
+    pids_limit: 1024
+    depends_on: [jenkins]
+
+  gate:
+    <<: *hardening
+    image: unimisk/taskflow-gate:1
+    build:
+      context: ../..
+      dockerfile: ci/gate-service/Dockerfile
+      args:
+        DEBIAN_MIRROR: "${DEBIAN_MIRROR:-deb.debian.org}"
+        GATE_PIN_JENKINSFILE: "${GATE_PIN_JENKINSFILE:?run ci/gate-service/pins.sh}"
+        GATE_PIN_CI_PIPELINE: "${GATE_PIN_CI_PIPELINE:?run ci/gate-service/pins.sh}"
+        GATE_PIN_CI_LIB: "${GATE_PIN_CI_LIB:?run ci/gate-service/pins.sh}"
+        GATE_PIN_CI_GATE: "${GATE_PIN_CI_GATE:?run ci/gate-service/pins.sh}"
+        GATE_PIN_CI_VERIFY: "${GATE_PIN_CI_VERIFY:?run ci/gate-service/pins.sh}"
+    container_name: taskflow-gate
+    ports:
+      - "127.0.0.1:8089:8089"   # public listener: POST /github and GET /healthz only. The ONLY port a tunnel may point at.
+      - "127.0.0.1:8090:8090"   # admin listener: status + attestations. Never expose.
+    environment:
+      GATE_REPO: "${GATE_REPO:-UniMisk-Erp-Solutions/TaskFlow}"
+      GATE_GIT_SOURCE: "${GATE_GIT_SOURCE:?set GATE_GIT_SOURCE}"
+      GATE_JENKINS_URL: http://taskflow-jenkins:8080
+      GATE_JENKINS_FOLDER: "${GATE_JENKINS_FOLDER:-taskflow-local}"
+      GATE_STATUS_MODE: "${GATE_STATUS_MODE:-record}"
+      GATE_WEBHOOK_SECRET_FILE: /run/secrets/gate_webhook_secret
+      GATE_ATTEST_KEY_FILE: /run/secrets/attest_key
+      GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
+      GATE_GITHUB_TOKEN_FILE: /run/secrets/gate_github_token
+    secrets:
+      - gate_webhook_secret
+      - attest_key
+      - gate_jenkins_password
+      - gate_github_token
+    volumes:
+      - gate_state:/var/lib/gate
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [taskflow_ci]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    depends_on: [jenkins]
+
 volumes:
   jenkins_home:
     name: taskflow_jenkins_home
+  agent_ws:
+    name: taskflow_agent_ws
+  gate_state:
+    name: taskflow_gate_state
 
 networks:
   taskflow_ci:
     name: taskflow_ci
     driver: bridge
+  taskflow_agent:
+    name: taskflow_agent
+    driver: bridge
 
 secrets:
-  github_app_key:
-    file: "${GITHUB_APP_PRIVATE_KEY_PATH:?path to the GitHub App .pem}"
+  gate_jenkins_password:
+    file: "${GATE_JENKINS_PASSWORD_PATH:?path to the gate user's Jenkins password}"
+  github_read_token:
+    file: "${GITHUB_READ_TOKEN_PATH:?path to the read-only GitHub token (placeholder until it exists)}"
+  agent_secret:
+    file: "${AGENT_SECRET_PATH:?path to the build agent secret}"
+  gate_webhook_secret:
+    file: "${GATE_WEBHOOK_SECRET_PATH:?path to the GitHub webhook secret}"
   attest_key:
     file: "${CI_ATTEST_PRIVATE_KEY_PATH:?path to the Ed25519 private key}"
+  gate_github_token:
+    file: "${GATE_GITHUB_TOKEN_PATH:?path to the commit-status token (placeholder in record mode)}"

@@ -7,14 +7,15 @@
 //   ... APPROVED_BY="Alice" GITHUB_ADMIN_TOKEN=... node ci/github/branch-protection.mjs --apply
 //
 // Rules applied to `main`
-//   * the `unimisk/verified` check must pass AND must come from the Jenkins GitHub App (app_id), so no
-//     human, PAT or other integration can satisfy it; the branch must be up to date with main (strict)
+//   * the `unimisk/verified` status must pass (optionally pinned to a GitHub App id) and the branch must be up to date (strict)
+//   NOTE: GitHub Free does NOT enforce branch protection on PRIVATE repositories (it needs Team/Enterprise, or a public
+//   repository). On Free this script is inert; deployment is protected by the release gate in ci/release instead.
 //   * a pull request is required, with 1 approving review from a CODEOWNER (admin), stale approvals
 //     dismissed on new commits, and the most recent pusher cannot approve their own push
 //   * enforce_admins: admins are bound by the same rules (no silent bypass)
 //   * direct pushes are restricted to the admin list, force-push and deletion are blocked
 //   * repository auto-merge is switched OFF so nothing merges without a human clicking merge
-import { GITHUB_CHECK_NAME } from "../pipeline/config.mjs";
+import { STATUS_CONTEXT as GITHUB_CHECK_NAME } from "../lib/github-status.mjs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -22,10 +23,10 @@ export const REPO = "UniMisk-Erp-Solutions/TaskFlow";
 export const BRANCH = "main";
 
 export function buildPayload({ appId, admins }) {
-  if (!appId || !/^\d+$/.test(String(appId))) throw new Error("GITHUB_APP_ID must be the numeric id of the Jenkins GitHub App");
+  if (appId && !/^\d+$/.test(String(appId))) throw new Error("GITHUB_APP_ID must be the numeric id of the GitHub App");
   if (!admins?.length) throw new Error("ADMIN_LOGINS must list at least one admin (they are the only ones allowed to push/merge)");
   return {
-    required_status_checks: { strict: true, checks: [{ context: GITHUB_CHECK_NAME, app_id: Number(appId) }] },
+    required_status_checks: { strict: true, checks: [appId ? { context: GITHUB_CHECK_NAME, app_id: Number(appId) } : { context: GITHUB_CHECK_NAME }] },
     enforce_admins: true,
     required_pull_request_reviews: {
       dismiss_stale_reviews: true,

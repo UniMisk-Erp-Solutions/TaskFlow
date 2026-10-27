@@ -1,5 +1,6 @@
-# Jenkins for the TaskFlow pipeline. Everything a build needs is baked in at pinned versions with
-# verified checksums or image digests, so builds never download tooling at run time.
+# Jenkins for the TaskFlow pipeline (controller AND build agent use this one image; they differ only in how they are run).
+# Everything a build needs is baked in at pinned versions with verified checksums or image digests, so builds never
+# download tooling at run time.
 #   docker build -t unimisk/taskflow-jenkins:2.580.1 ci/jenkins
 # The image is scanned with Trivy before it is started (ci/jenkins/scan-image.sh); anything HIGH/CRITICAL with a
 # fix available aborts the install. The steps marked "scan" below exist because that scan found real findings.
@@ -19,8 +20,13 @@ USER root
 RUN sed -i "s|deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
  && apt-get update \
  && apt-get -y upgrade \
- && apt-get install -y --no-install-recommends curl ca-certificates xz-utils git \
+ && apt-get install -y --no-install-recommends curl ca-certificates xz-utils git unzip \
  && rm -rf /var/lib/apt/lists/*
+
+# The build agent is the controller's own remoting library (same version by construction), taken from the war.
+RUN unzip -p /usr/share/jenkins/jenkins.war 'WEB-INF/lib/remoting-*.jar' > /opt/agent.jar \
+ && test -s /opt/agent.jar \
+ && mkdir -p /home/jenkins/agent && chown -R jenkins:jenkins /home/jenkins
 
 # Node.js (checksum-verified tarball), then a current npm: the npm bundled with Node carries vulnerable nested
 # packages (pacote, sigstore, brace-expansion, picomatch, ip-address).

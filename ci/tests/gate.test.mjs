@@ -8,7 +8,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAttestation, currentFingerprint, evaluateAttestation } from "../lib/attestation.mjs";
-import { collectChecks, ttlFromEnv } from "../gate/attest.mjs";
 import { checkPrReady } from "../gate/pr-ready.mjs";
 import { REQUIRED_CHECKS } from "../pipeline/config.mjs";
 
@@ -77,15 +76,6 @@ test("signing without a private key fails loudly (no silent default)", () => {
 
 // ── stage results bound to the exact tree ─────────────────────────────────────
 
-test("collectChecks marks results from different code STALE and absent ones MISSING", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tf-res-"));
-  const fp = { commit: "a".repeat(40), tree: "b".repeat(40) };
-  fs.writeFileSync(path.join(dir, "lint.json"), JSON.stringify({ status: "PASS", commit: fp.commit, tree: fp.tree, durationMs: 5 }));
-  fs.writeFileSync(path.join(dir, "build.json"), JSON.stringify({ status: "PASS", commit: "x".repeat(40), tree: "y".repeat(40), durationMs: 5 }));
-  const out = Object.fromEntries(collectChecks(fp, dir, ["lint", "build", "e2e"]).map((c) => [c.name, c.status]));
-  assert.deepEqual(out, { lint: "PASS", build: "STALE", e2e: "MISSING" });
-});
-
 // ── end-to-end against a real temporary git repository ────────────────────────
 
 function repo() {
@@ -143,11 +133,3 @@ test("pr-ready: missing public key or missing attestation fails closed", async (
   assert.match(r.reasons.join("\n"), /no attestation/);
 });
 
-test("attestation lifetime can only be shortened within safe bounds (test knob)", () => {
-  assert.equal(ttlFromEnv({}), undefined);
-  assert.equal(ttlFromEnv({ CI_ATTEST_TTL_SECONDS: "60" }), 60_000);
-  for (const bad of ["29", "604801", "abc", "1.5", "-5"]) assert.throws(() => ttlFromEnv({ CI_ATTEST_TTL_SECONDS: bad }), /between 30 and 604800/, bad);
-  const short = createAttestation({ ...base, checks: allPass, privateKeyPem: jenkins.privateKeyPem, ttlMs: 60_000 });
-  assert.equal(ev(short).ok, true);
-  assert.match(ev(short, { now: Date.now() + 61_000 }).reasons.join(), /expired/);
-});

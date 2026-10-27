@@ -1,0 +1,6 @@
+# Only ci/ is needed by the gate image (ci/gate-service/Dockerfile builds with the repository root as context).
+*
+!ci
+ci/tests
+ci/jenkins
+**/node_modules

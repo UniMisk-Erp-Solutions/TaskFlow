@@ -1,27 +1,47 @@
 # Jenkins Configuration as Code for the TaskFlow pipeline: the CORE configuration (always loaded).
-# github.yaml (GitHub App credential + multibranch job) and local-verify.yaml (pre-GitHub job) are optional and
+# github.yaml (repository read credential + multibranch job) and local-verify.yaml (pre-GitHub job) are optional and
 # only loaded when CASC_FILES lists them (see docker-compose.yml).
-# Every ${VAR} below is REQUIRED: JCasC refuses to start when one is unset, so a missing secret
-# fails loudly instead of falling back to a default.
+# Every ${VAR} below is REQUIRED: JCasC refuses to start when one is unset, so a missing secret fails loudly.
+#
+# TRUST MODEL
+#   * The controller runs NO builds (0 executors) and holds NO signing key and NO GitHub write token.
+#   * Branch/PR code is built only on the "untrusted" agent: a separate container with no secrets, no access to this
+#     controller's files or credential store, and no route to the gate.
+#   * Signing and GitHub statuses are done by the separate gate container (ci/gate-service), which re-verifies every build.
 jenkins:
   systemMessage: "TaskFlow CI — configured as code (ci/jenkins). Changes made in the UI are lost on restart."
-  numExecutors: 1            # one build at a time: keeps the shared host safe
+  numExecutors: 0            # the controller never executes branch code
   scmCheckoutRetryCount: 2
-  mode: NORMAL               # builds run on the built-in node inside the isolated, resource-limited container
+  mode: EXCLUSIVE
   securityRealm:
     local:
       allowsSignup: false
       users:
         - id: "admin"
           password: "${JENKINS_ADMIN_PASSWORD}"
+        - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
+          password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
   authorizationStrategy:
     globalMatrix:
       permissions:
         - "USER:Overall/Administer:admin"
         - "GROUP:Overall/Read:authenticated"
+        - "USER:Job/Read:gate"
+        - "USER:Job/Discover:gate"
+        - "USER:Job/Build:gate"
   crumbIssuer: "standard"
   remotingSecurity:
     enabled: true
+  nodes:
+    - permanent:
+        name: "untrusted-1"
+        labelString: "untrusted"
+        remoteFS: "/home/jenkins/agent"
+        numExecutors: 1       # one build at a time keeps the shared host safe
+        mode: EXCLUSIVE
+        launcher:
+          inbound:
+            webSocket: true
 
 security:
   queueItemAuthenticator:
@@ -32,28 +52,3 @@ security:
 unclassified:
   location:
     url: "${JENKINS_URL}"
-
-credentials:
-  system:
-    domainCredentials:
-      - credentials:
-          - string:
-              scope: GLOBAL
-              id: "taskflow-github-app-id"
-              secret: "${GITHUB_APP_ID}"
-          - string:
-              scope: GLOBAL
-              id: "taskflow-github-app-installation-id"
-              secret: "${GITHUB_APP_INSTALLATION_ID}"
-          - file:
-              scope: GLOBAL
-              id: "taskflow-github-app-key"
-              description: "GitHub App private key (PKCS#8 PEM) — publishes the unimisk/verified check"
-              fileName: "github-app.pem"
-              secretBytes: "${readFileBase64:${GITHUB_APP_PRIVATE_KEY_FILE}}"
-          - file:
-              scope: GLOBAL
-              id: "taskflow-attest-private-key"
-              description: "Ed25519 private key that signs verification attestations"
-              fileName: "attest.pem"
-              secretBytes: "${readFileBase64:${CI_ATTEST_PRIVATE_KEY_FILE}}"

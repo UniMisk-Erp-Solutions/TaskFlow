@@ -5,7 +5,6 @@ import { generateKeyPairSync } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createAppJwt, publishCheck } from "../lib/github-check.mjs";
 import { scanText } from "../pipeline/scan-credentials.mjs";
 import { checkDist, checkVercelEnv, scanForProductionHosts } from "../verify/env-separation.mjs";
 
@@ -70,32 +69,3 @@ test("Vercel env audit: shared prod+preview values, missing preview values and p
 });
 
 // ── GitHub check run ──────────────────────────────────────────────────────────
-test("publishCheck: GITHUB_APP_ID=0 means \"GitHub App not configured yet\" and sends nothing", async () => {
-  let called = false;
-  const r = await publishCheck({ repo: "o/r", sha: "a", name: "n", conclusion: "success", title: "t", summary: "s", env: { GITHUB_APP_ID: "0", GITHUB_APP_INSTALLATION_ID: "1", GITHUB_APP_PRIVATE_KEY: "x" }, fetchImpl: async () => { called = true; return {}; } });
-  assert.equal(r.skipped, true);
-  assert.equal(called, false);
-});
-
-test("publishCheck: skipped without App credentials, only success|failure, correct API calls", async () => {
-  assert.equal((await publishCheck({ repo: "o/r", sha: "a", name: "unimisk/verified", conclusion: "success", title: "t", summary: "s", env: {} })).skipped, true);
-
-  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const env = { GITHUB_APP_ID: "123", GITHUB_APP_INSTALLATION_ID: "456", GITHUB_APP_PRIVATE_KEY: privateKey.export({ type: "pkcs8", format: "pem" }) };
-  await assert.rejects(() => publishCheck({ repo: "o/r", sha: "a", name: "n", conclusion: "neutral", title: "t", summary: "s", env, fetchImpl: async () => ({}) }), /success" or "failure/);
-
-  const calls = [];
-  const fetchImpl = async (url, init) => {
-    calls.push({ url, body: init.body ? JSON.parse(init.body) : null, auth: init.headers.authorization });
-    return { ok: true, status: 201, json: async () => (url.includes("access_tokens") ? { token: "inst-token" } : { id: 99 }) };
-  };
-  const r = await publishCheck({ repo: "UniMisk-Erp-Solutions/TaskFlow", sha: "abc", name: "unimisk/verified", conclusion: "failure", title: "Not verified", summary: "lint=FAIL", env, fetchImpl });
-  assert.deepEqual(r, { ok: true, id: 99 });
-  assert.match(calls[0].url, /\/app\/installations\/456\/access_tokens$/);
-  assert.equal(calls[0].body.permissions.checks, "write");
-  assert.equal(calls[1].auth, "Bearer inst-token");
-  assert.equal(calls[1].body.conclusion, "failure");
-  assert.equal(calls[1].body.head_sha, "abc");
-  assert.equal(createAppJwt("1", env.GITHUB_APP_PRIVATE_KEY).split(".").length, 3);
-});
-

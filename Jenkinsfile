@@ -1,33 +1,26 @@
-// TaskFlow CI. Runs on Jenkins (ci/jenkins). Order of the whole workflow:
-//   PLAN (TaskFlow task) -> CODE (feature branch) -> BUILD -> TEST -> pre-PR gate -> PR -> ADMIN MERGE -> SHIP (Vercel)
-// This file covers BUILD, TEST and the pre-PR gate. It NEVER merges,
-// deploys or touches production: Vercel deploys production only when an admin merges into main.
-// All logic lives in ci/ (plain Node, no dependencies) so it is identical locally and in Jenkins;
-// the stage names and the list of required checks come from ci/pipeline/config.mjs.
+// TaskFlow CI. Triggered by a push to GitHub (webhook -> gate -> Jenkins branch scan); see docs/ci-cd-pipeline.md.
+//   push -> BUILD -> TEST -> (gate verifies independently, signs, publishes the commit status) -> PR review -> ADMIN merge
+// This file ONLY builds and tests. It runs on the "untrusted" agent, a container with no secrets: it holds no signing key,
+// no GitHub token, and cannot reach the gate. Signing and the commit status are done by the gate (ci/gate-service),
+// which re-checks everything this build reports. It NEVER merges, pushes or deploys.
+// Changing this file or the pipeline scripts under ci/ makes the gate refuse to sign until an admin re-pins the pipeline.
 pipeline {
-  agent any
-
-  parameters {
-    // TEST ONLY: shorten the attestation lifetime (30 to 604800 seconds) to prove expiry. Empty = the 7-day default.
-    string(name: 'ATTEST_TTL_SECONDS', defaultValue: '', description: 'Test only: attestation lifetime in seconds (30-604800); empty = 7 days')
-  }
+  agent { label 'untrusted' }
 
   options {
     timestamps()
     timeout(time: 45, unit: 'MINUTES')
     disableConcurrentBuilds(abortPrevious: true)
     buildDiscarder(logRotator(numToKeepStr: '10', daysToKeepStr: '14'))
-    skipDefaultCheckout(false)
   }
 
   environment {
     CI_REPO           = 'UniMisk-Erp-Solutions/TaskFlow'
-    // Inert values only: CI never talks to a real backend (see CI_BUILD_ENV in ci/pipeline/config.mjs).
     NPM_CONFIG_AUDIT  = 'false'
-    // Chromium's sandbox needs user namespaces, which the locked-down Jenkins container (no capabilities, default
-    // seccomp) does not allow. The pages under test are our own build behind the E2E network jail.
-    PLAYWRIGHT_NO_SANDBOX = '1'
     NPM_CONFIG_FUND   = 'false'
+    // Chromium's sandbox needs user namespaces, which the locked-down container (no capabilities, default seccomp)
+    // does not allow. The pages under test are our own build behind the E2E network jail.
+    PLAYWRIGHT_NO_SANDBOX = '1'
   }
 
   stages {
@@ -62,29 +55,12 @@ pipeline {
     stage('E2E (isolated)') {
       steps { sh 'node ci/pipeline/run-stage.mjs e2e' }
     }
-
   }
 
   post {
     always {
-      // Runs even when a stage failed: it then publishes unimisk/verified = failure naming what failed.
-      // On success it signs the attestation (bound to this exact commit + tree) and publishes success.
-      withCredentials([
-        file(credentialsId: 'taskflow-attest-private-key', variable: 'ATTEST_KEY_FILE'),
-        file(credentialsId: 'taskflow-github-app-key', variable: 'GH_APP_KEY_FILE'),
-        string(credentialsId: 'taskflow-github-app-id', variable: 'GITHUB_APP_ID'),
-        string(credentialsId: 'taskflow-github-app-installation-id', variable: 'GITHUB_APP_INSTALLATION_ID'),
-      ]) {
-        sh '''
-          set +x
-          export CI_ATTEST_PRIVATE_KEY="$(cat "$ATTEST_KEY_FILE")"
-          export GITHUB_APP_PRIVATE_KEY="$(cat "$GH_APP_KEY_FILE")"
-          # Test-only knob (job parameter on taskflow-local-verify): a short-lived attestation to prove expiry.
-          if [ -n "${ATTEST_TTL_SECONDS:-}" ]; then export CI_ATTEST_TTL_SECONDS="$ATTEST_TTL_SECONDS"; fi
-          node ci/gate/attest.mjs || true
-        '''
-      }
-      archiveArtifacts artifacts: '.ci/**, frontend/playwright-report/**, frontend/test-results/**', allowEmptyArchive: true
+      // The per-stage results (bound to this commit and tree) are the evidence the gate reads, even for a failed build.
+      archiveArtifacts artifacts: '.ci/results/*.json, frontend/playwright-report/**, frontend/test-results/**', allowEmptyArchive: true
     }
     cleanup { cleanWs(deleteDirs: true, notFailBuild: true) }
   }
