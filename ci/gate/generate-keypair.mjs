@@ -3,7 +3,7 @@
 //   node ci/gate/generate-keypair.mjs <private-key-output-path>
 // Writes the Ed25519 PRIVATE key to the given path (mode 0600) — store it as the Jenkins secret-file
 // credential `taskflow-attest-private-key` and delete the file. Prints the PUBLIC key, which is
-// committed as ci/gate/attest-public-key.pem so anyone can verify (but nobody can forge) attestations.
+// committed as ci/gate/attest-public-key.pub so anyone can verify (but nobody can forge) attestations.
 import { generateKeyPairSync } from "node:crypto";
 import fs from "node:fs";
 

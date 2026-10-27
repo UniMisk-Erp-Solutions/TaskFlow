@@ -5,7 +5,7 @@
 // for new code.
 //
 // Signatures are Ed25519. Only the Jenkins host holds the PRIVATE key (ci/gate/generate-keypair.mjs);
-// the PUBLIC key is committed (ci/gate/attest-public-key.pem), so developers, Jenkins and the API can
+// the PUBLIC key is committed (ci/gate/attest-public-key.pub), so developers, Jenkins and the API can
 // all verify an attestation but none of them can forge one without Jenkins' key.
 //
 // Pure Node (no dependencies) so it runs identically in Jenkins, locally and in tests.

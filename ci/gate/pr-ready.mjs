@@ -11,13 +11,13 @@ import { pathToFileURL } from "node:url";
 import { REPO_ROOT, REQUIRED_CHECKS } from "../pipeline/config.mjs";
 import { currentFingerprint, evaluateAttestation } from "../lib/attestation.mjs";
 
-export const PUBLIC_KEY_FILE = process.env.CI_ATTEST_PUBLIC_KEY_FILE || path.join(REPO_ROOT, "ci", "gate", "attest-public-key.pem");
+export const PUBLIC_KEY_FILE = process.env.CI_ATTEST_PUBLIC_KEY_FILE || path.join(REPO_ROOT, "ci", "gate", "attest-public-key.pub");
 
 export async function checkPrReady({ file, url, cwd = REPO_ROOT, publicKeyFile = PUBLIC_KEY_FILE, fetchImpl = fetch, now = Date.now() } = {}) {
   const fp = currentFingerprint(cwd);
   const reasons = [];
   if (!fp.clean) reasons.push(`working tree has uncommitted changes (${fp.dirty.length}): commit them, then re-verify`);
-  if (!fs.existsSync(publicKeyFile)) return { ok: false, fp, reasons: [...reasons, "ci/gate/attest-public-key.pem is missing — the Jenkins signing key has not been provisioned yet (BLOCKED)"] };
+  if (!fs.existsSync(publicKeyFile)) return { ok: false, fp, reasons: [...reasons, "ci/gate/attest-public-key.pub is missing — the Jenkins signing key has not been provisioned yet (BLOCKED)"] };
 
   let att = null;
   try {

@@ -187,3 +187,12 @@ test("shell scripts are executable in git (a fresh clone on Linux must be able t
   const out = spawnSync("git", ["ls-files", "-s", "ci/jenkins/install-on-15.sh", "ci/jenkins/scan-image.sh"], { cwd: REPO_ROOT, encoding: "utf8" }).stdout;
   for (const l of out.trim().split("\n")) assert.match(l, /^100755 /, l);
 });
+
+test("the committed attestation public key exists, is an Ed25519 public key, and is not hidden by .gitignore (*.pem is ignored in this repo)", async () => {
+  const { createPublicKey } = await import("node:crypto");
+  const rel = "ci/gate/attest-public-key.pub";
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, rel)), `${rel} is missing`);
+  assert.equal(createPublicKey(fs.readFileSync(path.join(REPO_ROOT, rel))).asymmetricKeyType, "ed25519");
+  assert.notEqual(spawnSync("git", ["check-ignore", "-q", rel], { cwd: REPO_ROOT }).status, 0, "ignored by .gitignore");
+  assert.doesNotMatch(read(rel), /PRIVATE/);
+});

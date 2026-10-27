@@ -55,7 +55,7 @@ A developer cannot submit the final PR for code Jenkins has not verified, and an
 1. A push to a feature branch runs the full pipeline on that commit.
 2. `ci/gate/attest.mjs` accepts only stage results recorded for **this commit and this Git tree hash** (`HEAD^{tree}`, the content hash of the whole checked-in tree). Results from other code are `STALE`, missing ones `MISSING`, and a dirty working tree also fails.
 3. If every required check is `PASS` it writes an **Ed25519-signed attestation** (`.ci/attestation.json`: repo, branch, commit, tree, each check's status, issue and expiry time; **7-day lifetime**) and publishes the GitHub check **`unimisk/verified` = success**. Otherwise it publishes `failure` naming what failed. Only `success`/`failure` are ever sent, because GitHub counts `neutral`/`skipped` as passing for required checks.
-4. Only the Jenkins host holds the private key; the public key (`ci/gate/attest-public-key.pem`) is committed, so anyone can verify and no one can forge.
+4. Only the Jenkins host holds the private key; the public key (`ci/gate/attest-public-key.pub`) is committed, so anyone can verify and no one can forge.
 5. **Developer, before opening the PR:** `node ci/gate/pr-ready.mjs` (optionally `--file`/`--url` for the Jenkins artifact). It prints `READY` only if the signature is valid, every required check is `PASS`, the attestation is unexpired, **its tree equals the current tree**, and nothing is uncommitted. Amending a message or rebasing to an identical tree keeps the attestation; **any code change does not**.
 6. GitHub enforces the same rule where it cannot be skipped (next section).
 
@@ -168,7 +168,7 @@ Not verifiable without a running Jenkins (first thing to confirm after start-up,
 | GitHub App (new, installed on `UniMisk-Erp-Solutions/TaskFlow` only) | Repository permissions: **Checks: read & write** (publishes `unimisk/verified`), **Contents: read**, **Metadata: read**, **Pull requests: read**, **Commit statuses: read & write** (Branch Source plugin). No webhook is needed while the job polls. |
 | GitHub App private key | Download the `.pem`, then convert it to PKCS#8: `openssl pkcs8 -topk8 -inform PEM -outform PEM -in app.pem -out github-app.pem -nocrypt`. One converted file serves scanning and check publishing. |
 | App id, installation id | Numbers from the App's settings page and from the URL of its installation |
-| Attestation signing key | Ed25519, generated **on the Jenkins host**: `openssl genpkey -algorithm ed25519 -out attest.pem`; public half: `openssl pkey -in attest.pem -pubout -out attest-public-key.pem`, committed as `ci/gate/attest-public-key.pem` through a normal PR |
+| Attestation signing key | Ed25519, generated **on the Jenkins host**: `openssl genpkey -algorithm ed25519 -out attest.pem`; public half: `openssl pkey -in attest.pem -pubout -out attest-public-key.pub`, committed as `ci/gate/attest-public-key.pub` through a normal PR |
 | Key files on the host | Owned by `olympus` (uid 1000, which is also Jenkins' uid in the container), mode `0400`, outside any repository directory |
 | Environment for the installer | `JENKINS_ADMIN_PASSWORD`, `JENKINS_URL` (the URL your browser will use, e.g. `http://127.0.0.1:8088/` through an SSH tunnel), `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `CI_ATTEST_PRIVATE_KEY_PATH` |
 | Admin token for branch protection | A GitHub token with repository-admin rights, used once on an admin's machine for `branch-protection.mjs --apply`, never stored in Jenkins |
@@ -216,7 +216,7 @@ Against `origin/main` the branch changes no file under `supabase/` or `backend/s
 ## Remaining setup before real Jenkins activation (nothing here has been done)
 
 1. Install Jenkins on `192.168.23.15` following the [runbook](#jenkins-activation-preflight-record-and-runbook) above. The preflight (`--check`) passed read-only; the real install also builds and Trivy-scans the Jenkins image, which has not been run (no Docker daemon locally).
-2. Generate the attestation key **on the Jenkins host** (`ci/gate/generate-keypair.mjs`), store the private key as the `taskflow-attest-private-key` credential, and commit the public key as `ci/gate/attest-public-key.pem`. Until then `pr-ready` correctly reports the key as not provisioned.
+2. Generate the attestation key **on the Jenkins host** (`ci/gate/generate-keypair.mjs`), store the private key as the `taskflow-attest-private-key` credential, and commit the public key as `ci/gate/attest-public-key.pub`. Until then `pr-ready` correctly reports the key as not provisioned.
 3. Create the GitHub App (Checks: write), install it on the repository, and store its id, installation id and key as Jenkins credentials.
 4. Copy `ci/github/CODEOWNERS.proposed` to `.github/CODEOWNERS` with the real admin team, then `ci/github/branch-protection.mjs --apply` (dry run first). Confirm GitHub shows `unimisk/verified` as required from the App.
 5. In Vercel confirm: production branch is `main`; Preview has its own `VITE_*` values (`ci/verify/env-separation.mjs --vercel-env env.json`); the Node version is 18 or newer.
