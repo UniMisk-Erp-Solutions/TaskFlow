@@ -389,12 +389,32 @@ On start the gate re-verified 10 existing finished builds (recorded locally only
 
 Still BLOCKED, needs the owner: GitHub webhook and tokens (status mode `github-status`), a new Cloudflare tunnel hostname pointing only at gate port 8089, permission to push a test branch, and Vercel access for the deployment-bypass audit.
 
+## Connect GitHub to the running stack (owner actions, in this order)
+
+State on 2026-10-27: the original repository is `UniMisk-Erp-Solutions/TaskFlow` (this checkout's `origin`); `feature/ci-cd-pipeline` is merged with `origin/main@c3701ba` (merge `45fa1dd`), all 78 pipeline tests pass, and the gate's pipeline pins still match the merged tree (no gate rebuild needed). Nothing has been pushed: the push URL of this checkout is deliberately disabled.
+
+**Production data isolation (verified from the configuration, not by running anything against a database).** Every pipeline stage builds with `CI_BUILD_ENV` (`http://127.0.0.1:4010`, a fake anon key); Playwright talks to a mocked API on loopback and refuses any `VITE_*`/`E2E_*` value containing a production host; `ci/verify/env-separation.mjs` checks the built bundle; the agent container has no Supabase, Vercel or GitHub credentials and no route to the gate; the pipeline contains no migration, reset or SQL step. The existing TaskFlow application and Supabase stack were never touched.
+
+| # | Who | Action |
+| --- | --- | --- |
+| 1 | owner | Create two **fine-grained personal access tokens** (Settings > Developer settings), repository `TaskFlow` only: **read** token = Contents, Pull requests, Metadata: read; **status** token = Commit statuses: read/write, Metadata: read. |
+| 2 | owner | Put them on `.15` (never in chat or Git): `~/taskflow-ci/secrets/github-read-token` and `gate-github-token` (mode 0400), set `GITHUB_READ_USER=<your GitHub username>` and `GATE_STATUS_MODE=github-status` in `~/taskflow-ci/.env`, and add `/usr/share/jenkins/ref/casc/github.yaml` to `CASC_FILES`. |
+| 3 | owner | Cloudflare: create a **new** named tunnel (do not edit `cloudflared.service` or `cloudflared-networkwise.service`) with one public hostname, e.g. `taskflow-ci-hooks.<your-domain>`, service `http://127.0.0.1:8089`. Only the gate's webhook port is published, never Jenkins (8088) or the gate admin port (8090). |
+| 4 | owner | GitHub repo > Settings > Webhooks > Add: payload URL `https://taskflow-ci-hooks.<your-domain>/github`, content type `application/json`, secret = the contents of `~/taskflow-ci/secrets/gate-webhook-secret`, events: **Pushes** and **Pull requests**. |
+| 5 | owner | Approve pushing `feature/ci-cd-pipeline` and a disposable `ci-test/*` branch (or add a write credential to this checkout). |
+| 6 | owner | Vercel: Project > Settings > Git: set **Ignored Build Step** so only a deployment approved through `ci/release/deploy-authorized.mjs` can reach Production, and remove deploy hooks and unused tokens. The TaskFlow Vercel project is not visible from the connected Vercel account, so this audit is BLOCKED until you grant access. |
+
+Free-plan limit that stays true: private-repo branch protection is not enforceable, so "admin-only merge" is enforced by the independent release gate (Jenkins attestation + admin-signed approval), not by GitHub.
+
+**Rollback:** remove the webhook in GitHub, revert `.env` (`GATE_STATUS_MODE=record`, drop `github.yaml` from `CASC_FILES`), `docker compose up -d jenkins gate`. The application, its database and the existing tunnels are never involved.
+
 ## Revision log
 
 | Date | Change |
 | --- | --- |
 | 2026-10-27 | Push-triggered stack rollout diagnosed: build OK, gate image scan could not run (no Trivy in gate image), old Jenkins untouched; scan script fixed locally; recovery steps recorded. |
 | 2026-10-27 | Rollout completed: npm removed from gate image (sigstore CVE), both images scan clean, controller + agent + gate running and healthy; manual test checklist recorded. Live GitHub, Cloudflare and Vercel steps pending.
+| 2026-10-27 | Merged origin/main (c3701ba); production-data isolation reviewed; owner action list for GitHub webhook, tokens, Cloudflare tunnel and Vercel added. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
