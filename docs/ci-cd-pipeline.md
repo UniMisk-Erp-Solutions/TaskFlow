@@ -468,6 +468,10 @@ The repository is **public**, so GitHub branch protection and rulesets are free.
 
 **Limits:** Jenkins stays the free CI; Vercel does the actual hosting. Until steps 1, 4 and 5 are done, GitHub does not block merges and Vercel still deploys production from `main` on its own, so production is not protected by this pipeline.
 
+## Instant push detection (no webhook, no tunnel)
+
+The gate asks GitHub every `GATE_WATCH_SECONDS` (default 10; `0` disables) whether any branch tip moved (`ci/gate-service/ref-watcher.mjs`). The request is conditional (`If-None-Match`): GitHub answers `304` while nothing changed, which is free and does not use the rate limit. When a tip moves (push, new branch, update of a PR branch) the gate triggers a Jenkins scan immediately, so a build starts within seconds of a push. Nothing is exposed to the internet, no Cloudflare tunnel and no repository-admin action is needed. The GitHub webhook (`POST /github`) remains supported as an alternative, and the periodic scan (`GATE_SCAN_EVERY_SECONDS`, 120) stays as the recovery path. Gate log line on detection: `push detected on GitHub: scanning Jenkins`.
+
 ## Revision log
 
 | Date | Change |
@@ -481,6 +485,7 @@ The repository is **public**, so GitHub branch protection and rulesets are free.
 | 2026-10-27 | Final verification: d882ef2 detected and built automatically (build #4, 8/8) with a fresh `unimisk/verified` success; token-rotation and Vercel checklists recorded; Vercel audit and production deployment lock remain BLOCKED. |
 | 2026-10-27 | Central pipeline: Jenkinsfile stored in Jenkins plus a trusted CI toolkit overlay (`ci/pipeline/overlay.mjs`) so branches need no pipeline files; the gate pins the toolkit; tests added (84 pass). |
 | 2026-10-27 | Free production workflow: CODEOWNERS, PR template, release promotion by fast-forwarding the `production` branch (no Vercel token), read-only smoke check, Jenkins `taskflow-monitor` health job; owner actions listed (rulesets, Vercel Production Branch, staging Supabase). |
+| 2026-10-27 | Instant push detection: the gate polls GitHub branch tips every 10 s with conditional requests and triggers the Jenkins scan on change (no webhook, tunnel or open port); 90 pipeline tests pass. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |

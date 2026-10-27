@@ -6,6 +6,7 @@ import { createGate, createPublisher } from "./gate.mjs";
 import { createGitSource } from "./git-source.mjs";
 import { createJenkinsClient } from "./jenkins.mjs";
 import { createServers } from "./server.mjs";
+import { createRefWatcher } from "./ref-watcher.mjs";
 import { createState } from "./state.mjs";
 
 const env = process.env;
@@ -19,6 +20,7 @@ const cfg = {
   maxRequestsPerMinute: Number(env.GATE_MAX_REQUESTS_PER_MINUTE || 60),
   tickSeconds: Number(env.GATE_TICK_SECONDS || 10),
   scanEverySeconds: Number(env.GATE_SCAN_EVERY_SECONDS || 120),
+  watchSeconds: Number(env.GATE_WATCH_SECONDS ?? 10), // 0 disables push detection by polling
   statusMode: env.GATE_STATUS_MODE || "record",
 };
 if (!["record", "github-status"].includes(cfg.statusMode)) { console.error("✘ GATE_STATUS_MODE must be record or github-status"); process.exit(1); }
@@ -47,4 +49,17 @@ const tick = async () => { if (busy) return; busy = true; try { const r = await 
 setInterval(tick, cfg.tickSeconds * 1000); tick();
 // Recovery path: even if every webhook is lost, a periodic scan keeps Jenkins in step with the repository.
 setInterval(() => jenkins.triggerScan().catch((e) => console.log(`[gate] periodic scan failed: ${e.message}`)), cfg.scanEverySeconds * 1000);
+// Push detection: a branch tip moved on GitHub -> scan Jenkins now (no webhook, tunnel or open port needed).
+if (cfg.watchSeconds > 0) {
+  const watcher = createRefWatcher({ repo: cfg.repo, token: githubToken });
+  let polling = false, lastErr = "";
+  setInterval(async () => {
+    if (polling) return; polling = true;
+    try {
+      const r = await watcher.poll(); lastErr = "";
+      if (r.changed) { console.log("[gate] push detected on GitHub: scanning Jenkins"); await jenkins.triggerScan(); }
+    } catch (e) { if (e.message !== lastErr) { lastErr = e.message; console.log(`[gate] push watch failed: ${e.message}`); } }
+    finally { polling = false; }
+  }, cfg.watchSeconds * 1000);
+}
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { state.save(); process.exit(0); });
