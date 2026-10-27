@@ -408,6 +408,24 @@ Free-plan limit that stays true: private-repo branch protection is not enforceab
 
 **Rollback:** remove the webhook in GitHub, revert `.env` (`GATE_STATUS_MODE=record`, drop `github.yaml` from `CASC_FILES`), `docker compose up -d jenkins gate`. The application, its database and the existing tunnels are never involved.
 
+## Final verification record (2026-10-27)
+
+| Check | Result |
+| --- | --- |
+| `df2bf68`: Jenkins build #3 (automatic), all 8 stages | PASS; `unimisk/verified` = success on GitHub |
+| `d882ef2` (pushed to the feature branch only, never `main`): Jenkins detected it on its own, build #4 ran all 8 stages, gate published a fresh `unimisk/verified` = success ("All 8 required checks passed (build #4)") | PASS |
+| Release gate (Jenkins attestation + admin approval; dry run by default) | unit tests PASS (12); not exercised live; **no production deployment was made** |
+| Vercel Preview isolation, production-deploy bypass audit | **BLOCKED**: the connected Vercel account only sees team `mithil1105s-projects`; TaskFlow lives in `unimisk-erp-solutions-projects`. Observed fact: every pushed branch gets a Vercel deployment (status context `Vercel`). Do not treat production as protected until the checklist below is done. |
+
+**Rotating the exposed tokens (owner, GitHub only; secrets are typed on the CI host, never pasted into chat):**
+1. Create one **classic** token with only `repo:status` (short expiry) and one **read** token (fine-grained, TaskFlow only, Contents + Pull requests + Metadata read; the repository is public, so a read token is optional).
+2. On `.15`: `read -rs T; printf '%s' "$T" > ~/taskflow-ci/secrets/gate-github-token` (mode 0400; same for `github-read-token`), then `bash ~/taskflow-ci/activate-github.sh`.
+3. Confirm the next build still publishes `unimisk/verified`, **then** revoke the three old tokens in GitHub > Settings > Developer settings.
+
+**Vercel checklist (owner or after granting access to team `unimisk-erp-solutions-projects`):** Project `task-flow` > Settings > Git: which branch is Production; Preview env vars point to a non-production Supabase project; Deploy Hooks removed; Ignored Build Step / "Require verified commits" set; list of members and tokens that can deploy. Only after all bypasses are closed may the deployment gate (`ci/release/deploy-authorized.mjs`) be declared the only production path.
+
+**Limits:** GitHub Free cannot enforce branch protection on a private repo, so merge control is the release gate plus review, not GitHub. The webhook/Cloudflare tunnel is not confirmed from this host; without it Jenkins still picks pushes up on its scan interval (about 1 minute here).
+
 ## Revision log
 
 | Date | Change |
@@ -418,6 +436,7 @@ Free-plan limit that stays true: private-repo branch protection is not enforceab
 | 2026-10-27 | Added `ci/jenkins/activate-github.sh` (copy at `~/taskflow-ci/activate-github.sh` on .15): once both token files hold real tokens, `bash ~/taskflow-ci/activate-github.sh` switches the gate to `github-status`, enables `github.yaml` and recreates only Jenkins and the gate. Push of the feature branch was refused (403: the stored GitHub login `Priyanshulila` has no write access); push URL left disabled. |
 | 2026-10-27 | GitHub mode activated on .15 with the owner's two read-only tokens: Jenkins job `taskflow` (GitHub branch source, PR heads, forks off) loads and indexes the repo; gate reads commits from GitHub. Findings: (1) `traits {}` is not valid Job DSL, replaced by `buildOriginBranch/buildOriginBranchWithPR/buildOriginPRHead`; (2) Job DSL jobs need a Jenkins reload (now in the script); (3) **neither token can write commit statuses** (GitHub returns 403): the status token needs "Commit statuses: Read and write" and the org must allow it. Until then GitHub shows no `unimisk/verified` status. |
 | 2026-10-27 | Live push flow verified on GitHub: pushed `feature/ci-cd-pipeline@df2bf68` -> Jenkins built it automatically on the agent (build #3, all 8 stages PASS, E2E workers capped at 2) -> the gate verified it independently and published `unimisk/verified` = success on that exact commit. Fixes found live: classic PAT with `repo:status` is required (fine-grained tokens owned by a user cannot write statuses on an organization repo); gate state keys now include the Jenkins folder (a second job reusing branch+build numbers was silently skipped). Found: Vercel already creates a Preview deployment for pushed branches (status context `Vercel`); the Vercel audit stays BLOCKED until access to team `unimisk-erp-solutions-projects` is granted. |
+| 2026-10-27 | Final verification: d882ef2 detected and built automatically (build #4, 8/8) with a fresh `unimisk/verified` success; token-rotation and Vercel checklists recorded; Vercel audit and production deployment lock remain BLOCKED. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
