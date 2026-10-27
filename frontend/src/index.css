@@ -2276,3 +2276,86 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
   .taskflow-sidebar { padding-top: env(safe-area-inset-top, 0px); height: 100dvh; box-sizing: border-box; }
   .taskflow-sidebar nav { overflow-y: auto; }
 }
+
+/* Leave portal: List / Calendar switch and the month calendar. */
+.tf-leave-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.tf-leave-views { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-panel); }
+.tf-leave-views button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--tf-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tf-leave-views button.is-active { background: var(--color-primary); color: var(--color-on-primary, #fff); }
+.tf-lc { background: var(--tf-panel); border: 1px solid var(--tf-border); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }
+.tf-lc-head { display: flex; align-items: center; gap: 8px; }
+.tf-lc-title { flex: 1; text-align: center; font-size: 15px; color: var(--tf-text); }
+.tf-lc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.tf-lc-dow { text-align: center; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--tf-muted); padding: 4px 0; }
+.tf-lc-cell { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-height: 84px; padding: 6px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-page); color: var(--tf-text); font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.tf-lc-cell.is-empty { border-color: transparent; background: transparent; cursor: default; }
+.tf-lc-cell:not(.is-empty):hover { border-color: var(--color-primary); }
+.tf-lc-cell.is-today .tf-lc-num { background: var(--color-primary); color: var(--color-on-primary, #fff); }
+.tf-lc-cell.is-selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 35%, transparent); }
+.tf-lc-num { align-self: flex-start; min-width: 22px; height: 22px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.tf-lc-chips { display: grid; gap: 2px; min-width: 0; }
+.tf-lc-chip { display: block; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-lc-more { font-size: 11px; color: var(--tf-muted); padding-left: 4px; }
+.tf-lc-dots { display: none; gap: 3px; justify-content: center; }
+.tf-lc-dots i, .tf-lc-legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.tf-lc-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--tf-muted); }
+.tf-lc-legend span { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 640px) {
+  .tf-lc { padding: 8px; }
+  .tf-lc-cell { min-height: 50px; padding: 4px; align-items: center; }
+  .tf-lc-num { align-self: center; }
+  .tf-lc-chips { display: none; }
+  .tf-lc-dots { display: flex; }
+  .tf-lc-today { display: none; }
+  .tf-leave-views { width: 100%; }
+  .tf-leave-views button { flex: 1; justify-content: center; }
+}
+
+/* Leave portal on phones: never wider than the screen, and a compact "Request leave" button. */
+.tf-leave, .tf-leave > *, .tf-leave-toolbar > *, .tf-leave-head > * { min-width: 0; }
+.tf-leave { max-width: 100%; }
+@media (max-width: 560px) {
+  .tf-leave-head { align-items: center; }
+  .tf-leave-head > button { width: auto !important; min-height: 34px !important; padding: 6px 12px !important; font-size: 13px !important; margin-left: auto; }
+  .tf-leave-tabs { max-width: 100%; }
+  .tf-leave-views { max-width: 100%; box-sizing: border-box; }
+}
+
+/* Very small phones: slimmer header icons so the page title keeps its room. */
+@media (max-width: 380px) {
+  .employee-header-actions, .tf-subnav-actions { gap: 8px !important; }
+  .employee-header-actions > button,
+  .employee-header-actions > .tf-theme-toggle,
+  .tf-subnav-actions > .tf-header-ai-button,
+  .tf-subnav-actions > .btn-icon,
+  .tf-subnav-actions > .tf-theme-toggle { width: 34px !important; height: 34px !important; flex: 0 0 34px !important; }
+}
+
+/* Leave portal: admin / manager summary (per-employee totals with filters). */
+.tf-ls { display: grid; gap: 12px; min-width: 0; }
+.tf-ls-filters { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.tf-ls-field { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--tf-muted); }
+.tf-ls-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tf-ls-tiles > div { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--tf-border); border-radius: 14px; background: var(--tf-panel); }
+.tf-ls-tiles b { font-size: 24px; line-height: 1.1; color: var(--tf-text); font-family: var(--font-display); }
+.tf-ls-tiles span { font-size: 12px; color: var(--tf-muted); }
+.tf-ls-list { display: grid; gap: 10px; }
+.tf-ls-card { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--tf-border); border-radius: 14px; background: var(--tf-panel); min-width: 0; }
+.tf-ls-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.tf-ls-card-head strong { color: var(--tf-text); font-size: 15px; overflow-wrap: anywhere; }
+.tf-ls-card-head span { font-size: 13px; color: var(--tf-muted); }
+.tf-ls-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.tf-ls-type { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--tf-pearl); border: 1px solid var(--tf-border); font-size: 12px; color: var(--tf-text); }
+.tf-ls-type b { color: var(--color-primary); }
+.tf-ls-note { font-size: 12px; color: var(--tf-muted); }
+@media (max-width: 560px) {
+  .tf-ls-filters { grid-template-columns: 1fr 1fr; }
+  .tf-ls-tiles b { font-size: 20px; }
+}
+@media (max-width: 380px) { .tf-ls-filters { grid-template-columns: 1fr; } }
+
+/* Files: Public / Private dropdown under the All / Mine / Shared switch. */
+.fx-show { display: grid; gap: 8px; justify-items: end; }
+.fx-access { width: 100%; min-width: 170px; }
+.fx-access .tf-selectmenu-button { min-height: 38px; padding: 6px 14px; font-size: 13px; border-radius: 12px; }
+@media (max-width: 640px) { .fx-show { width: 100%; justify-items: stretch; } .fx-show .fx-segmented { justify-self: stretch; } .fx-show .fx-segmented button { flex: 1; justify-content: center; } }

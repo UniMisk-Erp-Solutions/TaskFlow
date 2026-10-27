@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarOff, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { BarChart3, CalendarDays, CalendarOff, Check, ChevronLeft, ChevronRight, List, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 import SelectMenu from './SelectMenu';
@@ -183,7 +183,201 @@ function IconAction({ icon: Icon, label, onClick, tone, disabled }) {
   );
 }
 
-export default function LeavePortal({ isAdmin = false }) {
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoOf = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Month grid: every leave request is drawn on each day it covers, coloured by status. Tap a day to see its requests. */
+function LeaveCalendar({ rows, selected, onSelect, showNames }) {
+  const now = new Date();
+  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const todayIso = isoOf(now.getFullYear(), now.getMonth(), now.getDate());
+  const firstWeekday = new Date(cursor.y, cursor.m, 1).getDay();
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+  while (cells.length % 7) cells.push(null);
+
+  const shift = (delta) => setCursor((c) => {
+    const next = new Date(c.y, c.m + delta, 1);
+    return { y: next.getFullYear(), m: next.getMonth() };
+  });
+  const onDay = (iso) => rows.filter((r) => r.start_date <= iso && iso <= r.end_date);
+  const chipLabel = (r) => `${showNames ? `${String(r.employee_name || '').split(' ')[0]} · ` : ''}${leaveTypeLabel(r)}`;
+
+  return (
+    <div className="tf-lc">
+      <div className="tf-lc-head">
+        <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Previous month" onClick={() => shift(-1)}><ChevronLeft size={16} /></button>
+        <strong className="tf-lc-title" aria-live="polite">{MONTHS[cursor.m]} {cursor.y}</strong>
+        <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Next month" onClick={() => shift(1)}><ChevronRight size={16} /></button>
+        <button type="button" className="btn btn-ghost btn-sm tf-lc-today" onClick={() => { setCursor({ y: now.getFullYear(), m: now.getMonth() }); onSelect(todayIso); }}>Today</button>
+      </div>
+      <div className="tf-lc-grid" role="grid" aria-label={`${MONTHS[cursor.m]} ${cursor.y}`}>
+        {WEEKDAYS.map((w) => <div key={w} className="tf-lc-dow" role="columnheader">{w}</div>)}
+        {cells.map((d, i) => {
+          if (!d) return <div key={`e${i}`} className="tf-lc-cell is-empty" role="gridcell" aria-hidden="true" />;
+          const iso = isoOf(cursor.y, cursor.m, d);
+          const list = onDay(iso);
+          return (
+            <button
+              key={iso}
+              type="button"
+              role="gridcell"
+              className={`tf-lc-cell${iso === todayIso ? ' is-today' : ''}${iso === selected ? ' is-selected' : ''}`}
+              aria-label={`${d} ${MONTHS[cursor.m]}${list.length ? `, ${list.length} leave request${list.length === 1 ? '' : 's'}` : ''}`}
+              aria-pressed={iso === selected}
+              onClick={() => onSelect(iso === selected ? null : iso)}
+            >
+              <span className="tf-lc-num">{d}</span>
+              <span className="tf-lc-chips">
+                {list.slice(0, 2).map((r) => (
+                  <span key={r.id} className="tf-lc-chip" style={{ color: STATUS[r.status]?.color, background: STATUS[r.status]?.bg }} title={`${r.employee_name} — ${leaveTypeLabel(r)} (${STATUS[r.status]?.label})`}>{chipLabel(r)}</span>
+                ))}
+                {list.length > 2 && <span className="tf-lc-more">+{list.length - 2} more</span>}
+              </span>
+              {list.length > 0 && (
+                <span className="tf-lc-dots" aria-hidden="true">
+                  {list.slice(0, 3).map((r) => <i key={r.id} style={{ background: STATUS[r.status]?.color }} />)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <div className="tf-lc-legend">
+        {Object.entries(STATUS).map(([key, s]) => <span key={key}><i style={{ background: s.color }} /> {s.label}</span>)}
+      </div>
+    </div>
+  );
+}
+
+const dayNumber = (iso) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
+const monthKey = (iso) => iso.slice(0, 7);
+const monthLabel = (key) => `${MONTHS[+key.slice(5, 7) - 1]} ${key.slice(0, 4)}`;
+const allMonthKeysBetween = (fromKey, toKey) => {
+  const out = [];
+  let y = +fromKey.slice(0, 4);
+  let m = +fromKey.slice(5, 7);
+  while (`${y}-${pad2(m)}` <= toKey) {
+    out.push(`${y}-${pad2(m)}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+};
+
+/** How many days a request counts for: half day = 0.5, late coming = 0 (it is an occurrence, not a day off). */
+function leaveDays(r, from, to) {
+  if (r.leave_type === 'half day') return 0.5;
+  if (r.leave_type === 'late coming') return 0;
+  const start = Math.max(dayNumber(r.start_date), from);
+  const end = Math.min(dayNumber(r.end_date), to);
+  return Math.max(0, end - start + 1);
+}
+
+const fmtDays = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/** Admin / manager view: how much leave each person has taken, filtered by person, type, month and status. */
+function LeaveSummary({ rows }) {
+  const [person, setPerson] = useState('all');
+  const [type, setType] = useState('all');
+  const [month, setMonth] = useState('all');
+  const [scope, setScope] = useState('approved'); // approved | all
+
+  const people = useMemo(() => {
+    const seen = new Map();
+    rows.forEach((r) => { if (!seen.has(r.user_id)) seen.set(r.user_id, r.employee_name || 'Unknown'); });
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+
+  const typeOptions = useMemo(() => {
+    const base = TYPE_OPTIONS.filter((o) => o.value !== 'custom');
+    const custom = [...new Set(rows.filter((r) => r.is_custom).map((r) => r.leave_type))].sort();
+    return [{ value: 'all', label: 'All types' }, ...base, ...custom.map((c) => ({ value: `custom:${c}`, label: c }))];
+  }, [rows]);
+
+  const monthOptions = useMemo(() => {
+    const now = new Date();
+    const nowKey = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}`;
+    const keys = rows.flatMap((r) => [monthKey(r.start_date), monthKey(r.end_date)]).concat(nowKey).sort();
+    const list = allMonthKeysBetween(keys[0], keys[keys.length - 1]).reverse();
+    return [{ value: 'all', label: 'All time' }, ...list.map((k) => ({ value: k, label: monthLabel(k) }))];
+  }, [rows]);
+
+  const { groups, totals } = useMemo(() => {
+    const from = month === 'all' ? -Infinity : dayNumber(`${month}-01`);
+    const to = month === 'all' ? Infinity : dayNumber(`${month}-${pad2(new Date(+month.slice(0, 4), +month.slice(5, 7), 0).getDate())}`);
+    const byUser = new Map();
+    rows.forEach((r) => {
+      if (scope === 'approved' && r.status !== 'approved') return;
+      if (person !== 'all' && r.user_id !== person) return;
+      if (type !== 'all' && (type.startsWith('custom:') ? !(r.is_custom && r.leave_type === type.slice(7)) : (r.is_custom || r.leave_type !== type))) return;
+      if (dayNumber(r.end_date) < from || dayNumber(r.start_date) > to) return;
+      const entry = byUser.get(r.user_id) || { id: r.user_id, name: r.employee_name || 'Unknown', requests: 0, days: 0, types: new Map() };
+      const days = leaveDays(r, from, to);
+      entry.requests += 1;
+      entry.days += days;
+      const label = leaveTypeLabel(r);
+      const t = entry.types.get(label) || { count: 0, days: 0 };
+      t.count += 1;
+      t.days += days;
+      entry.types.set(label, t);
+      byUser.set(r.user_id, entry);
+    });
+    const list = [...byUser.values()].sort((a, b) => b.days - a.days || b.requests - a.requests || a.name.localeCompare(b.name));
+    return { groups: list, totals: { requests: list.reduce((n, g) => n + g.requests, 0), days: list.reduce((n, g) => n + g.days, 0), people: list.length } };
+  }, [rows, person, type, month, scope]);
+
+  const personOptions = [{ value: 'all', label: 'Everyone' }, ...people.map(([id, name]) => ({ value: id, label: name }))];
+  const scopeOptions = [{ value: 'approved', label: 'Approved only' }, { value: 'all', label: 'All requests' }];
+
+  return (
+    <div className="tf-ls">
+      <div className="tf-ls-filters">
+        <div className="tf-ls-field"><span>Employee</span><SelectMenu value={person} onChange={setPerson} options={personOptions} ariaLabel="Filter by employee" /></div>
+        <div className="tf-ls-field"><span>Leave type</span><SelectMenu value={type} onChange={setType} options={typeOptions} ariaLabel="Filter by leave type" /></div>
+        <div className="tf-ls-field"><span>Month</span><SelectMenu value={month} onChange={setMonth} options={monthOptions} ariaLabel="Filter by month" /></div>
+        <div className="tf-ls-field"><span>Counting</span><SelectMenu value={scope} onChange={setScope} options={scopeOptions} ariaLabel="Which requests to count" /></div>
+      </div>
+
+      <div className="tf-ls-tiles">
+        <div><b>{totals.requests}</b><span>Requests</span></div>
+        <div><b>{fmtDays(totals.days)}</b><span>Days off</span></div>
+        <div><b>{totals.people}</b><span>{totals.people === 1 ? 'Employee' : 'Employees'}</span></div>
+      </div>
+
+      {groups.length === 0 ? (
+        <div style={{ display: 'grid', placeItems: 'center', gap: 8, padding: '32px 16px', border: '1px dashed var(--tf-border)', borderRadius: 14, color: 'var(--tf-muted)', textAlign: 'center' }}>
+          <CalendarOff size={26} />
+          <div style={{ fontSize: 14 }}>No leave matches these filters.</div>
+        </div>
+      ) : (
+        <div className="tf-ls-list">
+          {groups.map((g) => (
+            <article key={g.id} className="tf-ls-card">
+              <div className="tf-ls-card-head">
+                <strong>{g.name}</strong>
+                <span>{g.requests} request{g.requests === 1 ? '' : 's'} · {fmtDays(g.days)} day{g.days === 1 ? '' : 's'}</span>
+              </div>
+              <div className="tf-ls-types">
+                {[...g.types.entries()].sort((a, b) => b[1].count - a[1].count).map(([label, t]) => (
+                  <span key={label} className="tf-ls-type" title={`${t.count} request${t.count === 1 ? '' : 's'}, ${fmtDays(t.days)} day${t.days === 1 ? '' : 's'}`}>{label} <b>{t.count}</b></span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <div className="tf-ls-note">Half day counts as 0.5 day. Late coming is counted as a request but adds no days off.</div>
+    </div>
+  );
+}
+
+export default function LeavePortal({ isAdmin = false, canSummary = false }) {
+  const showSummary = isAdmin || canSummary;
   const { profile } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -192,6 +386,8 @@ export default function LeavePortal({ isAdmin = false }) {
   const [form, setForm] = useState(null); // null = closed, otherwise the initial form values
   const [busyId, setBusyId] = useState(null);
   const [notice, setNotice] = useState('');
+  const [view, setView] = useState('list'); // list | calendar
+  const [selectedDay, setSelectedDay] = useState(null); // ISO date picked on the calendar
 
   const load = useCallback(async () => {
     try {
@@ -234,6 +430,44 @@ export default function LeavePortal({ isAdmin = false }) {
 
   const filters = [['all', 'All', rows.length], ['pending', 'Pending', counts.pending || 0], ['approved', 'Approved', counts.approved || 0], ['rejected', 'Rejected', counts.rejected || 0]];
 
+  const renderCard = (r) => {
+      const mine = r.user_id === profile?.id;
+      const pending = r.status === 'pending';
+      const busy = busyId === r.id;
+      return (
+        <article key={r.id} className="tf-leave-card" style={{ background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 14, padding: '14px 16px', display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{r.employee_name}</div>
+              <div style={{ fontSize: 13, color: 'var(--tf-muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
+                {leaveTypeLabel(r)}{SINGLE_DAY_TYPES.includes(r.leave_type) ? '' : ' leave'} · {r.duration === 'single' ? 'One day' : `${r.days} days`}
+              </div>
+            </div>
+            <StatusBadge status={r.status} />
+          </div>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13, color: 'var(--tf-text)' }}>
+            <span><span style={{ color: 'var(--tf-muted)' }}>From </span>{formatLeaveDate(r.start_date)}</span>
+            <span><span style={{ color: 'var(--tf-muted)' }}>To </span>{formatLeaveDate(r.end_date)}</span>
+          </div>
+          {r.reason && <div style={{ fontSize: 13, color: 'var(--tf-subhead)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{r.reason}</div>}
+          {!pending && r.reviewed_by_name && (
+            <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+              {STATUS[r.status].label} by {r.reviewed_by_name}{r.review_note ? ` — “${r.review_note}”` : ''}
+            </div>
+          )}
+          {((isAdmin && pending) || (mine && pending) || isAdmin) && (
+            <div className="tf-leave-card-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {isAdmin && pending && <IconAction icon={Check} label="Approve" tone="#15803d" disabled={busy} onClick={() => decide(r, 'approved')} />}
+              {isAdmin && pending && <IconAction icon={X} label="Reject" tone="#b91c1c" disabled={busy} onClick={() => decide(r, 'rejected')} />}
+              {isAdmin && !pending && <IconAction icon={Pencil} label="Back to pending" disabled={busy} onClick={() => decide(r, 'pending')} />}
+              {mine && pending && <IconAction icon={Pencil} label="Edit" disabled={busy} onClick={() => edit(r)} />}
+              {(mine ? pending : isAdmin) && <IconAction icon={Trash2} label={pending ? 'Cancel request' : 'Delete'} disabled={busy} onClick={() => cancel(r)} />}
+            </div>
+          )}
+        </article>
+      );
+  };
+
   return (
     <div className="tf-leave" style={{ display: 'grid', gap: 16, maxWidth: 980 }}>
       <div className="tf-leave-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -251,7 +485,8 @@ export default function LeavePortal({ isAdmin = false }) {
 
       {notice && <div role="status" style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--tf-pearl)', color: 'var(--tf-text)', fontSize: 13 }}>{notice}</div>}
 
-      <div role="tablist" aria-label="Filter by status" className="tf-leave-tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="tf-leave-toolbar">
+      <div role="tablist" aria-label="Filter by status" className="tf-leave-tabs" style={{ display: view === 'summary' ? 'none' : 'flex', gap: 8, flexWrap: 'wrap' }}>
         {filters.map(([value, text, n]) => (
           <button
             key={value}
@@ -265,11 +500,32 @@ export default function LeavePortal({ isAdmin = false }) {
           </button>
         ))}
       </div>
+      <div className="tf-leave-views" role="group" aria-label="View">
+        <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'is-active' : ''} onClick={() => setView('list')}><List size={14} /> List</button>
+        <button type="button" aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'is-active' : ''} onClick={() => setView('calendar')}><CalendarDays size={14} /> Calendar</button>
+        {showSummary && <button type="button" aria-pressed={view === 'summary'} className={view === 'summary' ? 'is-active' : ''} onClick={() => setView('summary')}><BarChart3 size={14} /> Summary</button>}
+      </div>
+      </div>
 
       {loading ? (
         <div className="spinner" style={{ width: 22, height: 22 }} />
       ) : error ? (
         <div role="alert" style={{ color: '#b91c1c', fontSize: 14 }}>{error}</div>
+      ) : view === 'summary' && showSummary ? (
+        <LeaveSummary rows={rows} />
+      ) : view === 'calendar' ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <LeaveCalendar rows={visible} selected={selectedDay} onSelect={setSelectedDay} showNames={isAdmin} />
+          {selectedDay && (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-muted)' }}>{formatLeaveDate(selectedDay)}</div>
+              {visible.filter((r) => r.start_date <= selectedDay && selectedDay <= r.end_date).map((r) => renderCard(r))}
+              {!visible.some((r) => r.start_date <= selectedDay && selectedDay <= r.end_date) && (
+                <div style={{ fontSize: 13, color: 'var(--tf-muted)' }}>No leave on this day.</div>
+              )}
+            </div>
+          )}
+        </div>
       ) : visible.length === 0 ? (
         <div style={{ display: 'grid', placeItems: 'center', gap: 8, padding: '40px 16px', border: '1px dashed var(--tf-border)', borderRadius: 14, color: 'var(--tf-muted)', textAlign: 'center' }}>
           <CalendarOff size={28} />
@@ -277,43 +533,7 @@ export default function LeavePortal({ isAdmin = false }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
-          {visible.map((r) => {
-            const mine = r.user_id === profile?.id;
-            const pending = r.status === 'pending';
-            const busy = busyId === r.id;
-            return (
-              <article key={r.id} className="tf-leave-card" style={{ background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 14, padding: '14px 16px', display: 'grid', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--tf-text)', overflowWrap: 'anywhere' }}>{r.employee_name}</div>
-                    <div style={{ fontSize: 13, color: 'var(--tf-muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
-                      {leaveTypeLabel(r)}{SINGLE_DAY_TYPES.includes(r.leave_type) ? '' : ' leave'} · {r.duration === 'single' ? 'One day' : `${r.days} days`}
-                    </div>
-                  </div>
-                  <StatusBadge status={r.status} />
-                </div>
-                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 13, color: 'var(--tf-text)' }}>
-                  <span><span style={{ color: 'var(--tf-muted)' }}>From </span>{formatLeaveDate(r.start_date)}</span>
-                  <span><span style={{ color: 'var(--tf-muted)' }}>To </span>{formatLeaveDate(r.end_date)}</span>
-                </div>
-                {r.reason && <div style={{ fontSize: 13, color: 'var(--tf-subhead)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>{r.reason}</div>}
-                {!pending && r.reviewed_by_name && (
-                  <div style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
-                    {STATUS[r.status].label} by {r.reviewed_by_name}{r.review_note ? ` — “${r.review_note}”` : ''}
-                  </div>
-                )}
-                {((isAdmin && pending) || (mine && pending) || isAdmin) && (
-                  <div className="tf-leave-card-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {isAdmin && pending && <IconAction icon={Check} label="Approve" tone="#15803d" disabled={busy} onClick={() => decide(r, 'approved')} />}
-                    {isAdmin && pending && <IconAction icon={X} label="Reject" tone="#b91c1c" disabled={busy} onClick={() => decide(r, 'rejected')} />}
-                    {isAdmin && !pending && <IconAction icon={Pencil} label="Back to pending" disabled={busy} onClick={() => decide(r, 'pending')} />}
-                    {mine && pending && <IconAction icon={Pencil} label="Edit" disabled={busy} onClick={() => edit(r)} />}
-                    {(mine ? pending : isAdmin) && <IconAction icon={Trash2} label={pending ? 'Cancel request' : 'Delete'} disabled={busy} onClick={() => cancel(r)} />}
-                  </div>
-                )}
-              </article>
-            );
-          })}
+          {visible.map((r) => renderCard(r))}
         </div>
       )}
     </div>
