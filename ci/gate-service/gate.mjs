@@ -32,7 +32,7 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
   }
 
   async function processBuild(b, mirrorReady) {
-    const key = `${b.job}#${b.number}`;
+    const key = `${b.folder ? b.folder + "/" : ""}${b.job}#${b.number}`; // folder-qualified: two Jenkins jobs can both have "feature/x#3"
     if (!mirrorReady.done) { await git.refresh().catch((e) => log(`[gate] mirror refresh failed: ${e.message}`)); mirrorReady.done = true; }
     const gi = await git.inspect(b.sha);
     const results = {};
@@ -69,7 +69,7 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
       let handled = 0;
       for (const b of builds.sort((x, y) => x.timestamp - y.timestamp)) {
         if (!b.sha) continue;
-        const key = `${b.job}#${b.number}`;
+        const key = `${b.folder ? b.folder + "/" : ""}${b.job}#${b.number}`; // folder-qualified: two Jenkins jobs can both have "feature/x#3"
         if (b.building) {
           const cur = published()[b.sha];
           if (!cur) await publishOnce(b.sha, "pending", `Verification running (build #${b.number})`, { job: b.job, build: b.number });

@@ -33,7 +33,7 @@ export function createJenkinsClient({ baseUrl, user, password, folder, fetchImpl
       for (const job of data.jobs || []) {
         for (const b of job.builds || []) {
           const sha = (b.actions || []).map((a) => a?.lastBuiltRevision?.SHA1).find(Boolean) || null;
-          out.push({ job: decodeURIComponent(job.name), number: b.number, building: !!b.building, result: b.result || null, timestamp: b.timestamp, path: pathOf(b.url), sha });
+          out.push({ folder, job: decodeURIComponent(job.name), number: b.number, building: !!b.building, result: b.result || null, timestamp: b.timestamp, path: pathOf(b.url), sha });
         }
       }
       return out;
