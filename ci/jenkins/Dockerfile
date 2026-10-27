@@ -31,6 +31,13 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
  && npm install -g "npm@${NPM_VERSION}" \
  && node --version && npm --version
 
+# scan: npm 11.21.0 still bundles undici 6.28.0 and brace-expansion 5.0.9 (HIGH, fixed upstream). Replace those two
+# packages with the fixed releases of the same major; the npm smoke test below fails the build if that broke npm.
+RUN set -eux; d=/usr/local/lib/node_modules/npm/node_modules; cd /tmp; \
+    npm pack undici@6.29.1 brace-expansion@5.0.11 >/dev/null; \
+    for p in undici brace-expansion; do rm -rf "$d/$p"; mkdir "$d/$p"; tar -xzf "$p"-*.tgz -C "$d/$p" --strip-components=1; done; \
+    rm -f /tmp/*.tgz; npm --version; npm view npm@11.21.0 version
+
 # Trivy, copied from the official image pinned by digest (GitHub release downloads are very slow from the target
 # network; Docker Hub is not, and a digest pin is as strong as a checksum).
 COPY --from=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c /usr/local/bin/trivy /usr/local/bin/trivy
