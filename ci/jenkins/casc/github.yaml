@@ -28,7 +28,15 @@ jobs:
             buildOriginPRHead(true)          // the PR head commit, so the status lands on the commit GitHub shows
           }
         }
-        factory { workflowBranchProjectFactory { scriptPath('Jenkinsfile') } }
+        // CENTRAL PIPELINE: branches need no Jenkinsfile. The one stored in Jenkins (config file below) is used for every
+        // branch that has none; the gate refuses to sign a branch whose own Jenkinsfile differs from the admin-approved pin.
+        configure { node ->
+          def f = node / 'factory'
+          f.@class = 'org.jenkinsci.plugins.pipeline.multibranch.defaults.PipelineBranchDefaultsProjectFactory'
+          f.children().clear()
+          f / 'scriptId'('taskflow-central-jenkinsfile')
+          f / 'useSandbox'(true)
+        }
         orphanedItemStrategy { discardOldItems { numToKeep(10) } }
         // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
       }

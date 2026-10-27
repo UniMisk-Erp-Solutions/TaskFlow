@@ -3,7 +3,7 @@
 // executes branch code can reach neither.
 import fs from "node:fs";
 import path from "node:path";
-import { evaluateBuild, signAttestation } from "./evaluate.mjs";
+import { PINNED_PATHS, evaluateBuild, signAttestation } from "./evaluate.mjs";
 import { publishStatus } from "../lib/github-status.mjs";
 
 export function createPublisher({ mode, repo, token, recordFile, fetchImpl = fetch }) {
@@ -35,12 +35,21 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
     const key = `${b.folder ? b.folder + "/" : ""}${b.job}#${b.number}`; // folder-qualified: two Jenkins jobs can both have "feature/x#3"
     if (!mirrorReady.done) { await git.refresh().catch((e) => log(`[gate] mirror refresh failed: ${e.message}`)); mirrorReady.done = true; }
     const gi = await git.inspect(b.sha);
+    // CENTRAL PIPELINE: the pipeline that judged this commit is the toolkit the build says it used. Git (not the agent) tells us what that
+    // toolkit commit contains, and it must be the admin-approved pin. A path the branch does not carry is supplied by the toolkit; a path
+    // the branch carries must equal the pin as well.
+    const tk = await jenkins.artifactJson(b.path, ".ci/toolkit.json");
+    const tgi = tk && /^[0-9a-f]{40}$/.test(tk.toolkitCommit || "") ? await git.inspect(tk.toolkitCommit) : null;
+    const effective = gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
+      const own = gi.pinned?.[p] ?? null, central = tgi?.pinned?.[p] ?? null;
+      return [p, central !== (pin?.[p] ?? undefined) ? `toolkit:${central}` : (own ?? central)];
+    })) };
     const results = {};
     for (const name of required) results[name] = await jenkins.artifactJson(b.path, `.ci/results/${name}.json`);
     const aborted = b.result !== "SUCCESS" && Object.values(results).every((r) => !r);
     let outcome;
     if (aborted) outcome = { verdict: "error", reasons: [`build ${b.result || "unknown"} before any stage result was produced`] };
-    else outcome = evaluateBuild({ sha: b.sha, git: gi, results, required, pin });
+    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin });
     if (outcome.verdict === "passed" && b.result !== "SUCCESS") outcome = { verdict: "failed", reasons: [`Jenkins result ${b.result}`] };
 
     const prev = published()[b.sha];

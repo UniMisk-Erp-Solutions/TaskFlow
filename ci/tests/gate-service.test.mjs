@@ -97,6 +97,7 @@ test("debouncer coalesces a burst of events into a single scan; rate limiter cap
 });
 
 // ── independent verification of a build ───────────────────────────────────────
+const TK = "c".repeat(40); // the toolkit commit a central-pipeline build reports
 const PIN = Object.fromEntries(PINNED_PATHS.map((p) => [p, `pin-${p}`]));
 const gitFor = (tree, pinned = PIN) => ({ tree, pinned });
 const passAll = (sha, tree) => Object.fromEntries(REQUIRED_CHECKS.map((n) => [n, { status: "PASS", commit: sha, tree, durationMs: 5 }]));
@@ -131,12 +132,12 @@ function harness() {
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" });
   const publicKeyPem = publicKey.export({ type: "spki", format: "pem" });
-  const world = { builds: [], artifacts: {}, trees: { [SHA1]: "T1", [SHA2]: "T2", [SHA3]: "T3" }, pinned: { ...PIN }, published: [], failPublish: false, refreshes: 0 };
+  const world = { builds: [], artifacts: {}, trees: { [SHA1]: "T1", [SHA2]: "T2", [SHA3]: "T3" }, pinned: { ...PIN }, toolkitPinned: { ...PIN }, toolkit: true, published: [], failPublish: false, refreshes: 0 };
   const jenkins = {
     listBuilds: async () => world.builds.map((b) => ({ ...b })),
-    artifactJson: async (p, rel) => world.artifacts[`${p}|${rel.replace(".ci/results/", "").replace(".json", "")}`] ?? null,
+    artifactJson: async (p, rel) => rel === ".ci/toolkit.json" ? (world.toolkit ? { toolkitCommit: TK } : null) : world.artifacts[`${p}|${rel.replace(".ci/results/", "").replace(".json", "")}`] ?? null,
   };
-  const git = { refresh: async () => { world.refreshes += 1; }, inspect: async (sha) => (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
+  const git = { refresh: async () => { world.refreshes += 1; }, inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
   const state = createState(path.join(dir, "state.json"));
   const publish = async (s) => { if (world.failPublish) throw new Error("GitHub down"); world.published.push(s); };
   const gate = createGate({ cfg: { repo: REPO }, jenkins, git, state, publish, required: REQUIRED_CHECKS, pin: PIN, privateKeyPem, attestDir: path.join(dir, "att"), log: () => {} });
@@ -329,4 +330,29 @@ test("Jenkins client: parses builds with the checked-out commit, keeps only path
   await j.triggerScan();
   assert.ok(calls.some(([m, u]) => m === "POST" && u === "http://taskflow-jenkins:8080/job/taskflow-local/build?delay=0"));
   assert.deepEqual(await j.artifactJson(b.path, ".ci/results/lint.json"), { status: "PASS" });
+});
+
+test("CENTRAL PIPELINE: a branch with no Jenkinsfile and no ci/ is verified through the approved toolkit and can be signed", async () => {
+  const h = harness();
+  h.world.pinned = Object.fromEntries(PINNED_PATHS.map((p) => [p, null])); // the branch carries none of the pipeline files
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "success");
+  assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), true);
+});
+
+test("CENTRAL PIPELINE: never signed when the toolkit is not the approved pin, has no record, or the branch carries a different pipeline file", async () => {
+  const cases = {
+    "toolkit differs from the pin": (w) => { w.toolkitPinned = { ...PIN, "ci/lib": "other" }; },
+    "build reported no toolkit": (w) => { w.toolkit = false; },
+    "branch ships its own different Jenkinsfile": (w) => { w.pinned = { ...PIN, Jenkinsfile: "evil" }; },
+  };
+  for (const [name, mutate] of Object.entries(cases)) {
+    const h = harness();
+    mutate(h.world);
+    h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+    await h.gate.tick();
+    assert.equal(h.world.published.at(-1).state, "failure", name);
+    assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false, name);
+  }
 });

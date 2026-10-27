@@ -11,6 +11,11 @@
 jenkins:
   systemMessage: "TaskFlow CI — configured as code (ci/jenkins). Changes made in the UI are lost on restart."
   numExecutors: 0            # the controller never executes branch code
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "CI_TOOLKIT_REF"        # the trusted ref the central pipeline takes ci/ and the lint/typecheck/E2E setup from
+            value: "${CI_TOOLKIT_REF:-main}"
   scmCheckoutRetryCount: 2
   mode: EXCLUSIVE
   securityRealm:
@@ -52,3 +57,10 @@ security:
 unclassified:
   location:
     url: "${JENKINS_URL}"
+  globalConfigFiles:
+    configs:
+      - custom:
+          id: "taskflow-central-jenkinsfile"
+          name: "TaskFlow central Jenkinsfile"
+          comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
+          content: "${readFile:/usr/share/jenkins/ref/casc/Jenkinsfile.central}"

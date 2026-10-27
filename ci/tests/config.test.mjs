@@ -74,7 +74,7 @@ test("Jenkins compose: every secret is required (':?'), none has a default value
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
   // These select files / mirrors (not secrets) and legitimately have defaults.
-  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE"]);
+  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE", "CI_TOOLKIT_REF"]);
   for (const [, key, , rest] of env.filter(([, k]) => !NOT_SECRETS.has(k))) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 
@@ -249,4 +249,12 @@ test("GitHub App manifest asks for the minimum permissions: read code/PRs, write
   assert.equal(m.hook_attributes.active, false);
   assert.deepEqual(m.default_events, []);
   for (const [perm, level] of Object.entries(m.default_permissions)) if (level === "write") assert.ok(["checks", "statuses"].includes(perm), `${perm}: write is not needed`);
+});
+
+test("CENTRAL PIPELINE: the Jenkinsfile stored in Jenkins is byte-identical to the repository one, and the GitHub job uses it for branches without their own", () => {
+  assert.equal(read("ci/jenkins/casc/Jenkinsfile.central"), read("Jenkinsfile"));
+  assert.match(read("ci/jenkins/casc/jenkins.yaml"), /taskflow-central-jenkinsfile/);
+  assert.match(read("ci/jenkins/casc/github.yaml"), /PipelineBranchDefaultsProjectFactory/);
+  assert.match(read("ci/jenkins/plugins.txt"), /pipeline-multibranch-defaults/);
+  assert.match(read("Jenkinsfile"), /overlay.mjs/);
 });

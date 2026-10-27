@@ -12,3 +12,5 @@ timestamper
 ws-cleanup
 build-timeout
 matrix-auth
+config-file-provider
+pipeline-multibranch-defaults
