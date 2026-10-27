@@ -365,13 +365,36 @@ Read-only diagnosis of the rollout of the three-container layout (controller, bu
 
 **Safe recovery (needs approval; nothing was restarted):** sync the fixed branch to `~/taskflow-ci/repo`, then re-run `~/taskflow-ci/deploy15.sh` (idempotent: secrets/`.env` are only created if missing, builds are cached). Its first mutating step is `docker compose stop jenkins`, which interrupts only our own CI controller for about two minutes.
 
-**Not yet verified (BLOCKED on the rollout):** agent online, gate health, signed webhook deliveries, Jenkins build of a pushed commit, gate verification and recorded status, duplicate/changed-commit/failing-branch scenarios.
+### Rollout completed (2026-10-27, commit `aac6322`)
+
+The first re-run exposed a second finding: the npm bundled in the Node base image carries a HIGH `sigstore` CVE. The gate does not use npm, so `npm`, `npx` and `corepack` are removed from the gate image. Both images then scanned clean and the stack started:
+
+| Container | State | Exposure |
+| --- | --- | --- |
+| `taskflow-jenkins` | healthy, 0 executors | 127.0.0.1:8088 |
+| `taskflow-agent` | connected over WebSocket as `untrusted-1`; not privileged; mounts only its workspace, the read-only repo clone and its own agent secret | none |
+| `taskflow-gate` | healthy; `GET /healthz` returns `{"ok":true}`; status mode `record` (no GitHub token yet) | 127.0.0.1:8089 (webhook) and 8090 (admin) |
+
+On start the gate re-verified 10 existing finished builds (recorded locally only; nothing was sent to GitHub).
+
+**Deliberately not tested by the agent** (the owner tests manually). Manual test checklist, run on `.15`:
+
+1. Webhook auth: `docker exec taskflow-gate node ci/gate-service/simulate-delivery.mjs` with a valid, a wrong and a missing signature: expect 202, 401, 401.
+2. Duplicate delivery ID: the second delivery returns 200 `duplicate`; no second build.
+3. Build of a pushed commit: it runs on the agent, and `GET 127.0.0.1:8090/status` shows `unimisk/verified` recorded as `success` for that SHA.
+4. Failing branch: recorded `failure`. A new commit on the same branch: a new build and a new status for the new SHA.
+5. Branch that edits the Jenkinsfile or `ci/pipeline`: never signed (`pipeline-changed`).
+6. Release gate: `ci/release/deploy-authorized.mjs` refuses without a valid admin approval (dry run by default).
+7. Only 8088/8089/8090 listen, and only on 127.0.0.1.
+
+Still BLOCKED, needs the owner: GitHub webhook and tokens (status mode `github-status`), a new Cloudflare tunnel hostname pointing only at gate port 8089, permission to push a test branch, and Vercel access for the deployment-bypass audit.
 
 ## Revision log
 
 | Date | Change |
 | --- | --- |
 | 2026-10-27 | Push-triggered stack rollout diagnosed: build OK, gate image scan could not run (no Trivy in gate image), old Jenkins untouched; scan script fixed locally; recovery steps recorded. |
+| 2026-10-27 | Rollout completed: npm removed from gate image (sigstore CVE), both images scan clean, controller + agent + gate running and healthy; manual test checklist recorded. Live GitHub, Cloudflare and Vercel steps pending.
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
