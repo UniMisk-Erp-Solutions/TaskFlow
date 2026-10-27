@@ -2156,3 +2156,14 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
 .fx-row.is-draggable { cursor: grab; }
 .fx-row.is-draggable:active { cursor: grabbing; }
 .fx-row.is-drop-target, .fx-breadcrumbs button.is-drop-target { background: color-mix(in srgb, var(--color-primary) 14%, var(--tf-panel)); outline: 2px dashed var(--color-primary); outline-offset: -2px; border-radius: 8px; }
+
+/* Header icons (AI assistant, refresh, theme): more room between them. The admin row also holds the action buttons,
+   so there the space is added around the icons only. */
+.employee-header-actions { gap: 28px !important; }
+.tf-subnav-actions > .tf-header-ai-button,
+.tf-subnav-actions > .tf-theme-toggle { margin-left: 20px; }
+@media (max-width: 380px) {
+  .employee-header-actions { gap: 20px !important; }
+  .tf-subnav-actions > .tf-header-ai-button,
+  .tf-subnav-actions > .tf-theme-toggle { margin-left: 12px; }
+}
