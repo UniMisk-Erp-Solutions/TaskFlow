@@ -71,8 +71,9 @@ test("Jenkins compose: hard resource limits, loopback-only port, own network + v
 test("Jenkins compose: every secret is required (':?'), none has a default value", () => {
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
-  // CASC_JENKINS_CONFIG selects config files (a path, not a secret) and legitimately has a default.
-  for (const [, key, , rest] of env.filter(([, k]) => k !== "CASC_JENKINS_CONFIG")) assert.match(rest, /^:\?/, `${key} must fail when unset`);
+  // These select files / mirrors (not secrets) and legitimately have defaults.
+  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD"]);
+  for (const [, key, , rest] of env.filter(([, k]) => !NOT_SECRETS.has(k))) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 
 test("Jenkins image pins versions and verifies checksums; JCasC has no literal secrets", () => {
@@ -80,7 +81,8 @@ test("Jenkins image pins versions and verifies checksums; JCasC has no literal s
   assert.doesNotMatch(df, /^FROM .*:(latest|lts)\s*$/m);
   assert.match(df, /sha256sum -c/g);
   assert.match(df, /NODE_SHA256=[0-9a-f]{64}/);
-  assert.match(df, /TRIVY_SHA256=[0-9a-f]{64}/);
+  assert.match(df, /COPY --from=aquasec\/trivy:[\d.]+@sha256:[0-9a-f]{64} /); // Trivy pinned by image digest
+  assert.doesNotMatch(df, /github\.com\/aquasecurity/, "release downloads from GitHub are too slow on the target network");
   const casc = read("ci", "jenkins", "casc", "jenkins.yaml");
   for (const m of casc.matchAll(/(?:password|secret|secretBytes):\s*"([^"]*)"/g)) assert.match(m[1], /^\$\{/, `literal secret in JCasC: ${m[1].slice(0, 8)}`);
   assert.match(casc, /allowsSignup:\s*false/);

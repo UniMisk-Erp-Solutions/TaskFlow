@@ -11,7 +11,11 @@ name: taskflow-ci
 services:
   jenkins:
     image: unimisk/taskflow-jenkins:2.580.1
-    build: .
+    build:
+      context: .
+      args:
+        DEBIAN_MIRROR: "${DEBIAN_MIRROR:-deb.debian.org}"
+        JENKINS_UC_DOWNLOAD: "${JENKINS_UC_DOWNLOAD:-}"
     container_name: taskflow-jenkins
     restart: unless-stopped
     ports:
