@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import React, { lazy, Suspense, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import { ThemeProvider } from './ThemeContext';
-import Login from './Login';
-import AdminDashboard from './AdminDashboard';
-import EmployeeDashboard from './EmployeeDashboard';
-import Onboarding from './Onboarding';
-import PendingApproval from './PendingApproval';
+import Seo, { NoIndex } from './seo/Seo';
+import { LANDING_PAGES, BLOG_POSTS } from './seo/seoPages.js';
+
+// The app screens are big (dashboards, charts, whiteboard). They load only when someone opens them, so the public pages stay light.
+const Login = lazy(() => import('./Login'));
+const AdminDashboard = lazy(() => import('./AdminDashboard'));
+const EmployeeDashboard = lazy(() => import('./EmployeeDashboard'));
+const Onboarding = lazy(() => import('./Onboarding'));
+const PendingApproval = lazy(() => import('./PendingApproval'));
 import PwaPrompt from './components/PwaPrompt';
 import PushPrompt from './components/PushPrompt';
 
@@ -18,23 +22,43 @@ import { Navbar as MarketingNavbar } from './landing/components/layout/Navbar';
 import { Footer as MarketingFooter } from './landing/components/layout/Footer';
 import ScrollToTop from './landing/components/layout/ScrollToTop';
 import Home from './landing/pages/Home';
-import Features from './landing/pages/Features';
-import Pricing from './landing/pages/Pricing';
-import About from './landing/pages/About';
-import Contact from './landing/pages/Contact';
-import Security from './landing/pages/Security';
-import Privacy from './landing/pages/Privacy';
-import Terms from './landing/pages/Terms';
-import Docs from './landing/pages/Docs';
+const Features = lazy(() => import('./landing/pages/Features'));
+const Pricing = lazy(() => import('./landing/pages/Pricing'));
+const About = lazy(() => import('./landing/pages/About'));
+const Contact = lazy(() => import('./landing/pages/Contact'));
+const Security = lazy(() => import('./landing/pages/Security'));
+const Privacy = lazy(() => import('./landing/pages/Privacy'));
+const Terms = lazy(() => import('./landing/pages/Terms'));
+const Docs = lazy(() => import('./landing/pages/Docs'));
+const SeoLanding = lazy(() => import('./landing/pages/SeoLanding'));
+const BlogIndex = lazy(() => import('./landing/pages/Blog').then((m) => ({ default: m.BlogIndex })));
+const BlogPost = lazy(() => import('./landing/pages/Blog'));
+const NotFound = lazy(() => import('./landing/pages/NotFound'));
 
-function MarketingLayout({ children }) {
+function MarketingLayout({ children, seo }) {
   return (
     <div className="flex flex-col min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {seo && <Seo path={seo} />}
       <ScrollToTop />
       <MarketingNavbar />
       <main className="flex-grow">{children}</main>
       <MarketingFooter />
     </div>
+  );
+}
+
+function BlogPostRoute() {
+  const { slug } = useParams();
+  return BLOG_POSTS.some((p) => p.slug === slug) ? <BlogPost slug={slug} /> : <NotFound />;
+}
+
+/** App screens: not for search results. */
+function AppScreen({ children }) {
+  return (
+    <>
+      <NoIndex />
+      {children}
+    </>
   );
 }
 
@@ -159,31 +183,40 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<FullLoader />}>
           <Routes>
             {/* Marketing / public surfaces. */}
-            <Route path="/"          element={<MarketingLayout><Home /></MarketingLayout>} />
-            <Route path="/features"  element={<MarketingLayout><Features /></MarketingLayout>} />
-            <Route path="/pricing"   element={<MarketingLayout><Pricing /></MarketingLayout>} />
-            <Route path="/about"     element={<MarketingLayout><About /></MarketingLayout>} />
-            <Route path="/contact"   element={<MarketingLayout><Contact /></MarketingLayout>} />
-            <Route path="/security"  element={<MarketingLayout><Security /></MarketingLayout>} />
-            <Route path="/privacy"   element={<MarketingLayout><Privacy /></MarketingLayout>} />
-            <Route path="/terms"     element={<MarketingLayout><Terms /></MarketingLayout>} />
-            <Route path="/docs"      element={<MarketingLayout><Docs /></MarketingLayout>} />
+            {/* Marketing / public surfaces. Each one sets its own title, description, canonical and structured data. */}
+            <Route path="/"          element={<MarketingLayout seo="/"><Home /></MarketingLayout>} />
+            <Route path="/features"  element={<MarketingLayout seo="/features"><Features /></MarketingLayout>} />
+            <Route path="/pricing"   element={<MarketingLayout seo="/pricing"><Pricing /></MarketingLayout>} />
+            <Route path="/about"     element={<MarketingLayout seo="/about"><About /></MarketingLayout>} />
+            <Route path="/contact"   element={<MarketingLayout seo="/contact"><Contact /></MarketingLayout>} />
+            <Route path="/security"  element={<MarketingLayout seo="/security"><Security /></MarketingLayout>} />
+            <Route path="/privacy"   element={<MarketingLayout seo="/privacy"><Privacy /></MarketingLayout>} />
+            <Route path="/terms"     element={<MarketingLayout seo="/terms"><Terms /></MarketingLayout>} />
+            <Route path="/docs"      element={<MarketingLayout seo="/docs"><Docs /></MarketingLayout>} />
+            {LANDING_PAGES.map((page) => (
+              <Route key={page.path} path={page.path} element={<MarketingLayout><SeoLanding path={page.path} /></MarketingLayout>} />
+            ))}
+            <Route path="/blog"      element={<MarketingLayout><BlogIndex /></MarketingLayout>} />
+            <Route path="/blog/:slug" element={<MarketingLayout><BlogPostRoute /></MarketingLayout>} />
 
-            {/* Auth + product (unchanged). */}
-            <Route path="/login"     element={<Login />} />
+            {/* Auth + product: kept out of search results. */}
+            <Route path="/login"     element={<AppScreen><Login /></AppScreen>} />
             <Route path="/signup"    element={<Navigate to="/login?mode=signup" replace />} />
-            <Route path="/app"       element={<RoleRouter />} />
+            <Route path="/app"       element={<AppScreen><RoleRouter /></AppScreen>} />
             <Route path="/admin"     element={<Navigate to="/admin/overview" replace />} />
-            <Route path="/admin/*"  element={<ProtectedAdmin><AdminDashboard /></ProtectedAdmin>} />
+            <Route path="/admin/*"  element={<AppScreen><ProtectedAdmin><AdminDashboard /></ProtectedAdmin></AppScreen>} />
             <Route path="/dashboard" element={<Navigate to="/dashboard/tasks" replace />} />
             <Route path="/manager" element={<Navigate to="/manager/tasks" replace />} />
-            <Route path="/manager/*" element={<ProtectedManager><EmployeeDashboard role="manager" /></ProtectedManager>} />
-            <Route path="/dashboard/*" element={<ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee>} />
+            <Route path="/manager/*" element={<AppScreen><ProtectedManager><EmployeeDashboard role="manager" /></ProtectedManager></AppScreen>} />
+            <Route path="/dashboard/*" element={<AppScreen><ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee></AppScreen>} />
 
-            <Route path="*"          element={<Navigate to="/" replace />} />
+            {/* Unknown URLs get a real "not found" page (noindex) instead of silently showing the home page. */}
+            <Route path="*"          element={<MarketingLayout><NotFound /></MarketingLayout>} />
           </Routes>
+          </Suspense>
           <PwaPrompt />
           <PushPrompt />
         </AuthProvider>

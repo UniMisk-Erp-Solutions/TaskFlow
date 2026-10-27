@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
+import { preloadGoogleScript } from './lib/googleCalendar';
 import { localYmd } from './lib/localDate';
 import { useProjects } from './useProjects';
 import ProjectsPanel from './components/ProjectsPanel';
@@ -107,6 +108,7 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
 }
 
 export default function EmployeeDashboard({ role = 'employee' }) {
+  useEffect(() => { preloadGoogleScript(); }, []);
   const isManager = role === 'manager';
   const basePath = isManager ? '/manager' : '/dashboard';
   const { profile } = useAuth();

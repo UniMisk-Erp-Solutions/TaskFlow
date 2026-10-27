@@ -17,7 +17,24 @@
     <meta name="application-name" content="TaskFlow" />
     <meta name="format-detection" content="telephone=no" />
     <meta name="google-site-verification" content="google0ae38d60af7ae322" />
-    <title>TaskFlow — AI Task Manager</title>
+    <!-- SEO: replaced at build time with each page's own title, description, canonical, social tags and structured data
+         (see scripts/vite-seo-plugin.mjs). The values below are the home page defaults. -->
+    <!--seo:start-->
+    <title>TaskFlow: Task Management App for Teams</title>
+    <meta name="description" content="TaskFlow is an online task manager for teams: assign tasks, track time on a Kanban board, plan with a calendar and approve finished work." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://taskflow.unimisk.com/" />
+    <meta property="og:site_name" content="TaskFlow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TaskFlow: Task Management App for Teams" />
+    <meta property="og:description" content="TaskFlow is an online task manager for teams: assign tasks, track time on a Kanban board, plan with a calendar and approve finished work." />
+    <meta property="og:url" content="https://taskflow.unimisk.com/" />
+    <meta property="og:image" content="https://taskflow.unimisk.com/icons/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="TaskFlow: Task Management App for Teams" />
+    <meta name="twitter:description" content="TaskFlow is an online task manager for teams: assign tasks, track time on a Kanban board, plan with a calendar and approve finished work." />
+    <meta name="twitter:image" content="https://taskflow.unimisk.com/icons/icon-512.png" />
+    <!--seo:end-->
     <!-- Aggressive no-store hints so a stale CDN edge / browser cache can never
          serve the previous index.html. Asset filenames are content-hashed so
          this only ever affects the entrypoint document. -->
@@ -26,11 +43,10 @@
     <meta http-equiv="Expires" content="0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <!-- Google Identity Services — powers the "Connect Google Calendar" OAuth
-         popup on the calendar page. Safe to load on every page; it does
-         nothing until a button calls google.accounts.oauth2.initTokenClient. -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Fonts load without blocking the first paint (the critical CSS below already uses a system font until they arrive). -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" /></noscript>
     <!--
       Critical, deployment-resilient CSS.
 
@@ -100,6 +116,7 @@
     <div id="root">
       <div class="__pre_spinner" aria-label="Loading TaskFlow"></div>
     </div>
+    <!--seo:noscript-->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

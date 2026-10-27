@@ -27,6 +27,7 @@ import TimerAnalytics from './components/TimerAnalytics';
 import { useProjects } from './useProjects';
 import { useTaskTimers } from './useTaskTimers';
 import api from './api';
+import { preloadGoogleScript } from './lib/googleCalendar';
 import { localYmd } from './lib/localDate';
 import ProfilePage from './components/ProfilePage';
 import LeavePortal from './components/LeavePortal';
@@ -67,6 +68,7 @@ function MiniStat({ label, value }) {
 }
 
 export default function AdminDashboard() {
+  useEffect(() => { preloadGoogleScript(); }, []);
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();

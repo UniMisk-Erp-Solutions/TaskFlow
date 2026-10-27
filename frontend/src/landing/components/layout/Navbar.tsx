@@ -17,6 +17,7 @@ const primaryLinks = [
 const resourceLinks = [
   { name: "Security", href: "/security" },
   { name: "Docs", href: "/docs" },
+  { name: "Blog", href: "/blog" },
   { name: "Privacy", href: "/privacy" },
   { name: "Terms", href: "/terms" },
 ];

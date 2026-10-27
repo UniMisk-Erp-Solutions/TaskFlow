@@ -80,7 +80,25 @@ let gisReadyPromise = null;
 let _tokenClient = null;
 let _pendingCallback = null;
 
+const GIS_SRC = 'https://accounts.google.com/gsi/client';
+
+/** Adds Google's sign-in script once. It is not in index.html so the public pages do not download it. */
+function injectGisScript() {
+  if (typeof document === 'undefined' || document.querySelector(`script[src="${GIS_SRC}"]`)) return;
+  const el = document.createElement('script');
+  el.src = GIS_SRC;
+  el.async = true;
+  el.defer = true;
+  document.head.appendChild(el);
+}
+
+/** Call when the signed-in app opens, so the script is ready before anyone clicks "Connect Google Calendar". */
+export function preloadGoogleScript() {
+  if (isConfigured()) injectGisScript();
+}
+
 function loadGis() {
+  injectGisScript();
   if (gisReadyPromise) return gisReadyPromise;
   gisReadyPromise = new Promise((resolve, reject) => {
     if (typeof window === 'undefined') return reject(new Error('No window'));
