@@ -198,3 +198,12 @@ test("the committed attestation public key exists, is an Ed25519 public key, and
   assert.notEqual(spawnSync("git", ["check-ignore", "-q", rel], { cwd: REPO_ROOT }).status, 0, "ignored by .gitignore");
   assert.doesNotMatch(read(rel), /PRIVATE/);
 });
+
+test("GitHub App manifest asks for the minimum permissions: read code/PRs, write only checks and statuses, no webhook", () => {
+  const m = JSON.parse(read("ci", "github", "github-app-manifest.json"));
+  assert.deepEqual(m.default_permissions, { metadata: "read", contents: "read", pull_requests: "read", checks: "write", statuses: "write" });
+  assert.equal(m.public, false);
+  assert.equal(m.hook_attributes.active, false);
+  assert.deepEqual(m.default_events, []);
+  for (const [perm, level] of Object.entries(m.default_permissions)) if (level === "write") assert.ok(["checks", "statuses"].includes(perm), `${perm}: write is not needed`);
+});

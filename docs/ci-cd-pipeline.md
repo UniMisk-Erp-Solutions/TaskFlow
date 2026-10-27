@@ -9,7 +9,7 @@ PLAN (TaskFlow task) → CODE (feature branch) → BUILD → TEST → PRE-PR GAT
 
 This is tooling around the app, not part of it. **The TaskFlow application gains no pipeline feature**: no tables, no API routes, no UI, no notifications. Nothing in this pipeline merges, deploys, or touches a production database; the frontend stays on Vercel and the backend (Supabase on `192.168.23.15`) is deployed separately by an admin (`scripts/deploy-edge-api.sh`).
 
-> **Status:** implemented on branch `feature/ci-cd-pipeline`; **not pushed, merged or activated**. Jenkins, GitHub branch protection and the signing key are prepared and waiting for admin approval — see [Remaining setup](#remaining-setup-nothing-here-has-been-done).
+> **Status:** implemented on branch `feature/ci-cd-pipeline` (not pushed, merged or deployed). **Jenkins is installed and verified on `192.168.23.15`** in local-verification mode (see [the installation record](#jenkins-installation-on-19216823-15-done-2026-10-27)); the **GitHub App, branch protection and the Vercel checks are still pending** and need an organization owner.
 
 ## Where things live
 
@@ -128,6 +128,85 @@ Still open (dev-only, not shipped, ignored by Trivy because it skips dev depende
 
 No secret is stored in the repository; the secret scanner and a test enforce that.
 
+## Jenkins installation on `192.168.23.15` (done 2026-10-27)
+
+Jenkins **is installed and running** on the shared server, in local-verification mode (no GitHub App yet). Everything below was created for Jenkins only; no existing container, network, volume, tunnel, database or host setting was changed.
+
+### What exists on the server
+
+| Item | Detail |
+| --- | --- |
+| Directory `~/taskflow-ci` (mode 0700) | `secrets/` (0700): `attest.pem` (Ed25519 private key, 0400, generated on the host with `openssl genpkey`), `attest-public-key.pem`, `github-app.pem` (**placeholder text** until the GitHub App exists); `.env` (0600: admin password, ids, file paths, mirror settings); `repo/` (clone of the branch, made from a `git bundle`, so **nothing was pushed to GitHub**); `install.log` |
+| Container `taskflow-jenkins` | image `unimisk/taskflow-jenkins:2.580.1` (Jenkins 2.580.1 LTS, Node 22.23.3, npm 11.21.0, Trivy 0.76.1, Playwright Chromium 1.64.1); **healthy** |
+| Isolation as applied (`docker inspect`) | 4 GiB memory, 2 CPUs, 1024 pids, 1 GiB `/dev/shm`; not privileged; all capabilities dropped except `CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID`; `no-new-privileges`; no `docker.sock`; only network `taskflow_ci`; published **only on `127.0.0.1:8088`**; the repository clone is mounted **read-only** |
+| Other new Docker objects | network `taskflow_ci`, volume `taskflow_jenkins_home`, the base image `jenkins/jenkins:2.580.1-lts-jdk21` |
+| Jenkins state | security on (anonymous request: 403, wrong password: 401), 1 executor, 4 credentials loaded (`taskflow-github-app-id`, `…-installation-id` (placeholders `0`), `taskflow-github-app-key` (placeholder), `taskflow-attest-private-key`), multibranch job `TaskFlow (local repository, pre-GitHub)` over the read-only clone |
+
+Reach it with an SSH tunnel (`ssh -L 8088:127.0.0.1:8088 olympus@192.168.23.15`, then `http://127.0.0.1:8088/`, user `admin`). The generated admin password is only in `~/taskflow-ci/.env` on the server.
+
+### What the real installation found (and what was changed)
+
+Running it for real exposed problems no local test could; all are fixed in this branch and covered by tests where possible.
+
+| Finding | Fix |
+| --- | --- |
+| `deb.debian.org` answered at ~20 KB/s and GitHub release downloads at ~9 KB/s from this network (hours for the image) | `DEBIAN_MIRROR` and `JENKINS_UC_DOWNLOAD` build args (apt and the plugin installer still verify signatures/checksums); Trivy is copied from the official image pinned by digest. Build time fell to about 4 minutes. Defaults stay on the official sources. |
+| The **pre-start image scan** (Trivy, gates the install) reported 32 fixable HIGH findings and correctly stopped the install | `apt-get upgrade`, a current npm (the one bundled with Node ships vulnerable nested packages), two patched npm-internal packages, removal of the unused `git-lfs` binary, the npx cache and the build-only plugin installer. The rescan is clean and only then did the container start. |
+| Jenkins refused to start: `excludeClientIPFromCrumb` no longer exists | removed (default crumb issuer) |
+| Every `agent any` build waited forever: node mode `EXCLUSIVE` | `NORMAL` (the container is the isolation boundary) |
+| A job with a parameterised branch cannot load its own Jenkinsfile | the local job is now a multibranch job over the clone, which is also how the GitHub job will work |
+| Jobs created from JCasC appear only after **Manage Jenkins → Reload Configuration from Disk** following the first start | documented; do it once after every fresh container |
+| Public key could not be committed: the repo ignores `*.pem` | stored as `ci/gate/attest-public-key.pub`, with a test |
+
+### Real pipeline results (Jenkins build #2 of `feature/ci-cd-pipeline`, commit `a91c0ab`)
+
+| Stage | Result |
+| --- | --- |
+| Install, Lint, Typecheck, Secrets (Trivy + pattern scan) | SUCCESS |
+| Vite build (+ production-host scan) | SUCCESS |
+| Vitest (46 passed, 0 failed), Backend tests (GitHub integration + pipeline tests, 32 AI-core tests, syntax of 40 backend files), Dependencies (Trivy, no exceptions) | SUCCESS |
+| E2E (Playwright, 11 tests, headless Chromium without sandbox inside the container) | SUCCESS |
+| Attestation | signed by Jenkins; the artifact `.ci/attestation.json` verifies on a developer machine with the committed public key: `READY` |
+
+The whole build took 2 min 45 s. The container peaked at about 1.9 GiB of its 4 GiB and was throttled at its 2-CPU limit.
+
+### Pre-PR gate on real Jenkins attestations
+
+| Scenario | Result |
+| --- | --- |
+| Clean checkout of the attested commit + its attestation | READY |
+| Attestation built with a 90-second lifetime (job parameter `ATTEST_TTL_SECONDS`, test only), checked after 100 s | NOT READY: "attestation expired" |
+| One-line code change on a branch, presenting the old attestation | NOT READY: "content changed" (tree and commit differ) |
+| The same changed branch with its own Jenkins build and attestation | READY |
+| Uncommitted local edits | NOT READY |
+
+### Failure blocking on Jenkins (throw-away branches, never pushed, since deleted)
+
+| Branch content | Jenkins result | Attestation |
+| --- | --- | --- |
+| ESLint error | Lint FAILED, later stages skipped | none |
+| failing unit test | Vitest FAILED | none |
+| committed fake GitHub token | Trivy secret scan FAILED (CRITICAL) | none |
+| dependency with known HIGH CVEs (`lodash@4.17.15`) | Trivy dependency scan FAILED, Install/Lint/Typecheck/Build/Vitest/Backend SUCCESS | none |
+| backend lockfile out of sync with `package.json` | `npm ci` FAILED at Install | none |
+
+The finished builds of these branches remain visible in Jenkins as `demo-*` jobs (disabled once their branches were deleted).
+
+### Operating notes
+
+- Rebuild/restart **only** Jenkins after a config change: `cd ~/taskflow-ci/repo/ci/jenkins && set -a && . ~/taskflow-ci/.env && set +a && docker compose build && docker compose up -d`, then *Reload Configuration from Disk*.
+- Update the clone without pushing: `git bundle create` on the dev machine, `scp`, then `git fetch <bundle> feature/ci-cd-pipeline && git merge --ff-only FETCH_HEAD` in `~/taskflow-ci/repo`.
+- Remove everything again: `docker compose down` (stops and removes only `taskflow-jenkins` and `taskflow_ci`), then `docker volume rm taskflow_jenkins_home`, `docker image rm unimisk/taskflow-jenkins:2.580.1` and `rm -r ~/taskflow-ci`.
+- Other containers on the host were observed restarting during the session (the two NetworkWise Coolify applications were redeployed with a new commit, and the TaskFlow Supabase edge-functions container restarted at 13:36 IST). None of this work touches them, no out-of-memory kill occurred and the host had ~80 GiB free, so they are most likely routine deployments, but the cause could not be confirmed from here.
+
+### GitHub App: the manual authorization step (not done: it needs an organization owner's GitHub login)
+
+1. As an owner of `UniMisk-Erp-Solutions`: Settings → Developer settings → GitHub Apps → **New GitHub App**. Use the values in `ci/github/github-app-manifest.json`: name `UniMisk TaskFlow CI`, **webhook inactive**, permissions **Metadata: read, Contents: read, Pull requests: read, Checks: write, Commit statuses: write** (nothing else), installable only on this account.
+2. Generate a private key (downloads a `.pem`), note the **App ID**, then **Install App** → *Only select repositories* → `TaskFlow`; the number in the installation URL is the **installation id**.
+3. Convert the key: `openssl pkcs8 -topk8 -inform PEM -outform PEM -in <downloaded>.pem -out github-app.pem -nocrypt`, copy it over `~/taskflow-ci/secrets/github-app.pem` on the server (`chmod 0400`).
+4. In `~/taskflow-ci/.env` set `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and `CASC_FILES=/usr/share/jenkins/ref/casc/jenkins.yaml,/usr/share/jenkins/ref/casc/github.yaml` (keep `local-verify.yaml` too if you want both jobs); recreate the container (`docker compose up -d`) and reload from disk. Jenkins then scans the repository every 5 minutes and publishes `unimisk/verified` on each commit.
+5. Branch protection stays off until you run `ci/github/branch-protection.mjs` yourself (`--apply` only with `APPROVED_BY` and an admin token).
+
 ## Jenkins activation: preflight record and runbook
 
 Prepared on 2026-10-27 by **read-only** inspection. Nothing was installed or changed on `192.168.23.15`.
@@ -175,7 +254,7 @@ Not verifiable without a running Jenkins (first thing to confirm after start-up,
 
 Nothing in the repository holds any of these values.
 
-### Runbook (each numbered step needs your go-ahead; none has been run)
+### Runbook (reference: steps 2–6 were executed on 2026-10-27, see the installation record; steps 1, 7 and 8 are pending)
 
 1. **GitHub (admin):** create the App with the permissions above, install it on the TaskFlow repository only, convert the key, note both ids.
 2. **Get the code onto `.15` without pushing:** on your machine `git bundle create taskflow-ci.bundle origin/main..feature/ci-cd-pipeline`, copy it with `scp`, then on `.15` clone `main` into a new folder such as `~/taskflow-ci` and `git pull` the bundle. (Pushing the branch is your decision; Jenkins can only build branches that exist on GitHub, so you need that for step 7.)
@@ -213,16 +292,16 @@ The compatibility test proves the whiteboard loads in Chromium with the overridd
 
 Against `origin/main` the branch changes no file under `supabase/` or `backend/src/` (no migration, no edge function, no API route) and no application screen; the only application source file touched is a type-only fix in `Card.tsx`. There is no pipeline dashboard, status tracking, release tracking or notification in TaskFlow; Jenkins reports only through GitHub's `unimisk/verified` check.
 
-## Remaining setup before real Jenkins activation (nothing here has been done)
+## Remaining setup (GitHub, Vercel, branch protection)
 
-1. Install Jenkins on `192.168.23.15` following the [runbook](#jenkins-activation-preflight-record-and-runbook) above. The preflight (`--check`) passed read-only; the real install also builds and Trivy-scans the Jenkins image, which has not been run (no Docker daemon locally).
-2. Generate the attestation key **on the Jenkins host** (`ci/gate/generate-keypair.mjs`), store the private key as the `taskflow-attest-private-key` credential, and commit the public key as `ci/gate/attest-public-key.pub`. Until then `pr-ready` correctly reports the key as not provisioned.
-3. Create the GitHub App (Checks: write), install it on the repository, and store its id, installation id and key as Jenkins credentials.
-4. Copy `ci/github/CODEOWNERS.proposed` to `.github/CODEOWNERS` with the real admin team, then `ci/github/branch-protection.mjs --apply` (dry run first). Confirm GitHub shows `unimisk/verified` as required from the App.
-5. In Vercel confirm: production branch is `main`; Preview has its own `VITE_*` values (`ci/verify/env-separation.mjs --vercel-env env.json`); the Node version is 18 or newer.
-6. Run one real Jenkins build of this branch and check that the multibranch job, the `Jenkinsfile` syntax and the `unimisk/verified` check behave as the local runs did.
-7. Manual whiteboard check on a Vercel Preview (see the dependency validation note) and a comparison of the deployed frontend with `main`.
-8. Optional: a Cloudflare route so GitHub webhooks reach Jenkins (otherwise the job polls every 5 minutes).
+Jenkins itself is done. What is left needs an organization owner or access I do not have:
+
+1. **Create and install the GitHub App**, then enable `github.yaml` (manual authorization step in the installation record above). Until then the job builds the local clone and `unimisk/verified` is not published.
+2. Copy `ci/github/CODEOWNERS.proposed` to `.github/CODEOWNERS` with the real admin team, then `ci/github/branch-protection.mjs --apply` (dry run first, `APPROVED_BY` and an admin token required). Confirm GitHub shows `unimisk/verified` as required from the App. **Not applied.**
+3. **Vercel (BLOCKED):** the connected Vercel account has no project linked to `UniMisk-Erp-Solutions/TaskFlow` (25 projects searched by name and by repository), so the production branch, the Preview/Production `VITE_*` values (`ci/verify/env-separation.mjs --vercel-env env.json`) and the Node version (18 or newer) could not be read. Someone with access to the right team must check them, or give this session access.
+4. Manual whiteboard check on a Vercel Preview (see the dependency validation note) and a comparison of the deployed frontend with `main`.
+5. Optional: a Cloudflare route so GitHub webhooks reach Jenkins (otherwise the job polls every 5 minutes).
+6. Push the branch and open the PR yourself when you are satisfied; nothing here does that.
 
 ## Verification
 
@@ -235,7 +314,7 @@ node ci/gate/attest.mjs        # Jenkins only: needs CI_ATTEST_PRIVATE_KEY
 node ci/gate/pr-ready.mjs      # developer: may I open the PR?
 ```
 
-Results at commit `e18b261` (2026-10-27, Windows, Node 24, Trivy 0.76.1, strict policy, empty `.trivyignore`):
+Local results at commit `e18b261` (2026-10-27, Windows, Node 24, Trivy 0.76.1, strict policy, empty `.trivyignore`; the Jenkins results are in the installation record):
 
 | Stage | Result |
 | --- | --- |
@@ -264,7 +343,9 @@ Gate scenarios (real runs, throwaway signing key):
 
 Also verified: a fresh clone of the commit (`git clone`, `npm ci`, then all eight stages) reproduces the results; the `ci_runs`/`/ci/*`/pipeline-UI features do not exist (`git diff origin/main` touches nothing under `supabase/`, `backend/src/` or application screens).
 
-**BLOCKED (not run):** Jenkins image build/start and the Jenkinsfile executing on Jenkins; the live `unimisk/verified` check, branch protection and CODEOWNERS (need the GitHub App and an admin token); the Vercel Preview/Production variable audit and production-branch setting; comparing the deployed bundle with `main`.
+**Also on the real Jenkins (2026-10-27):** all eight stages pass in a container-isolated build, the Jenkins-signed attestation verifies on a developer machine, and expiry, code-change and failure-blocking scenarios behave as designed (see [the installation record](#jenkins-installation-on-19216823-15-done-2026-10-27)).
+
+**BLOCKED (not run):** the live `unimisk/verified` check run, branch protection and CODEOWNERS (need the GitHub App and an admin token); the Vercel Preview/Production variable audit and production-branch setting (no Vercel project for this repository is reachable from here); comparing the deployed bundle with `main`; a Jenkins build of a real GitHub pull request.
 
 ## Revision log
 
@@ -272,5 +353,6 @@ Also verified: a fresh clone of the commit (`git clone`, `npm ci`, then all eigh
 | --- | --- |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
+| 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
 | 2026-10-27 | Jenkins activation prepared (read-only): preflight on `.15` recorded, JCasC fixed (key files were loaded as path text; repository scan credential was missing), credentials/GitHub App permissions, residual `npm audit` findings, Vite 6 whiteboard checks and the install/test runbook documented. Nothing installed. |
 | 2026-10-27 | Rebased onto `main@14d4126`; Trivy findings cleared with lockfile fixes, validated `overrides` and Vite 6; fixed two packaging bugs found by a fresh-checkout run; all eight stages and the gate scenarios pass. |

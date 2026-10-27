@@ -1,0 +1,18 @@
+{
+  "name": "UniMisk TaskFlow CI",
+  "url": "https://github.com/UniMisk-Erp-Solutions/TaskFlow",
+  "description": "Jenkins reads TaskFlow branches/pull requests and publishes the unimisk/verified check. It cannot write code, merge or deploy.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://example.invalid/unused-while-jenkins-polls",
+    "active": false
+  },
+  "default_events": [],
+  "default_permissions": {
+    "metadata": "read",
+    "contents": "read",
+    "pull_requests": "read",
+    "checks": "write",
+    "statuses": "write"
+  }
+}
