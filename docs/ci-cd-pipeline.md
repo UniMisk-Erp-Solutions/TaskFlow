@@ -347,10 +347,31 @@ Also verified: a fresh clone of the commit (`git clone`, `npm ci`, then all eigh
 
 **BLOCKED (not run):** the live `unimisk/verified` check run, branch protection and CODEOWNERS (need the GitHub App and an admin token); the Vercel Preview/Production variable audit and production-branch setting (no Vercel project for this repository is reachable from here); comparing the deployed bundle with `main`; a Jenkins build of a real GitHub pull request.
 
+## Push-triggered stack rollout on `192.168.23.15`: status (checked 2026-10-27 15:07)
+
+Read-only diagnosis of the rollout of the three-container layout (controller, build agent, gate):
+
+| Check | Finding |
+| --- | --- |
+| Rollout process | `deploy15.sh` is **no longer running**; it exited with an error (not stuck). |
+| Docker build | PASS: `unimisk/taskflow-jenkins:2.580.1` and `unimisk/taskflow-gate:1` both built. |
+| Image scan | Jenkins image: clean (0 HIGH/CRITICAL). Gate image scan **FAILED to run**: `scan-image.sh` ran `trivy` inside the scanned image, and the gate image has no Trivy (`exec: "trivy": executable file not found`). A scan that cannot run aborts the rollout by design. |
+| Where it stopped | Before `docker compose stop jenkins`: the existing `taskflow-jenkins` (old single-container layout, healthy, 127.0.0.1:8088) was never touched. Agent and gate containers were **not created**. |
+| Created so far | Secret files in `~/taskflow-ci/secrets` (mode 0400), `.env` entries for the gate, two images, network `taskflow_ci`. Nothing else. |
+| Other workloads | All other containers (Supabase stacks, Coolify, Plausible, ServiceWise, etc.) show the same status as before; host load normal, 3.0 TB disk free. |
+| Production deployment | None triggered: no Vercel call, no push, no merge was made by this work. |
+
+**Fix (local, committed on the feature branch, not yet applied on `.15`):** `ci/jenkins/scan-image.sh` now runs the Trivy baked into the Jenkins image (`TRIVY_SCANNER_IMAGE`) against any image tarball.
+
+**Safe recovery (needs approval; nothing was restarted):** sync the fixed branch to `~/taskflow-ci/repo`, then re-run `~/taskflow-ci/deploy15.sh` (idempotent: secrets/`.env` are only created if missing, builds are cached). Its first mutating step is `docker compose stop jenkins`, which interrupts only our own CI controller for about two minutes.
+
+**Not yet verified (BLOCKED on the rollout):** agent online, gate health, signed webhook deliveries, Jenkins build of a pushed commit, gate verification and recorded status, duplicate/changed-commit/failing-branch scenarios.
+
 ## Revision log
 
 | Date | Change |
 | --- | --- |
+| 2026-10-27 | Push-triggered stack rollout diagnosed: build OK, gate image scan could not run (no Trivy in gate image), old Jenkins untouched; scan script fixed locally; recovery steps recorded. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
