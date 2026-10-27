@@ -620,7 +620,7 @@ export default function ChatPage() {
 
   async function uploadAndSend(item, caption, replyId) {
     const { file, name } = item;
-    const safe = (name || file.name || 'file').replace(/[^\w.\-]+/g, '_').slice(-80);
+    const safe = (name || file.name || 'file').replace(/[^\w.-]+/g, '_').slice(-80);
     const path = `${activeId}/${crypto.randomUUID()}-${safe}`;
     const { error: upErr } = await supabase.storage.from('chat-files').upload(path, file, { contentType: file.type || undefined });
     if (upErr) { setError(upErr.message); return false; }
@@ -755,7 +755,7 @@ export default function ChatPage() {
     return () => window.clearInterval(t);
   }, [recording]);
 
-  useEffect(() => () => stopRecording(true), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopRecording(true), []);
 
   function startReply(m) {
     if (m.kind === 'system') return;

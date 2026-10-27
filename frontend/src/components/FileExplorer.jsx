@@ -89,6 +89,7 @@ function VisibilityBadge({ visibility, onClick, disabled }) {
 const IGNORED_FILE_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
 const MAX_FOLDER_UPLOAD_FILES = 2000;
 // Same cleaning the API applies to folder names, so we can find a folder that already exists.
+// eslint-disable-next-line no-control-regex -- control characters are removed on purpose
 const cleanFolderName = (name) => String(name ?? '').replace(/[\\/\u0000-\u001f]+/g, ' ').trim().slice(0, 120);
 
 /** Turns the picker's FileList (webkitdirectory) into { file, dirs } entries; dirs = folder path above the file. */

@@ -10,7 +10,6 @@ import { registerServiceWorker } from './pwa/registerSW';
 // Open DevTools → Console → look for the "TaskFlow build" line.
 const BUILD_STAMP = typeof __TASKFLOW_BUILD__ === 'string' ? __TASKFLOW_BUILD__ : 'dev';
 window.__TASKFLOW_BUILD__ = BUILD_STAMP;
-// eslint-disable-next-line no-console
 console.log(
   `%cTaskFlow build %c${BUILD_STAMP}`,
   'color:#8B5CF6;font-weight:600;',

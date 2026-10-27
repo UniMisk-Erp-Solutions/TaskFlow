@@ -1,8 +1,9 @@
 import * as React from "react";
 import { cn } from "@/src/lib/utils";
-import { motion } from "motion/react";
+import { motion, type HTMLMotionProps } from "motion/react";
 
-interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+// HTMLMotionProps (not plain HTML attributes): the animation library redefines a few of the drag / animation event props.
+interface CardProps extends HTMLMotionProps<"div"> {
   children?: React.ReactNode;
   className?: string;
   hover?: boolean;

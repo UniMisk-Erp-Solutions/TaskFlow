@@ -62,7 +62,7 @@ export default function AttachmentsSection({ kind, itemId, canEdit = true }) {
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [itemId, kind]);
+  useEffect(() => { load(); }, [itemId, kind]);
 
   async function handleFiles(fileList) {
     const arr = Array.from(fileList || []);
