@@ -227,15 +227,23 @@ export function Linkified({ text, linkColor, mine }) {
 }
 
 /** One chat bubble with swipe-right / double-click to reply and hover actions. */
+/** True on devices where touch is the main way of pointing (phones, tablets) and inside the installed app. */
+export function swipeReplyAvailable() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  const installedApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const touchFirst = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  return installedApp || touchFirst;
+}
+
 export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
   const bubbleRef = useRef(null);
   const drag = useRef(null);
   const swallowClick = useRef(false); // a swipe that began on an image/file must not also open it
 
   function onPointerDown(e) {
-    // Swipe-to-reply is a touch gesture (phones and the installed app). With a mouse or pen, dragging sideways means
-    // "select this text", so desktop users reply from the three-dot menu or by double-clicking.
-    if (e.pointerType !== 'touch') return;
+    // Swipe-to-reply is for phones and the installed app only. On a desktop (mouse, pen, a touchscreen laptop, a window
+    // dragged narrow) dragging sideways means "select this text", so people reply from the three-dot menu or by double-clicking.
+    if (e.pointerType !== 'touch' || !swipeReplyAvailable()) return;
     // Controls keep their own gestures; attachments (images, files) are fine to swipe from.
     if (e.target.closest('audio, video, input, .tf-chat-actions, a:not(.tf-chat-attach), button:not(.tf-chat-attach)')) return;
     drag.current = { x: e.clientX, y: e.clientY, active: false, pointerId: e.pointerId };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const createSignedUrl = vi.fn(async () => ({ data: { signedUrl: 'https://files.test/pic.png' } }));
@@ -11,8 +11,16 @@ vi.mock('../../useRealtime', () => ({ useLiveRefresh: () => {} }));
 
 import { MessageRow } from '../ChatPage';
 
+// What kind of device the test pretends to be: 'phone' (touch is the main input), 'installed' (installed app), 'desktop'.
+let device = 'phone';
+function fakeMatchMedia(query) {
+  const matches = (device === 'phone' && query === '(hover: none) and (pointer: coarse)') || (device === 'installed' && query === '(display-mode: standalone)');
+  return { matches, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} };
+}
+
 // jsdom has no PointerEvent: a MouseEvent that also carries pointerType / pointerId is enough for these handlers.
 beforeAll(() => {
+  window.matchMedia = fakeMatchMedia;
   window.PointerEvent = class extends MouseEvent {
     constructor(type, init = {}) { super(type, init); this.pointerType = init.pointerType; this.pointerId = init.pointerId ?? 1; }
   };
@@ -38,6 +46,29 @@ function drag(target, row, pointerType, dx) {
 }
 
 describe('swipe right to reply', () => {
+  beforeEach(() => { device = 'phone'; });
+
+  it('is off on a desktop, even for a touchscreen laptop or a pen', () => {
+    device = 'desktop';
+    for (const pointerType of ['touch', 'pen', 'mouse']) {
+      const { onReply, row } = setup({ ...baseMsg, id: `d-${pointerType}` });
+      const bubble = row.querySelector('div > div');
+      const text = screen.getAllByText('hello there').at(-1);
+      fireEvent.pointerDown(text, { pointerType, clientX: 10, clientY: 10, pointerId: 1, bubbles: true });
+      fireEvent.pointerMove(row, { pointerType, clientX: 70, clientY: 12, pointerId: 1, bubbles: true });
+      fireEvent.pointerMove(row, { pointerType, clientX: 130, clientY: 12, pointerId: 1, bubbles: true });
+      expect(bubble.style.transform).toBe('');
+      fireEvent.pointerUp(row, { pointerType, clientX: 130, clientY: 12, pointerId: 1, bubbles: true });
+      expect(onReply).not.toHaveBeenCalled();
+    }
+  });
+
+  it('works in the installed app', () => {
+    device = 'installed';
+    const { onReply, row } = setup({ ...baseMsg, id: 'inst' });
+    drag(screen.getAllByText('hello there').at(-1), row, 'touch', 120);
+    expect(onReply).toHaveBeenCalled();
+  });
   it('is a touch gesture: a finger swipe replies', () => {
     const { onReply, row } = setup(baseMsg);
     drag(screen.getByText('hello there'), row, 'touch', 120);
