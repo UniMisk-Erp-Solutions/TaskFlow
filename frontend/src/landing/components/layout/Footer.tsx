@@ -13,6 +13,16 @@ const columns = [
     ],
   },
   {
+    title: "Solutions",
+    links: [
+      { to: "/task-management-app", label: "Task management app" },
+      { to: "/free-task-manager", label: "Free task manager" },
+      { to: "/online-task-planner", label: "Online task planner" },
+      { to: "/kanban-board-software", label: "Kanban board" },
+      { to: "/employee-task-tracking", label: "Employee task tracking" },
+    ],
+  },
+  {
     title: "Company",
     links: [
       { to: "/about", label: "About" },
@@ -25,7 +35,7 @@ const columns = [
     title: "Resources",
     links: [
       { to: "/docs", label: "Documentation" },
-      { to: "/docs", label: "Help center" },
+      { to: "/blog", label: "Blog" },
       { to: "/privacy", label: "Privacy" },
       { to: "/terms", label: "Terms" },
     ],

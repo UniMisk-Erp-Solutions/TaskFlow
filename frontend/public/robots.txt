@@ -8,5 +8,8 @@ Allow: /
 Disallow: /app
 Disallow: /admin
 Disallow: /dashboard
+Disallow: /manager
+Disallow: /login
+Disallow: /signup
 
 Sitemap: https://taskflow.unimisk.com/sitemap.xml

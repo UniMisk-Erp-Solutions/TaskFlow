@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
+import { preloadGoogleScript } from './lib/googleCalendar';
 import { useProjects } from './useProjects';
 import ProjectsPanel from './components/ProjectsPanel';
 import TaskForm from './components/TaskForm';
@@ -103,6 +104,7 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
 }
 
 export default function EmployeeDashboard() {
+  useEffect(() => { preloadGoogleScript(); }, []);
   const { profile } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
