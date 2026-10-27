@@ -146,6 +146,9 @@ Run from the indicated directory:
 | `frontend/` | `npm run preview` | Preview the most recent production build locally. |
 | `backend/` | `npm run dev` | Start Express with nodemon; the predev hook frees the configured port. |
 | `backend/` | `npm start` | Start Express without nodemon. |
+| `frontend/`, `backend/` | `npm run lint` | ESLint (also a required CI check). |
+| `frontend/` | `npm run typecheck` | TypeScript check (`tsconfig.ci.json`). |
+| `frontend/` | `npm run e2e` | Playwright tests against `vite preview` with a synthetic API; first run `npx playwright install chromium`. Needs a prior `npm run build` with the CI environment (see [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md)). |
 
 
 ## Optional integrations

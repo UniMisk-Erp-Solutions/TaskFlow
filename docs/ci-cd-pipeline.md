@@ -18,7 +18,7 @@ This is tooling around the app, not part of it. **The TaskFlow application gains
 | Pipeline definition (Jenkins) | `Jenkinsfile` |
 | Stage list, required checks, production host list, inert CI env | `ci/pipeline/config.mjs` (single source of truth) |
 | Stage runner (records PASS/FAIL against the exact commit and tree) | `ci/pipeline/run-stage.mjs` |
-| Vitest runner with a known-failure list | `ci/pipeline/run-vitest.mjs`, `ci/known-failures.json` |
+| Vitest runner (with an optional, currently empty, known-failure list) | `ci/pipeline/run-vitest.mjs`, `ci/known-failures.json` |
 | Trivy wrapper, secret scanner, backend syntax check | `ci/pipeline/run-trivy.mjs`, `scan-credentials.mjs`, `check-backend-syntax.mjs` |
 | Signed attestation (pre-PR gate) | `ci/lib/attestation.mjs`, `ci/gate/attest.mjs`, `ci/gate/pr-ready.mjs`, `ci/gate/generate-keypair.mjs` |
 | GitHub check run `unimisk/verified` (published as a GitHub App) | `ci/lib/github-check.mjs` |
@@ -29,7 +29,7 @@ This is tooling around the app, not part of it. **The TaskFlow application gains
 | Playwright (isolated) | `frontend/playwright.config.js`, `frontend/e2e/` |
 | Pipeline tests | `ci/tests/*.test.mjs` |
 
-Source changes outside `ci/`, `Jenkinsfile` and test/config files: `frontend/package.json` and `backend/package.json` (+ lockfiles) gain dev dependencies and scripts (`lint`, `typecheck`, `e2e`), `frontend/vite.config.js` excludes `e2e/` from Vitest, `Card.tsx` gets a type-only fix, `AiChat.jsx`/`AiChatEsc.test.jsx` carry a stopgap that `main` has since superseded (see [Baseline findings](#baseline-findings)), and `.gitignore` ignores `.ci/` and Playwright output.
+Changes outside `ci/`, `Jenkinsfile` and test/config files are deliberately small: `frontend/package.json` and `backend/package.json` (+ lockfiles) gain dev dependencies, scripts (`lint`, `typecheck`, `e2e`) and, for the frontend, `overrides` and the Vite 6 upgrade (see [Dependencies](#dependencies-changed-to-clear-trivy)); `frontend/vite.config.js` excludes `e2e/` from Vitest; `Card.tsx` gets a type-only fix; `.gitignore` ignores `.ci/` and Playwright output. No application feature, API route, migration or screen was added or changed.
 
 ## BUILD and TEST
 
@@ -40,7 +40,7 @@ Every stage is `node ci/pipeline/run-stage.mjs <name>`; Jenkins and a laptop run
 | `lint` | BUILD | ESLint on `frontend/` and `backend/` (real-bug rules are errors; style is not enforced) |
 | `typecheck` | BUILD | `tsc --noEmit` with `frontend/tsconfig.ci.json` |
 | `build` | BUILD | `vite build` with inert env, then `env-separation --dist` (no production host may appear in the bundle) |
-| `unit-tests` | TEST | Vitest, compared with `ci/known-failures.json` |
+| `unit-tests` | TEST | Vitest; any failure fails the stage (`ci/known-failures.json` is empty) |
 | `backend-tests` | TEST | `supabase/tests/` (GitHub integration, AI core), `ci/tests/*.test.mjs`, and a syntax check of every `backend/` file |
 | `e2e` | TEST | Playwright against the CI build ([Safe E2E](#safe-e2e-testing)) |
 | `trivy-deps` | TEST | Trivy: fixable HIGH/CRITICAL vulnerabilities in both npm lockfiles |
@@ -84,42 +84,37 @@ Playwright tests (`frontend/e2e`) cannot reach production by construction:
 - `playwright.config.js` refuses to start if the base URL is not loopback (or an explicitly allow-listed staging host) or if any `VITE_`/`E2E_` variable names a production host;
 - tests prove all of this (production host aborted, external host aborted, config refuses production URLs) and cover failure paths (rejected login, API outage, anonymous access to dashboards). There are no retries.
 
-## Baseline findings
+## Findings and resolutions
 
-Found while introducing the gate; recorded, not hidden. Verified 2026-10-27 against the branch (based on `2c841d3`) and the then-current `origin/main` (`14d4126`).
+Recorded while introducing the gate (2026-10-27); the branch is rebased on `origin/main@14d4126`.
 
-### The two quarantined `FileExplorerDrag` tests (and `AiChatEsc`)
+### Previously failing Vitest tests: resolved upstream, not by this branch
 
-On `2c841d3` three Vitest tests failed: `AiChatEsc` and two `FileExplorerDrag` tests. Read-only history investigation:
+On `2c841d3` three tests failed (`AiChatEsc`, two `FileExplorerDrag`). History shows commit `2c841d3` overwrote `FileExplorer.jsx` and `AiChat.jsx` without the drag-to-move and Esc code that `docs/files-drag-drop-move.md` and `docs/ai-chat-esc-close.md` describe; `main` re-landed both (`21c5a05`, `e4b41dd`, `14d4126`). After the rebase **Vitest is 46/46**, so `ci/known-failures.json` is empty and this branch carries no copy of those fixes. The list mechanism stays: any new failing test fails the build, and an entry that starts passing must be deleted. Whether the *deployed* Vercel frontend matches `main` was not checked (no Vercel access).
 
-- Drag-to-move (`5fa1247`) and the Esc handler existed earlier, then **`2c841d3` ("Add TaskFlow features and GitHub integration") overwrote `FileExplorer.jsx` and `AiChat.jsx` without them**, while `docs/files-drag-drop-move.md` and `docs/ai-chat-esc-close.md` (and the deployed API) still described them. So `main@2c841d3` really differed from what was documented and deployed.
-- `main` has since re-landed both: `21c5a05` (drag-to-move), `e4b41dd` (Esc), `14d4126` (test mock). Applying this pipeline to `origin/main@14d4126` in a throwaway branch gave **Vitest 46/46, 0 failures, with `ci/known-failures.json` empty**, plus lint, typecheck, build and E2E passing.
-- `ci/known-failures.json` and the `AiChat.jsx`/`AiChatEsc.test.jsx` edits on this branch exist only because the branch is older than that. **After rebasing onto current `main`, drop this branch's `AiChat.jsx` and `AiChatEsc.test.jsx` hunks (main's versions are the real fix) and empty `ci/known-failures.json`.** If you forget, `run-vitest.mjs` fails with "known failures that now PASS" until you do.
-- Whether the *deployed* Vercel frontend contains the drag code was not checked (no Vercel access). Compare the live bundle with `main` after the rebase.
+### Dependencies changed to clear Trivy
 
-### Trivy: HIGH/CRITICAL dependency findings
+Trivy now reports **no HIGH/CRITICAL findings** in either lockfile, with an empty `.trivyignore` (no exception, no bypass).
 
-`.trivyignore` is empty on purpose, so `trivy-deps` fails today. Trivy counts runtime dependencies only (it skips dev-only trees). Dry-run results (nothing was changed; a scratch copy of the lockfiles was updated with `npm audit fix --package-lock-only` and re-scanned):
+| Change | Why | Compatibility check |
+| --- | --- | --- |
+| `backend`: `npm audit fix` (lockfile only) | `axios`, `multer`, `body-parser`, `ws`, `follow-redirects`, `form-data` and `proxy-addr` (CRITICAL) | semver-compatible updates; lint, syntax check of 40 files, tests pass |
+| `frontend`: `npm audit fix` (lockfile only) | `axios`, `dompurify`, `follow-redirects`, `form-data`, `postcss`, `source-map-js`, `ws`, `nanoid` | semver-compatible updates |
+| `overrides`: `nanoid` 3.3.20 for `@excalidraw/excalidraw` | it pins `nanoid` exactly to 3.3.3 (vulnerable) | same major; Excalidraw only calls `nanoid()` |
+| `overrides`: `nanoid` 5.1.16 for `@excalidraw/mermaid-to-excalidraw` | it pins exactly 4.0.2 and no 4.x fix exists | 4 → 5 is a major, but the package only does `import { nanoid } from "nanoid"` / `nanoid()`, unchanged in 5 (ESM, Node 18+) |
+| `overrides`: `lodash-es` 4.18.1 | `chevrotain` pins 4.17.21 exactly | minor of the same line; 4.18.1 was already resolved by the other consumers (`mermaid`, `dagre-d3-es`) |
+| `vite` ^5.2.11 → ^6.4.5 | two HIGH CVEs (fixed from 6.4.4) | peers allow 6 for `@tailwindcss/vite` (5–8), `@vitejs/plugin-react` (4–7) and `vitest` (5–7). Vite 6 still supports Node 18, unlike Vite 7 (needs 20.19+ / 22.12+), so the Vercel Node version cannot break the build. Build, dev server, Vitest and Playwright all pass |
 
-| Package (installed) | Where | Findings | Fixed in | Non-breaking? |
-| --- | --- | --- | --- | --- |
-| axios 1.15.2 (frontend), 1.16.0 (backend) | direct | 12 / 6 HIGH | 1.18.0, 1.20.0 | yes |
-| dompurify 3.1.6 | frontend, transitive | 1 HIGH | 3.4.17 | yes |
-| follow-redirects 1.16.0 | both, via axios | 2 HIGH | 1.16.1 | yes |
-| form-data 4.0.5 | both, via axios | 1 HIGH | 4.0.6 | yes |
-| postcss 8.5.10, source-map-js 1.2.1, ws 8.20.0 | frontend, transitive | HIGH | 8.5.18, 1.2.2, 8.21.0 | yes |
-| ws 8.20.0, body-parser 1.20.5, multer 2.1.1 (direct), proxy-addr 2.0.7 (**CRITICAL**) | backend | HIGH / 1 CRITICAL | 8.21.0, 1.20.9, 2.5.0, 2.0.8 | yes |
-| nanoid 3.3.3 and 4.0.2 (nested copies) | frontend, transitive | 3 HIGH each | 3.3.18 / 5.1.x | **no** — pinned inside parent packages; needs an `overrides` entry or newer parents |
-| lodash-es 4.17.21 | frontend, transitive | 1 HIGH | 4.18.0 | **no** — same (override) |
-| vite 5.4.21 | frontend, direct (build tool) | 2 HIGH (dev-server path handling / command injection) | 6.4.4+, 7.3.7+, 8.x | **no — major**; affects the dev server, not the shipped bundle |
+Validation of the overrides: `npm ls` shows them applied with no invalid-tree errors; the production build bundles Excalidraw/mermaid/nanoid; and `frontend/e2e/compat.spec.js` loads the Excalidraw whiteboard in real Chromium (synthetic board) and fails on any runtime error. **Not covered:** an actual Mermaid→Excalidraw conversion and real-time whiteboard collaboration; run a manual whiteboard session on a Vercel Preview before merging.
 
-Result of the simulated non-breaking `npm audit fix`: **backend → clean**; **frontend → only nanoid (2 copies), lodash-es and vite remain**. `npm audit` additionally reports `vitest`/`tinypool` (critical) and other dev-only packages that Trivy deliberately skips; they never reach production.
+Still open (dev-only, not shipped, ignored by Trivy because it skips dev dependencies): `npm audit` reports `vitest`/`tinypool` (critical) which needs the `vitest@5` major, and one moderate `qs` advisory in the backend. Treat them as a separate upgrade.
 
 ### Other findings
 
 - `backend/src/controllers/taskController.js` references two undefined identifiers (`employeeSeesMappedRow`, `reportedEnd`), so sub-task listing as a non-admin and moving a task to *done* throw `ReferenceError` in the legacy Express API. The production API is the edge function, which implements both. ESLint reports them as warnings for that one file only (comment in `backend/eslint.config.js`).
 - `frontend/src/components/{BookingCalendar,AvailabilityPopover,use-bookings}` import modules that do not exist here and are used nowhere; `tsconfig.ci.json` excludes them.
-- On Windows, a CRLF checkout (`core.autocrlf`) broke two config tests that strip comments; `ci/tests/config.test.mjs` now normalises line endings. Very long checkout paths need `git config core.longpaths true`.
+- **Packaging bugs found only by running from a fresh checkout** (both fixed and guarded by tests): the repo's `.gitignore` rule `**/*secret*` had silently excluded the credential scanner (now `ci/pipeline/scan-credentials.mjs`), and Windows shells split arguments at spaces so a checkout under a folder like `test project` broke Vitest and Trivy (`ci/lib/spawn.mjs` now quotes). Also: a CRLF checkout (`core.autocrlf`) needs the line-ending normalisation in `ci/tests/config.test.mjs`, and long paths need `git config core.longpaths true`.
+- Trivy scans files on disk, not just tracked ones, so a stale untracked file (even an ignored one) can fail the secrets stage; Jenkins starts from a clean workspace.
 
 ## Jenkins runtime
 
@@ -133,16 +128,16 @@ Result of the simulated non-breaking `npm audit fix`: **backend → clean**; **f
 
 No secret is stored in the repository; the secret scanner and a test enforce that.
 
-## Remaining setup (nothing here has been done)
+## Remaining setup before real Jenkins activation (nothing here has been done)
 
-1. **Rebase onto current `main`** (see above), drop the duplicated `AiChat` hunks, empty `ci/known-failures.json`.
-2. **Make `trivy-deps` pass:** run `npm audit fix` in `backend/` (clears everything); in `frontend/` run it too, then add `overrides` for `nanoid` (>=3.3.18 / >=5.1.x) and `lodash-es` (>=4.18.0), and either upgrade `vite` to a fixed major (6.4.4+/7.3.7+) or have an admin approve a time-boxed `.trivyignore` entry for the two vite CVEs (dev-server only). After each change run Vitest, build and E2E.
-3. Install Jenkins on `192.168.23.15` (`ci/jenkins/install-on-15.sh --check`, then with `APPROVED_BY`).
-4. Generate the attestation key on the Jenkins host and commit the public key as `ci/gate/attest-public-key.pem`.
-5. Create the GitHub App (Checks: write) and install it on the repository.
-6. Install `.github/CODEOWNERS`, then apply branch protection (`ci/github/branch-protection.mjs --apply`).
-7. Confirm in Vercel: production branch is `main`, Preview has its own `VITE_*` values (`env-separation.mjs --vercel-env`).
-8. Optional: a Cloudflare route so GitHub webhooks can reach Jenkins (otherwise polling).
+1. Install Jenkins on `192.168.23.15`: `ci/jenkins/install-on-15.sh --check`, then with `APPROVED_BY` after you approve. This also builds and Trivy-scans the Jenkins image, which has not been run (no Docker daemon locally).
+2. Generate the attestation key **on the Jenkins host** (`ci/gate/generate-keypair.mjs`), store the private key as the `taskflow-attest-private-key` credential, and commit the public key as `ci/gate/attest-public-key.pem`. Until then `pr-ready` correctly reports the key as not provisioned.
+3. Create the GitHub App (Checks: write), install it on the repository, and store its id, installation id and key as Jenkins credentials.
+4. Copy `ci/github/CODEOWNERS.proposed` to `.github/CODEOWNERS` with the real admin team, then `ci/github/branch-protection.mjs --apply` (dry run first). Confirm GitHub shows `unimisk/verified` as required from the App.
+5. In Vercel confirm: production branch is `main`; Preview has its own `VITE_*` values (`ci/verify/env-separation.mjs --vercel-env env.json`); the Node version is 18 or newer.
+6. Run one real Jenkins build of this branch and check that the multibranch job, the `Jenkinsfile` syntax and the `unimisk/verified` check behave as the local runs did.
+7. Manual whiteboard check on a Vercel Preview (see the dependency validation note) and a comparison of the deployed frontend with `main`.
+8. Optional: a Cloudflare route so GitHub webhooks reach Jenkins (otherwise the job polls every 5 minutes).
 
 ## Verification
 
@@ -150,40 +145,41 @@ No secret is stored in the repository; the secret scanner and a test enforce tha
 npm --prefix frontend ci && npm --prefix backend ci
 (cd frontend && npx playwright install chromium)
 export TRIVY_BIN=/path/to/trivy
-for s in lint typecheck trivy-secrets build unit-tests backend-tests e2e trivy-deps; do node ci/pipeline/run-stage.mjs $s; done
+for s in lint typecheck build unit-tests backend-tests e2e trivy-deps trivy-secrets; do node ci/pipeline/run-stage.mjs $s; done
 node ci/gate/attest.mjs        # Jenkins only: needs CI_ATTEST_PRIVATE_KEY
 node ci/gate/pr-ready.mjs      # developer: may I open the PR?
 ```
 
-Results at commit `416074c` (2026-10-27, Windows, Node 24, Trivy 0.76.1, strict policy):
+Results at commit `e18b261` (2026-10-27, Windows, Node 24, Trivy 0.76.1, strict policy, empty `.trivyignore`):
 
 | Stage | Result |
 | --- | --- |
 | lint | PASS (warnings only) |
 | typecheck | PASS |
-| build (+ no production host in bundle) | PASS |
-| unit-tests (Vitest) | PASS — 39 passed, 2 quarantined known failures |
-| backend-tests (GitHub integration, AI core, pipeline tests, syntax of 40 backend files) | PASS |
-| e2e (Playwright, 10 tests incl. isolation and failure paths) | PASS |
+| build (+ no production host in the bundle) | PASS |
+| unit-tests (Vitest) | PASS (no known failures) |
+| backend-tests (GitHub integration, AI core, pipeline tests, 40 backend files syntax) | PASS |
+| e2e (Playwright, 11 tests incl. isolation, failure paths and the Excalidraw compatibility check) | PASS |
+| trivy-deps | PASS (no HIGH/CRITICAL, no exceptions) |
 | trivy-secrets | PASS |
-| trivy-deps | **FAIL** (real findings above) |
 
-Gate scenarios (real runs; attestation signed with a throwaway key):
+Gate scenarios (real runs, throwaway signing key):
 
 | Scenario | Result |
 | --- | --- |
-| Strict policy: a failing check blocks attestation | PASS — `attest` exits 1 ("Not verified: trivy-deps=FAIL"), no attestation written; `pr-ready` NOT READY |
-| All checks green (Trivy findings accepted via a scratch ignore file, demo only) | PASS — attested; `pr-ready` READY |
-| Uncommitted edit after verification | PASS — NOT READY ("uncommitted changes") |
-| Committed code change after verification | PASS — NOT READY ("content changed: attested tree != current"); re-attesting without re-running stages refused (all results STALE) |
-| Attestation older than 7 days | PASS — NOT READY ("attestation expired") |
-| Attestation signed by another key / payload edited after signing | PASS — NOT READY ("signature invalid") |
-| Planted secret in a tracked file | PASS — secret scan exits 1 (file:line and rule only, value never printed) |
-| Production hostname inside the built bundle | PASS — `env-separation --dist` exits 1 |
-| Trivy binary missing | PASS — stage fails ("Trivy not found") instead of looking clean |
-| `ci_runs` table / `/ci/*` routes / pipeline UI / event reporting | none present; `git diff 2c841d3` touches no file under `supabase/` or `backend/src/` |
+| All eight stages green, then `attest` and `pr-ready` | PASS: attested, READY |
+| Uncommitted edit after verification | PASS: NOT READY |
+| Committed code change after verification | PASS: NOT READY ("content changed"); re-attesting without re-running stages refused (all results STALE) |
+| Attestation older than 7 days | PASS: NOT READY ("expired") |
+| Signed by another key / payload edited after signing | PASS: NOT READY ("signature invalid") |
+| Lint error, type error, failing unit test (each on a throw-away branch) | PASS: stage fails, no attestation written |
+| Committed fake token | PASS: Trivy secret stage fails, no attestation |
+| Old (vulnerable) backend lockfile | PASS: `trivy-deps` fails, no attestation |
+| Trivy binary missing | PASS: stage fails instead of looking clean |
 
-Not executed (**BLOCKED**): Jenkins image build/start and the Jenkinsfile on Jenkins (no Docker daemon locally; installing on the server needs approval); live `unimisk/verified` check, branch protection and CODEOWNERS (need the GitHub App and an admin token); Vercel Preview/Production variable audit and production-branch setting (no Vercel access); comparing the deployed bundle with `main`.
+Also verified: a fresh clone of the commit (`git clone`, `npm ci`, then all eight stages) reproduces the results; the `ci_runs`/`/ci/*`/pipeline-UI features do not exist (`git diff origin/main` touches nothing under `supabase/`, `backend/src/` or application screens).
+
+**BLOCKED (not run):** Jenkins image build/start and the Jenkinsfile executing on Jenkins; the live `unimisk/verified` check, branch protection and CODEOWNERS (need the GitHub App and an admin token); the Vercel Preview/Production variable audit and production-branch setting; comparing the deployed bundle with `main`.
 
 ## Revision log
 
@@ -191,3 +187,4 @@ Not executed (**BLOCKED**): Jenkins image build/start and the Jenkinsfile on Jen
 | --- | --- |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
+| 2026-10-27 | Rebased onto `main@14d4126`; Trivy findings cleared with lockfile fixes, validated `overrides` and Vite 6; fixed two packaging bugs found by a fresh-checkout run; all eight stages and the gate scenarios pass. |
