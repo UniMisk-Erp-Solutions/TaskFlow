@@ -45,18 +45,25 @@ credentials:
               scope: GLOBAL
               id: "taskflow-github-app-installation-id"
               secret: "${GITHUB_APP_INSTALLATION_ID}"
+          - gitHubApp:
+              scope: GLOBAL
+              id: "taskflow-github-app"
+              description: "GitHub App used to scan and fetch the repository (read-only)"
+              appID: "${GITHUB_APP_ID}"
+              # Jenkins needs the key in PKCS#8 form (openssl pkcs8 -topk8 -nocrypt); readFile keeps the PEM text as-is.
+              privateKey: "${readFile:${GITHUB_APP_PRIVATE_KEY_FILE}}"
           - file:
               scope: GLOBAL
               id: "taskflow-github-app-key"
-              description: "GitHub App private key (PEM) — publishes the unimisk/verified check"
+              description: "GitHub App private key (PKCS#8 PEM) — publishes the unimisk/verified check"
               fileName: "github-app.pem"
-              secretBytes: "${base64:${GITHUB_APP_PRIVATE_KEY_FILE}}"
+              secretBytes: "${readFileBase64:${GITHUB_APP_PRIVATE_KEY_FILE}}"
           - file:
               scope: GLOBAL
               id: "taskflow-attest-private-key"
               description: "Ed25519 private key that signs verification attestations"
               fileName: "attest.pem"
-              secretBytes: "${base64:${CI_ATTEST_PRIVATE_KEY_FILE}}"
+              secretBytes: "${readFileBase64:${CI_ATTEST_PRIVATE_KEY_FILE}}"
 
 jobs:
   - script: |
@@ -67,6 +74,7 @@ jobs:
             id('taskflow-github')
             repoOwner('UniMisk-Erp-Solutions')
             repository('TaskFlow')
+            scanCredentialsId('taskflow-github-app')
             // Read-only discovery. Jenkins never needs write access to code; it only publishes
             // check runs through the GitHub App credential used by ci/gate/attest.mjs.
             traits {

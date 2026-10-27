@@ -86,6 +86,15 @@ test("Jenkins image pins versions and verifies checksums; JCasC has no literal s
   assert.doesNotMatch(casc, /anonymous/i);
 });
 
+test("JCasC loads the key FILES' contents (not the path text) and the job can read the private repository", () => {
+  const casc = read("ci", "jenkins", "casc", "jenkins.yaml");
+  // ${base64:${SOME_FILE_VAR}} would encode the path string; the documented form is readFileBase64.
+  assert.doesNotMatch(casc, /secretBytes:\s*"\$\{base64:/);
+  assert.equal([...casc.matchAll(/secretBytes:\s*"\$\{readFileBase64:\$\{\w+\}\}"/g)].length, 2);
+  assert.match(casc, /gitHubApp:/);
+  assert.match(casc, /scanCredentialsId\('taskflow-github-app'\)/);
+});
+
 test("install script refuses to run without an approval on record", () => {
   if (process.platform === "win32") return; // bash script; exercised on Linux
   const r = spawnSync("bash", [path.join(REPO_ROOT, "ci/jenkins/install-on-15.sh")], { env: { PATH: process.env.PATH }, encoding: "utf8" });
