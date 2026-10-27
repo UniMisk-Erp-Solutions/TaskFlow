@@ -7,7 +7,7 @@ jenkins:
   systemMessage: "TaskFlow CI — configured as code (ci/jenkins). Changes made in the UI are lost on restart."
   numExecutors: 1            # one build at a time: keeps the shared host safe
   scmCheckoutRetryCount: 2
-  mode: EXCLUSIVE
+  mode: NORMAL               # builds run on the built-in node inside the isolated, resource-limited container
   securityRealm:
     local:
       allowsSignup: false
