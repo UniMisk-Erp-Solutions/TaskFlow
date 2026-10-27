@@ -28,6 +28,7 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  workers: Number(process.env.E2E_WORKERS) || 2, // the CI agent has 2 CPUs and 4 GB: more Chromium instances crash it
   forbidOnly: !!process.env.CI,
   retries: 0, // a flaky gate is a broken gate: no silent retries
   reporter: process.env.CI ? [['list'], ['json', { outputFile: '../.ci/playwright.json' }]] : [['list']],
