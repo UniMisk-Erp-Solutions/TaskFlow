@@ -66,7 +66,7 @@ export const STAGES = {
     phase: "test", title: "Trivy + pattern secret scan",
     commands: [
       { cmd: "node", args: ["ci/pipeline/run-trivy.mjs", "secrets"] },
-      { cmd: "node", args: ["ci/pipeline/check-secrets.mjs"] },
+      { cmd: "node", args: ["ci/pipeline/scan-credentials.mjs"] },
     ],
   },
 };

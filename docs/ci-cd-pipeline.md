@@ -19,7 +19,7 @@ This is tooling around the app, not part of it. **The TaskFlow application gains
 | Stage list, required checks, production host list, inert CI env | `ci/pipeline/config.mjs` (single source of truth) |
 | Stage runner (records PASS/FAIL against the exact commit and tree) | `ci/pipeline/run-stage.mjs` |
 | Vitest runner with a known-failure list | `ci/pipeline/run-vitest.mjs`, `ci/known-failures.json` |
-| Trivy wrapper, secret scanner, backend syntax check | `ci/pipeline/run-trivy.mjs`, `check-secrets.mjs`, `check-backend-syntax.mjs` |
+| Trivy wrapper, secret scanner, backend syntax check | `ci/pipeline/run-trivy.mjs`, `scan-credentials.mjs`, `check-backend-syntax.mjs` |
 | Signed attestation (pre-PR gate) | `ci/lib/attestation.mjs`, `ci/gate/attest.mjs`, `ci/gate/pr-ready.mjs`, `ci/gate/generate-keypair.mjs` |
 | GitHub check run `unimisk/verified` (published as a GitHub App) | `ci/lib/github-check.mjs` |
 | Branch protection (dry run by default), proposed CODEOWNERS | `ci/github/branch-protection.mjs`, `ci/github/CODEOWNERS.proposed` |
@@ -44,7 +44,7 @@ Every stage is `node ci/pipeline/run-stage.mjs <name>`; Jenkins and a laptop run
 | `backend-tests` | TEST | `supabase/tests/` (GitHub integration, AI core), `ci/tests/*.test.mjs`, and a syntax check of every `backend/` file |
 | `e2e` | TEST | Playwright against the CI build ([Safe E2E](#safe-e2e-testing)) |
 | `trivy-deps` | TEST | Trivy: fixable HIGH/CRITICAL vulnerabilities in both npm lockfiles |
-| `trivy-secrets` | TEST | Trivy secret scanner plus the pattern scanner (`check-secrets.mjs`, which never prints a matched value) |
+| `trivy-secrets` | TEST | Trivy secret scanner plus the pattern scanner (`scan-credentials.mjs`, which never prints a matched value) |
 
 The repository ships no container image (Vercel serves the static frontend; the API is an edge function), so there is no application image scan. The only image the pipeline builds is the Jenkins image, scanned by `ci/jenkins/scan-image.sh` before it starts. A missing Trivy binary **fails** its stage, so a scan that never ran cannot look clean.
 

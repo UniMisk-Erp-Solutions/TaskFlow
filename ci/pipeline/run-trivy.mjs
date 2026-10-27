@@ -8,7 +8,7 @@
 // Frontend/backend ship no container image (Vercel serves the static frontend; the API is a Supabase
 // edge function), so there is no image scan in this repository. The Jenkins image itself is scanned
 // by ci/jenkins/scan-image.sh.
-import { spawnSync } from "node:child_process";
+import { spawnSyncPortable } from "../lib/spawn.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "./config.mjs";
@@ -17,7 +17,7 @@ const mode = process.argv[2];
 if (!["deps", "secrets"].includes(mode)) { console.error("usage: run-trivy.mjs deps|secrets"); process.exit(2); }
 
 const bin = process.env.TRIVY_BIN || "trivy";
-const probe = spawnSync(bin, ["--version"], { encoding: "utf8", shell: process.platform === "win32" });
+const probe = spawnSyncPortable(bin, ["--version"], { encoding: "utf8" });
 if (probe.status !== 0) {
   console.error(`✘ Trivy not found (TRIVY_BIN=${process.env.TRIVY_BIN || "unset"}). Install it on the Jenkins image; refusing to report a scan that never ran.`);
   process.exit(3);
@@ -25,7 +25,7 @@ if (probe.status !== 0) {
 
 const common = ["--exit-code", "1", "--no-progress", "--ignorefile", process.env.TRIVY_IGNOREFILE || path.join(REPO_ROOT, ".trivyignore")];
 if (process.env.TRIVY_CACHE_DIR) common.push("--cache-dir", process.env.TRIVY_CACHE_DIR);
-const run = (args) => spawnSync(bin, args, { cwd: REPO_ROOT, stdio: "inherit", shell: process.platform === "win32" }).status ?? 1;
+const run = (args) => spawnSyncPortable(bin, args, { cwd: REPO_ROOT, stdio: "inherit" }).status ?? 1;
 
 let status = 0;
 if (mode === "deps") {

@@ -3,7 +3,7 @@
 // and Git tree it ran against (the pre-PR gate only trusts results for the tree it is attesting).
 //   node ci/pipeline/run-stage.mjs <stage>
 // Exit code is non-zero when the stage fails, which fails the Jenkins stage.
-import { spawn } from "node:child_process";
+import { spawnPortable } from "../lib/spawn.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,10 +14,9 @@ const TAIL_BYTES = 6000;
 
 function runCommand({ cmd, args, env }) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
+    const child = spawnPortable(cmd, args, {
       cwd: REPO_ROOT,
       env: { ...process.env, ...(env || {}), CI: "true" },
-      shell: process.platform === "win32", // npm is npm.cmd on Windows
       stdio: ["ignore", "pipe", "pipe"],
     });
     let tail = "";

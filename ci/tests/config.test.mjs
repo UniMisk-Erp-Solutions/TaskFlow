@@ -126,3 +126,19 @@ test("branch protection CLI is a dry run by default and refuses --apply without 
   assert.notEqual(noToken.status, 0);
   assert.match(noToken.stderr, /GITHUB_ADMIN_TOKEN/);
 });
+
+// ── packaging guards (both bugs below were found only when the branch was checked out fresh) ─────
+test("no file the pipeline needs is swallowed by .gitignore (e.g. the repo's '**/*secret*' rule)", () => {
+  const files = ["Jenkinsfile"];
+  const walk = (dir) => { for (const e of fs.readdirSync(path.join(REPO_ROOT, dir), { withFileTypes: true })) { const rel = `${dir}/${e.name}`; if (e.isDirectory()) { if (!["node_modules", "dist", "test-results", "playwright-report"].includes(e.name)) walk(rel); } else files.push(rel); } };
+  walk("ci"); walk("frontend/e2e");
+  const ignored = files.filter((f) => spawnSync("git", ["check-ignore", "-q", f], { cwd: REPO_ROOT }).status === 0);
+  assert.deepEqual(ignored, [], `ignored by .gitignore, so they would be missing from a fresh checkout: ${ignored.join(", ")}`);
+  for (const s of Object.values(STAGES)) for (const c of s.commands) for (const a of c.args) if (/^ci\/[^*]+\.mjs$/.test(a)) assert.ok(fs.existsSync(path.join(REPO_ROOT, a)), `${a} does not exist`);
+});
+
+test("process spawning keeps arguments containing spaces intact (Windows shell quoting)", async () => {
+  const { spawnSyncPortable } = await import("../lib/spawn.mjs");
+  const r = spawnSyncPortable("node", ["-e", "console.log(process.argv[1] + '|' + process.argv.length)", "C:/a folder/with space/file.txt"], { encoding: "utf8" });
+  assert.equal(r.stdout.trim(), "C:/a folder/with space/file.txt|2");
+});

@@ -6,7 +6,7 @@
 //   * any NEW failing test fails the stage (the gate is real), and
 //   * a listed test that starts passing also fails the stage until the entry is deleted, so the
 //     list can only shrink.
-import { spawnSync } from "node:child_process";
+import { spawnSyncPortable } from "../lib/spawn.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { REPO_ROOT } from "./config.mjs";
@@ -16,8 +16,8 @@ const out = path.join(REPO_ROOT, ".ci", "vitest.json");
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.rmSync(out, { force: true });
 
-const r = spawnSync("npx", ["vitest", "run", "--reporter=json", `--outputFile=${out}`], {
-  cwd: path.join(REPO_ROOT, "frontend"), stdio: ["ignore", "inherit", "inherit"], shell: process.platform === "win32",
+const r = spawnSyncPortable("npx", ["vitest", "run", "--reporter=json", `--outputFile=${out}`], {
+  cwd: path.join(REPO_ROOT, "frontend"), stdio: ["ignore", "inherit", "inherit"],
   env: { ...process.env, CI: "true" },
 });
 if (!fs.existsSync(out)) { console.error("Vitest produced no report (crashed before running tests)."); process.exit(1); }

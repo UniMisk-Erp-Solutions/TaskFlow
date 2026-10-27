@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAppJwt, publishCheck } from "../lib/github-check.mjs";
-import { scanText } from "../pipeline/check-secrets.mjs";
+import { scanText } from "../pipeline/scan-credentials.mjs";
 import { checkDist, checkVercelEnv, scanForProductionHosts } from "../verify/env-separation.mjs";
 
 // ── secret scanner ────────────────────────────────────────────────────────────
