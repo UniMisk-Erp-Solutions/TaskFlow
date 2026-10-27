@@ -7,6 +7,11 @@
 pipeline {
   agent any
 
+  parameters {
+    // TEST ONLY: shorten the attestation lifetime (30 to 604800 seconds) to prove expiry. Empty = the 7-day default.
+    string(name: 'ATTEST_TTL_SECONDS', defaultValue: '', description: 'Test only: attestation lifetime in seconds (30-604800); empty = 7 days')
+  }
+
   options {
     timestamps()
     timeout(time: 45, unit: 'MINUTES')
