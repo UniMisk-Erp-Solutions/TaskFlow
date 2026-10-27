@@ -2167,3 +2167,6 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .tf-subnav-actions > .tf-header-ai-button,
   .tf-subnav-actions > .tf-theme-toggle { margin-left: 12px; }
 }
+
+/* The "+ Task" / "+ Meeting" buttons sit a little further in from the right edge. */
+.tf-dashboard-actions { padding-right: 14px; }
