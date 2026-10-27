@@ -40,3 +40,27 @@ jobs:
         orphanedItemStrategy { discardOldItems { numToKeep(10) } }
         // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
       }
+
+  # Production health check (free monitoring): one read-only GET every 10 minutes, red build = site down.
+  # Only runs when MONITOR_URL is set; it holds no credentials and writes nothing.
+  - script: |
+      pipelineJob('taskflow-monitor') {
+        displayName('Production health check (read-only)')
+        triggers { cron('H/10 * * * *') }
+        definition {
+          cps {
+            sandbox(true)
+            script('''pipeline {
+  agent { label 'untrusted' }
+  options { timeout(time: 2, unit: 'MINUTES'); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '50')) }
+  stages {
+    stage('Check') {
+      steps {
+        sh 'if [ -z "$MONITOR_URL" ]; then echo "MONITOR_URL not set: nothing to check"; exit 0; fi; curl -fsS --max-time 20 -o /dev/null "$MONITOR_URL" && echo healthy'
+      }
+    }
+  }
+}''')
+          }
+        }
+      }

@@ -1,0 +1,6 @@
+# Code owners must approve changes that can weaken the pipeline or the release path.
+# Replace @priyanshubyte with the admin account(s)/team that may approve (an author cannot approve their own PR).
+/Jenkinsfile        @priyanshubyte
+/ci/                @priyanshubyte
+/.github/           @priyanshubyte
+/frontend/vercel.json @priyanshubyte

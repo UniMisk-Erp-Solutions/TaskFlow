@@ -16,6 +16,8 @@ jenkins:
         env:
           - key: "CI_TOOLKIT_REF"        # the trusted ref the central pipeline takes ci/ and the lint/typecheck/E2E setup from
             value: "${CI_TOOLKIT_REF:-main}"
+          - key: "MONITOR_URL"           # the production URL the scheduled health check GETs (optional)
+            value: "${MONITOR_URL:-}"
   scmCheckoutRetryCount: 2
   mode: EXCLUSIVE
   securityRealm:

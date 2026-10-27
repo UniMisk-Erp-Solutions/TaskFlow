@@ -442,6 +442,32 @@ Any branch of the repository is built by the same pipeline, whether or not it co
 
 **Manual test steps:** push any change to any branch (no pipeline files needed); within about 1-3 minutes GitHub shows `unimisk/verified` (pending, then success/failure) on the commit; Jenkins job `taskflow` shows the branch with stages Trusted pipeline, Install, Lint, Typecheck, Secrets, Vite build, Vitest, Backend tests, Dependencies, E2E.
 
+## Production workflow with free tools (the common CI/CD flow on this stack)
+
+The repository is **public**, so GitHub branch protection and rulesets are free. Flow and who does what:
+
+| Step | How it works here | Status |
+| --- | --- | --- |
+| 1 Plan and code | developer works on a branch | works |
+| 2 Pull request | PR template with checklist (`.github/pull_request_template.md`) | in repo |
+| 3 CI | push or PR -> Jenkins central pipeline (8 checks) -> `unimisk/verified` on the commit | works |
+| 4 Review | **owner setting:** a ruleset on `main` requiring the status check `unimisk/verified`, 1 approval and Code Owners review (`.github/CODEOWNERS` covers `ci/`, `Jenkinsfile`, `.github/`, `vercel.json`) | **needs owner** |
+| 5 Merge to main | after merge Jenkins builds `main` the same way (it is just another branch) | works once the pipeline is merged |
+| 6 Staging | with Vercel **Production Branch = `production`**, every push to `main` becomes a Vercel *Preview* (stable `main` branch URL). Preview environment variables must point to a **separate free Supabase project** with test data | **needs owner (Vercel)** |
+| 7 Production deploy | admin runs `ci/release/deploy-authorized.mjs` on the gate host: it checks the Jenkins attestation AND the admin-signed approval for that exact commit and tree, then fast-forwards the `production` branch to it. Vercel builds Production only from that branch. Dry run by default | built; **not enabled or tested** |
+| 8 Monitor and rollback | Jenkins job `taskflow-monitor` GETs the production URL every 10 minutes (red build = down; set `MONITOR_URL` in `~/taskflow-ci/.env`). Rollback = Vercel **Instant Rollback** (Deployments > previous production deployment > Promote) or, if needed, reset `production` to the previous approved commit | monitor deployed; rollback is a Vercel dashboard action |
+
+**Owner actions, in order**
+1. GitHub repo > Settings > Rules > Rulesets > New branch ruleset for `main`: require a pull request (1 approval, code owner review), require status check **`unimisk/verified`**, block force pushes and deletion. Second ruleset for `production`: only admins can push, no force pushes.
+2. Merge `feature/ci-cd-pipeline` into `main` after review. Then set `CI_TOOLKIT_REF=main` in `~/taskflow-ci/.env` on `.15` and `docker compose up -d jenkins` (from `ci/jenkins`).
+3. Create the `production` branch from the approved `main` commit.
+4. Vercel project `task-flow` > Settings > Git: Production Branch = `production`; Environment Variables: Preview = staging Supabase project, Production = live; remove deploy hooks and unused tokens.
+5. On the gate host keep three separate secrets: the Jenkins attestation key (already there), the admin's approval key (admin machine only), and a GitHub token able to push to `production` (`RELEASE_GITHUB_TOKEN_FILE`, used only by the release command).
+
+**Release procedure (admin):** confirm `unimisk/verified` is green on the `main` commit and staging looks right -> `node ci/release/approve.mjs ...` on the admin machine -> `RELEASE_DEPLOY_ENABLED=yes node ci/release/deploy-authorized.mjs ...` on the gate host -> `node ci/release/smoke.mjs --url <production url>`.
+
+**Limits:** Jenkins stays the free CI; Vercel does the actual hosting. Until steps 1, 4 and 5 are done, GitHub does not block merges and Vercel still deploys production from `main` on its own, so production is not protected by this pipeline.
+
 ## Revision log
 
 | Date | Change |
@@ -454,6 +480,7 @@ Any branch of the repository is built by the same pipeline, whether or not it co
 | 2026-10-27 | Live push flow verified on GitHub: pushed `feature/ci-cd-pipeline@df2bf68` -> Jenkins built it automatically on the agent (build #3, all 8 stages PASS, E2E workers capped at 2) -> the gate verified it independently and published `unimisk/verified` = success on that exact commit. Fixes found live: classic PAT with `repo:status` is required (fine-grained tokens owned by a user cannot write statuses on an organization repo); gate state keys now include the Jenkins folder (a second job reusing branch+build numbers was silently skipped). Found: Vercel already creates a Preview deployment for pushed branches (status context `Vercel`); the Vercel audit stays BLOCKED until access to team `unimisk-erp-solutions-projects` is granted. |
 | 2026-10-27 | Final verification: d882ef2 detected and built automatically (build #4, 8/8) with a fresh `unimisk/verified` success; token-rotation and Vercel checklists recorded; Vercel audit and production deployment lock remain BLOCKED. |
 | 2026-10-27 | Central pipeline: Jenkinsfile stored in Jenkins plus a trusted CI toolkit overlay (`ci/pipeline/overlay.mjs`) so branches need no pipeline files; the gate pins the toolkit; tests added (84 pass). |
+| 2026-10-27 | Free production workflow: CODEOWNERS, PR template, release promotion by fast-forwarding the `production` branch (no Vercel token), read-only smoke check, Jenkins `taskflow-monitor` health job; owner actions listed (rulesets, Vercel Production Branch, staging Supabase). |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |

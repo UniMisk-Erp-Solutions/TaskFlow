@@ -74,7 +74,7 @@ test("Jenkins compose: every secret is required (':?'), none has a default value
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
   // These select files / mirrors (not secrets) and legitimately have defaults.
-  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE", "CI_TOOLKIT_REF"]);
+  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE", "CI_TOOLKIT_REF", "MONITOR_URL"]);
   for (const [, key, , rest] of env.filter(([, k]) => !NOT_SECRETS.has(k))) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 

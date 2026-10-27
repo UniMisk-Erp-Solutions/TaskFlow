@@ -31,6 +31,7 @@ services:
     environment:
       JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}"
       JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"
+      MONITOR_URL: "${MONITOR_URL:-}"
       CI_TOOLKIT_REF: "${CI_TOOLKIT_REF:-main}"   # trusted ref of the central pipeline (feature/ci-cd-pipeline until it is merged, then main)
       CASC_JENKINS_CONFIG: "${CASC_FILES:-/usr/share/jenkins/ref/casc/jenkins.yaml}"
       GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password

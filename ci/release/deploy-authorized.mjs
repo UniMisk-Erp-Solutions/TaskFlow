@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // GATE HOST: the ONLY supported way to put a TaskFlow frontend into production. Run it in a clean checkout of the
-// approved commit. Default is a dry run; it deploys only with RELEASE_DEPLOY_ENABLED=yes AND a valid chain of
+// approved commit. Default is a dry run; it promotes only with RELEASE_DEPLOY_ENABLED=yes AND a valid chain of
 // Jenkins attestation + admin approval for exactly this commit and tree.
 //   node ci/release/deploy-authorized.mjs --repo-dir <checkout> --approval <json> --attestation <json> \
 //        --jenkins-pub <pem> --admin-pub <pem>
 // Public keys must be files that live on this host (not taken from the repository).
-// NOTE: the real deployment step (Vercel CLI) is NOT enabled or tested yet: see docs/ci-cd-pipeline.md, "Vercel audit".
+// NOTE: promotion is NOT enabled or tested yet (it needs the Vercel Production Branch set to `production`): see docs/ci-cd-pipeline.md.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,12 +36,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       jenkinsPublicKeyPem: fs.readFileSync(need("jenkins-pub"), "utf8"),
       adminPublicKeyPem: fs.readFileSync(need("admin-pub"), "utf8"),
       enabled, log: (m) => console.log(m),
+      // PROMOTION = fast-forward the `production` branch to the approved commit. Vercel deploys production ONLY from that branch
+      // (Project > Settings > Git > Production Branch = production), so no Vercel token or CLI is involved and `main` is only staging.
       deploy: async ({ commit }) => {
-        const tokenFile = process.env.VERCEL_TOKEN_FILE;
-        if (!tokenFile || !fs.existsSync(tokenFile)) throw new Error("VERCEL_TOKEN_FILE is not set: refusing to deploy");
-        console.log(`deploying exactly ${commit.slice(0, 12)} to production`);
-        const r = spawnSync("npx", ["--yes", "vercel@latest", "deploy", "--prod", "--yes", "--token", fs.readFileSync(tokenFile, "utf8").trim()], { cwd: path.join(dir, "frontend"), stdio: "inherit", shell: process.platform === "win32" });
-        if (r.status !== 0) throw new Error("vercel deploy failed");
+        const tokenFile = process.env.RELEASE_GITHUB_TOKEN_FILE;
+        if (!tokenFile || !fs.existsSync(tokenFile)) throw new Error("RELEASE_GITHUB_TOKEN_FILE is not set: refusing to promote");
+        const remote = process.env.RELEASE_REMOTE_URL || "https://github.com/UniMisk-Erp-Solutions/TaskFlow.git";
+        const header = `http.extraHeader=Authorization: Basic ${Buffer.from(`x-access-token:${fs.readFileSync(tokenFile, "utf8").trim()}`).toString("base64")}`;
+        console.log(`promoting exactly ${commit.slice(0, 12)} to the production branch`);
+        const r = spawnSync("git", ["-C", dir, "-c", header, "push", remote, `${commit}:refs/heads/production`], { stdio: "inherit" }); // never forced: only a fast-forward is accepted
+        if (r.status !== 0) throw new Error("promotion failed (not a fast-forward, or no permission)");
       },
     });
   } catch (e) { console.error(`✘ ${e.message}`); process.exit(1); }
