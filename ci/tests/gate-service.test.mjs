@@ -417,3 +417,9 @@ test("FAILURE TEXT: a failing node:test names the test, not the runner's summary
   assert.equal(firstErrorLine(tail), "test failed: CENTRAL PIPELINE: copies differ");
   assert.equal(firstErrorLine(["# tests 3", "# fail 1"].join(NL)), "");
 });
+
+test("FAILURE TEXT: browser/Chromium log noise (dbus, pid lines) is never shown as the error", () => {
+  const NL = String.fromCharCode(10);
+  const tail = ["[pid=36049][err] [1028/075623.622047:ERROR:dbus/bus.cc:405] Failed to connect", "Error: browserContext.newPage: Target crashed"].join(NL);
+  assert.equal(firstErrorLine(tail), "Error: browserContext.newPage: Target crashed");
+});

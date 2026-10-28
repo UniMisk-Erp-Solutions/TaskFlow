@@ -59,6 +59,7 @@ services:
     <<: *hardening
     image: unimisk/taskflow-jenkins:2.580.1
     container_name: taskflow-agent
+    init: true   # reaps finished child processes: without it every build leaves dead browser processes until the pid limit is hit and Chromium crashes
     entrypoint: ["java", "-jar", "/opt/agent.jar", "-url", "http://taskflow-jenkins:8080/", "-secret", "@/run/secrets/agent_secret", "-name", "untrusted-1", "-webSocket", "-workDir", "/home/jenkins/agent"]
     environment:
       HOME: /home/jenkins

@@ -16,7 +16,7 @@ export function firstErrorLine(tail = "") {
   // a failing test (node:test / TAP) names itself: that is the most useful line
   const failedTest = lines.find((l) => /^not ok \d+ - /.test(l));
   if (failedTest) return failedTest.replace(/^not ok \d+ - /, "test failed: ").slice(0, 110);
-  const noise = /^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration)/i;
+  const noise = /dbus|^[[]pid=|^[[]?[0-9]+[/][0-9]+:|^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration)/i;
   const hit = lines.find((l) => /\berror\b|✘|\bFAIL(ED)?\b|Error:|not defined|failed/i.test(l) && !noise.test(l));
   return (hit || lines.filter((l) => !noise.test(l)).at(-1) || "").slice(0, 110);
 }
