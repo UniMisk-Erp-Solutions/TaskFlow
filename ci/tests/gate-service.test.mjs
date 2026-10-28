@@ -13,7 +13,7 @@ import { evaluateAttestation } from "../lib/attestation.mjs";
 import { REQUIRED_CHECKS } from "../pipeline/config.mjs";
 import { buildStatusBody, publishStatus } from "../lib/github-status.mjs";
 import { MAX_BODY_BYTES, createDebouncer, createRateLimiter, handleDelivery, sign, verifySignature } from "../gate-service/webhook.mjs";
-import { PINNED_PATHS, evaluateBuild } from "../gate-service/evaluate.mjs";
+import { PINNED_PATHS, evaluateBuild, firstErrorLine } from "../gate-service/evaluate.mjs";
 import { createGate, createPublisher } from "../gate-service/gate.mjs";
 import { createGitSource } from "../gate-service/git-source.mjs";
 import { createJenkinsClient } from "../gate-service/jenkins.mjs";
@@ -109,7 +109,7 @@ test("evaluateBuild: PASS only when every stage is PASS for THIS commit and tree
 test("evaluateBuild: FAIL / MISSING / STALE stage results block; a lying tree is detected", () => {
   const base = passAll(SHA1, "T1");
   const run = (results) => evaluateBuild({ sha: SHA1, git: gitFor("T1"), results, required: REQUIRED_CHECKS, pin: PIN });
-  assert.match(run({ ...base, lint: { ...base.lint, status: "FAIL" } }).reasons[0], /lint=FAIL/);
+  assert.match(run({ ...base, lint: { ...base.lint, status: "FAIL" } }).reasons[0], /lint FAIL:/);
   const { e2e, ...noE2e } = base; void e2e;
   assert.match(run(noE2e).reasons[0], /e2e=MISSING/);
   assert.match(run({ ...base, build: { ...base.build, tree: "OTHER" } }).reasons[0], /build=STALE/);
@@ -137,7 +137,7 @@ function harness() {
     listBuilds: async () => world.builds.map((b) => ({ ...b })),
     artifactJson: async (p, rel) => rel === ".ci/toolkit.json" ? (world.toolkit ? { toolkitCommit: TK } : null) : world.artifacts[`${p}|${rel.replace(".ci/results/", "").replace(".json", "")}`] ?? null,
   };
-  const git = { refresh: async () => { world.refreshes += 1; }, inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
+  const git = { refresh: async () => { world.refreshes += 1; }, inspectRef: async (r) => (r === "main" && world.mainTip ? { tree: "MT", pinned: world.mainTip } : null), inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
   const state = createState(path.join(dir, "state.json"));
   const publish = async (s) => { if (world.failPublish) throw new Error("GitHub down"); world.published.push(s); };
   const gate = createGate({ cfg: { repo: REPO }, jenkins, git, state, publish, required: REQUIRED_CHECKS, pin: PIN, privateKeyPem, attestDir: path.join(dir, "att"), log: () => {} });
@@ -169,7 +169,7 @@ test("GATE: a failing stage publishes FAILURE naming the stage and writes NO att
   await h.gate.tick();
   const last = h.world.published.at(-1);
   assert.equal(last.state, "failure");
-  assert.match(last.description, /unit-tests=FAIL/);
+  assert.match(last.description, /unit-tests FAIL:/);
   assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false);
 });
 
@@ -355,4 +355,65 @@ test("CENTRAL PIPELINE: never signed when the toolkit is not the approved pin, h
     assert.equal(h.world.published.at(-1).state, "failure", name);
     assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false, name);
   }
+});
+
+test("NO MANUAL RE-PIN: a pipeline that an admin-approved merge put on main is accepted even though the gate image was pinned earlier", async () => {
+  const NEW = Object.fromEntries(PINNED_PATHS.map((p) => [p, `new-${p}`]));
+  const h = harness();
+  h.world.mainTip = NEW; h.world.toolkitPinned = NEW;                 // the build used main's (new) toolkit
+  h.world.pinned = Object.fromEntries(PINNED_PATHS.map((p) => [p, null])); // the branch carries no pipeline files
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "success");
+});
+
+test("NO MANUAL RE-PIN: a toolkit that is neither the baked pin nor the tip of main is still refused", async () => {
+  const h = harness();
+  h.world.mainTip = { ...PIN, "ci/lib": "something-else" };           // main says one thing
+  h.world.toolkitPinned = { ...PIN, "ci/lib": "a-third-thing" };      // the build used another
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "failure");
+  assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false);
+});
+
+test("FAILURE TEXT: the GitHub status names the failing stage and its first real error line, failing stages first", () => {
+  const ESC = String.fromCharCode(27), NL = String.fromCharCode(10);
+  const r = passAll(SHA1, "T1");
+  r.lint = { status: "FAIL", commit: SHA1, tree: "T1", tail: ESC + "[31m  30:11  error    'process' is not defined   no-undef" + ESC + "[0m" + NL + "✖ 20 problems (2 errors, 18 warnings)" };
+  r.typecheck = undefined;
+  const out = evaluateBuild({ sha: SHA1, git: gitFor("T1"), results: r, required: REQUIRED_CHECKS, pin: PIN });
+  assert.equal(out.verdict, "failed");
+  assert.ok(out.reasons[0].startsWith("lint FAIL: 30:11"), out.reasons[0]);
+  assert.ok(out.reasons[0].includes("'process' is not defined"));
+  assert.ok(out.reasons[0].includes("typecheck=MISSING"));
+  assert.equal(firstErrorLine("a" + NL + "[2026-10-27T12:45:40.317Z] src/Card.tsx(13,6): error TS2322: bad type" + NL + "z"), "src/Card.tsx(13,6): error TS2322: bad type");
+  assert.equal(firstErrorLine(""), "");
+});
+
+test("PIPELINE PR: a pull request carrying the approved NEW pipeline files, judged with main's older toolkit, is accepted (each file matches an approved version)", async () => {
+  const MAIN = Object.fromEntries(PINNED_PATHS.map((p) => [p, `main-${p}`]));
+  const h = harness();
+  h.world.mainTip = MAIN; h.world.toolkitPinned = MAIN;   // toolkit = what main has
+  h.world.pinned = { ...PIN };                            // the branch carries the version pinned in the image
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "success");
+});
+
+test("PIPELINE PR: a branch pipeline file that matches neither the image pin nor main is still refused", async () => {
+  const MAIN = Object.fromEntries(PINNED_PATHS.map((p) => [p, `main-${p}`]));
+  const h = harness();
+  h.world.mainTip = MAIN; h.world.toolkitPinned = MAIN;
+  h.world.pinned = { ...PIN, Jenkinsfile: "evil" };
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "failure");
+});
+
+test("FAILURE TEXT: a failing node:test names the test, not the runner's summary line", () => {
+  const NL = String.fromCharCode(10);
+  const tail = ["# Subtest: x", "ok 1 - fine", "not ok 27 - CENTRAL PIPELINE: copies differ", "# tests 66", "# pass 65", "# fail 1"].join(NL);
+  assert.equal(firstErrorLine(tail), "test failed: CENTRAL PIPELINE: copies differ");
+  assert.equal(firstErrorLine(["# tests 3", "# fail 1"].join(NL)), "");
 });

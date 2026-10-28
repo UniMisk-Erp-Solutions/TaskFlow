@@ -40,9 +40,16 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
     // the branch carries must equal the pin as well.
     const tk = await jenkins.artifactJson(b.path, ".ci/toolkit.json");
     const tgi = tk && /^[0-9a-f]{40}$/.test(tk.toolkitCommit || "") ? await git.inspect(tk.toolkitCommit) : null;
+    // Approved pipeline files, per path: the version pinned in this image OR the version at the tip of main (a change reaches main only
+    // through a pull request an admin approved, so merging it is the approval and nobody re-pins by hand). The toolkit the build used and any
+    // pipeline file the branch carries must each equal one of those approved versions.
+    const mainTip = await git.inspectRef?.("main");
+    const okValue = (p, v) => v !== null && v !== undefined && (v === pin?.[p] || v === mainTip?.pinned?.[p]);
     const effective = gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
       const own = gi.pinned?.[p] ?? null, central = tgi?.pinned?.[p] ?? null;
-      return [p, central !== (pin?.[p] ?? undefined) ? `toolkit:${central}` : (own ?? central)];
+      if (!okValue(p, central)) return [p, `toolkit:${central}`];
+      if (own !== null && !okValue(p, own)) return [p, own];
+      return [p, pin[p]];
     })) };
     const results = {};
     for (const name of required) results[name] = await jenkins.artifactJson(b.path, `.ci/results/${name}.json`);

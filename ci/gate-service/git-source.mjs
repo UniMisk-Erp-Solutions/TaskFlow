@@ -21,6 +21,11 @@ export function createGitSource({ mirrorDir, sourceUrl, token, runGit = defaultR
   }
   return {
     async refresh() { await ensure(); await runGit([...auth, "-C", mirrorDir, "fetch", "--prune", "--no-tags", "-q", sourceUrl, ...REFSPECS]).catch(async (e) => { if (/couldn't find remote ref refs\/pull/.test(e.message)) return runGit([...auth, "-C", mirrorDir, "fetch", "--prune", "--no-tags", "-q", sourceUrl, REFSPECS[0]]); throw e; }); },
+    /** The pipeline-file hashes at the tip of a branch of the mirror (e.g. "main"), or null when the branch is unknown. */
+    async inspectRef(ref) {
+      if (!/^[A-Za-z0-9._/-]+$/.test(ref)) return null;
+      try { return await this.inspect(await runGit(["-C", mirrorDir, "rev-parse", "--verify", "--quiet", `refs/heads/${ref}`])); } catch { return null; }
+    },
     /** { tree, pinned: { path: objectHash|null } } for a commit, or null when the commit is unknown. */
     async inspect(sha) {
       if (!/^[0-9a-f]{40}$/.test(sha)) return null;

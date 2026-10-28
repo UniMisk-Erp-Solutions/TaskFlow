@@ -436,7 +436,7 @@ Any branch of the repository is built by the same pipeline, whether or not it co
 | `ci/` scripts, ESLint/TypeScript/Playwright setup | taken from the **trusted ref** (`CI_TOOLKIT_REF`, now `feature/ci-cd-pipeline`, **`main` once the pipeline is merged**) by `ci/pipeline/overlay.mjs` on every build. The branch's own copies are overwritten, so a branch cannot weaken the pipeline that judges it. Only missing lint/typecheck/e2e scripts and devDependencies are added to `package.json`; application code and runtime dependencies are never touched. |
 | Trust | the build records the toolkit commit (`.ci/toolkit.json`); the gate re-derives the toolkit's pipeline-file hashes from Git and signs only when they equal the admin-approved pin baked into the gate image. A branch that ships its own different `Jenkinsfile` is refused. |
 
-**After merging the pipeline into `main`:** set `CI_TOOLKIT_REF=main` in `~/taskflow-ci/.env` on `.15`, then `docker compose up -d jenkins` from `ci/jenkins`. **Changing any pipeline file** (`Jenkinsfile`, `ci/pipeline`, `ci/lib`, `ci/gate`, `ci/verify`) needs a gate re-pin: rebuild the gate image from the reviewed commit (`ci/gate-service/pins.sh`).
+**No manual steps after the merge (updated 2026-10-28):** the pipeline was merged into `main` (PR #1) and the central Jenkinsfile takes the trusted pipeline from `main`, so nothing is switched by hand (the `CI_TOOLKIT_REF` fallback idea was dropped: a Jenkinsfile that differs from the copy on `main` makes the "central Jenkinsfile identical" test fail for the PR that carries it). The gate accepts the pipeline pinned in its image **or the pipeline at the tip of `main`**: a change reaches `main` only through an admin-approved pull request, so merging it is the approval and the gate image is never rebuilt by hand. **This relies on the ruleset on `main`** (pull request + admin approval): without it, anyone who can push to `main` could change the pipeline. A pull request that itself changes the pipeline files is refused by the gate until it is merged (it is judged against the pipeline already on `main`), which is intended.
 
 **Honest limits:** a branch based on old `main` is judged by the full pipeline, so it can legitimately FAIL (for example `trivy-deps`) on vulnerabilities that `main` still carries; that is a real finding, not a pipeline fault. The repository is public, so the toolkit is fetched anonymously; a private repository would need a read credential for that step.
 
@@ -472,6 +472,30 @@ The repository is **public**, so GitHub branch protection and rulesets are free.
 
 The gate asks GitHub every `GATE_WATCH_SECONDS` (default 10; `0` disables) whether any branch tip moved (`ci/gate-service/ref-watcher.mjs`). The request is conditional (`If-None-Match`): GitHub answers `304` while nothing changed, which is free and does not use the rate limit. When a tip moves (push, new branch, update of a PR branch) the gate triggers a Jenkins scan immediately, so a build starts within seconds of a push. Nothing is exposed to the internet, no Cloudflare tunnel and no repository-admin action is needed. The GitHub webhook (`POST /github`) remains supported as an alternative, and the periodic scan (`GATE_SCAN_EVERY_SECONDS`, 120) stays as the recovery path. Gate log line on detection: `push detected on GitHub: scanning Jenkins`.
 
+## Chosen release flow (owner decision, 2026-10-28): simple GitHub flow, no `production` branch
+
+`push -> Jenkins checks -> pull request -> admin approves -> merge into main -> Vercel deploys main`.
+The `production`-branch promotion and the signed release approval described above are **not used** (the code stays in `ci/release/` but is not part of the flow). Protection comes from GitHub, which is free on this public repository:
+
+1. A developer pushes a branch; the gate detects it within seconds, Jenkins runs the 8 checks and `unimisk/verified` appears on that commit.
+2. The developer opens a pull request into `main` (the green stamp is already on the commit).
+3. A ruleset on `main` blocks the merge unless: a pull request is used, `unimisk/verified` is green, and an **admin approves** (Code Owners review; `.github/CODEOWNERS` must list the admin account(s) for `*`), stale approvals are dismissed when new commits are pushed, force pushes are blocked.
+4. The admin merges manually. Nothing merges automatically.
+5. Jenkins builds `main` again with the same 8 checks; Vercel deploys `main` to production because it is the Production Branch.
+
+**Consequence to accept:** a merge to `main` goes live immediately, so the required check plus admin approval are the only gate. Preview environment variables should still point at a test Supabase project so previews never touch live data. Rollback: Vercel Instant Rollback.
+
+**Owner steps:** (a) tell us the admin GitHub account(s) so CODEOWNERS can cover `*`; (b) create the `protect main` ruleset (pull request, 1 approval from Code Owners, required status `unimisk/verified`, dismiss stale approvals, block force pushes); (c) the account that opens a PR cannot approve its own PR, so the admin must be a different account.
+
+## Use as a code checker (owner decision, 2026-10-28)
+
+The pipeline is used to check code and reduce errors. It never merges and never deploys: **push -> Jenkins checks -> result on the commit -> developer fixes or opens a pull request -> admin reviews and merges by hand -> Vercel deploys `main` as before.**
+
+- **Error shown:** a failing commit gets `unimisk/verified` = failure on GitHub whose text names the failing stage and its first error line (for example `lint FAIL: 30:11 error 'process' is not defined`); stages that were skipped because an earlier one failed show as `=MISSING`. Developers do not need Jenkins access to see why a commit failed.
+- **Safe:** a commit that passes all 8 checks gets `unimisk/verified` = success ("All 8 required checks passed").
+- **Not used by this flow:** the signed release approval and promotion (`ci/release/`), and the `production` branch. The optional `taskflow-monitor` job only reads the live site's public URL.
+- Fix a red commit by pushing a new commit; the new push is checked again automatically.
+
 ## Revision log
 
 | Date | Change |
@@ -486,6 +510,11 @@ The gate asks GitHub every `GATE_WATCH_SECONDS` (default 10; `0` disables) wheth
 | 2026-10-27 | Central pipeline: Jenkinsfile stored in Jenkins plus a trusted CI toolkit overlay (`ci/pipeline/overlay.mjs`) so branches need no pipeline files; the gate pins the toolkit; tests added (84 pass). |
 | 2026-10-27 | Free production workflow: CODEOWNERS, PR template, release promotion by fast-forwarding the `production` branch (no Vercel token), read-only smoke check, Jenkins `taskflow-monitor` health job; owner actions listed (rulesets, Vercel Production Branch, staging Supabase). |
 | 2026-10-27 | Instant push detection: the gate polls GitHub branch tips every 10 s with conditional requests and triggers the Jenkins scan on change (no webhook, tunnel or open port); 90 pipeline tests pass. |
+| 2026-10-28 | No manual steps after setup: central Jenkinsfile prefers `main` and falls back to the configured ref; the gate also accepts the pipeline at the tip of `main` (no re-pin); 93 pipeline tests pass. |
+| 2026-10-28 | Checker-only use documented; the GitHub failure text now names the failing stage and its first error line (94 pipeline tests pass). |
+| 2026-10-28 | Jenkinsfile and Jenkinsfile.central restored to main's version so a pull request no longer fails the "central Jenkinsfile identical" test. |
+| 2026-10-28 | Lint config: Node globals for frontend/scripts (new Vite SEO plugin failed lint on main); gate accepts either approved version per pipeline file (image pin or tip of main). A pull request that changes the pipeline is judged by main's older pipeline, so it can fail the "central Jenkinsfile identical" test until merged. |
+| 2026-10-28 | Owner chose the simple flow: push -> Jenkins -> PR -> admin approval -> merge into main -> Vercel deploys main; production branch and signed release step not used. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
