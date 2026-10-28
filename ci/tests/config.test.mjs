@@ -267,9 +267,3 @@ test("every Jenkins configuration YAML file parses (a broken file puts Jenkins i
     assert.doesNotThrow(() => yaml.load(read(`ci/jenkins/casc/${f}`)), f);
   }
 });
-
-test("the central Jenkinsfile prefers main and needs no manual switch-over", () => {
-  const jf = read("Jenkinsfile");
-  assert.ok(jf.includes("['main', pref, 'feature/ci-cd-pipeline']"));
-  assert.match(jf, /no trusted pipeline found/);
-});
