@@ -265,6 +265,7 @@ export default function EmployeeDashboard() {
             currentUserId={profile?.id}
             onStartTimer={taskTimers.start}
             onPauseTimer={taskTimers.pause}
+            onAdjustTimer={taskTimers.adjust}
             timerError={taskTimers.error}
           />
         )}

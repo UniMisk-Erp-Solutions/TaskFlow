@@ -288,6 +288,7 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
                             <ChevronDown size={14} className={expanded ? 'is-open' : ''} aria-hidden="true" />
                             <span>{row.task.title}</span>
                             <small>{row.segments.length} session{row.segments.length === 1 ? '' : 's'}</small>
+                            {row.adjustedSessions?.length > 0 && <span className="timer-adjusted-tag" title={adjustedTitle(row.adjustedSessions)}>Adjusted</span>}
                           </button>
                         ) : row.task.title}
                       </span>
@@ -325,6 +326,13 @@ function PersonCard({ person, rows, averageSeconds, defaultOpen, showPerson, exp
       )}
     </article>
   );
+}
+
+function adjustedTitle(sessions) {
+  return sessions.map((s) => {
+    const was = s.original_ended_at ? new Date(s.original_ended_at).toLocaleString() : 'still running';
+    return `Adjusted ${new Date(s.adjusted_at).toLocaleString()} (was ${was})${s.adjust_reason ? `: ${s.adjust_reason}` : ''}`;
+  }).join(' | ');
 }
 
 export default function TimerAnalytics({ tasks = [], sessions: allSessions = [], people = [], directoryProfiles = [], profile, isAdmin, loading, error }) {
@@ -446,6 +454,7 @@ export default function TimerAnalytics({ tasks = [], sessions: allSessions = [],
     personTaskRows.forEach((row) => {
       const key = `${row.task.id}:${row.person.id}`;
       row.segments = segmentsByKey.get(key) || [];
+      row.adjustedSessions = allSessions.filter((session) => `${session.task_id}:${session.user_id}` === key && session.adjusted_at);
       row.startedAt = firstStart.has(key) ? new Date(firstStart.get(key)).toISOString() : null;
       const finished = row.task.status === 'completed' || row.task.status === 'submitted';
       row.endedAt = finished

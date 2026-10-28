@@ -260,3 +260,9 @@ Root-cause analysis and fixes for four reported problems: files not downloading/
 **Document:** [docs/kanban-rules-subtasks-sessions.md](docs/kanban-rules-subtasks-sessions.md)
 
 Five fixes from 16/10/2026: employees cannot move an In Progress task back to To Do/Backlog (web, Edge API, Express and Flutter), admin Kanban cards now show the combined tracked time and who is running instead of 0, a "Subtask of" parent picker on the New Task form with a Subtask badge across tables, cards and the detail modal, multiple simultaneous logins per user (sign-out now uses local scope instead of global, which revoked every session), and https storage URLs behind Cloudflare so file downloads work. Includes Vitest coverage and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/timer-adjust.md](docs/timer-adjust.md)
+
+Adds an Adjust dialog on the Kanban card to set when a forgotten timer really ended (validated against the start, the future and the next session), a POST /tasks/:id/timer/adjust endpoint, a migration adding adjusted_at/adjusted_by/original_ended_at/adjust_reason to task_timer_sessions, and an Adjusted tag with details for admins on the Kanban card and the Timer page. Records what is not verified (no live login test, no Flutter or Express support).

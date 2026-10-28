@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Clock3, FolderKanban, GripVertical, Search, UserRound } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { CalendarDays, Clock3, FolderKanban, GripVertical, Pencil, Search, UserRound } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { elapsedSecondsForSession, formatElapsedSeconds } from '../lib/taskTimer';
+import TimerAdjustModal from './TimerAdjustModal';
 
 function assigneeIds(task) {
   return task.assignee_ids?.length ? task.assignee_ids : task.assignee_id ? [task.assignee_id] : [];
@@ -58,7 +60,8 @@ function autoScrollAtPointer(element, clientY) {
   else scrollContainer.scrollBy({ top: delta, behavior: 'auto' });
 }
 
-function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, isAdmin, timerNow, onStartTimer, onPauseTimer, showKind, isProjectTask }) {
+function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, consumeDraggedClick, isDragging, completionTimeLeft, timerSessions, currentUserId, isAdmin, timerNow, onStartTimer, onPauseTimer, onAdjustTimer, showKind, isProjectTask }) {
+  const [adjusting, setAdjusting] = useState(false);
   const lane = kanbanColumnForTask(task);
   const names = assigneeIds(task).map((id) => profileById?.[id] || id.slice(0, 8));
   const locked = task.status === 'completed' || task.status === 'submitted';
@@ -68,6 +71,13 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
   // Admins don't run timers: they see everyone's tracked time on the card and who is running now.
   const taskSessions = timerSessions.filter((session) => session.task_id === task.id);
   const teamSeconds = taskSessions.reduce((total, session) => total + elapsedSecondsForSession(session, timerNow), 0);
+  const ownSessions = timerSessions.filter((session) => session.task_id === task.id && session.user_id === currentUserId);
+  const latestOwnSession = ownSessions.reduce((latest, session) => (!latest || Date.parse(session.started_at) > Date.parse(latest.started_at) ? session : latest), null);
+  const adjustedSessions = taskSessions.filter((session) => session.adjusted_at);
+  const adjustedTitle = adjustedSessions.map((session) => {
+    const who = profileById?.[session.user_id] || 'Someone';
+    return `${who} adjusted a timer${session.adjust_reason ? `: ${session.adjust_reason}` : ''}`;
+  }).join(' | ');
   const runningNames = [...new Set(taskSessions.filter((session) => !session.ended_at).map((session) => profileById?.[session.user_id] || 'Someone'))];
 
   return (
@@ -153,6 +163,7 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
         isAdmin ? (
           <div className="kanban-task-timer" title={runningNames.length ? `Running now: ${runningNames.join(', ')}` : 'No timer running'}>
             <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(teamSeconds)}</span>
+            {adjustedSessions.length > 0 && <span className="timer-adjusted-tag" title={adjustedTitle}>Adjusted</span>}
             <span className={`kanban-timer-state${runningNames.length ? ' is-running' : ''}`}>
               {runningNames.length ? `${runningNames.join(', ')} working` : 'Not running'}
             </span>
@@ -160,12 +171,24 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
         ) : (
         <div className="kanban-task-timer">
           <span className="kanban-task-timer-value"><Clock3 size={13} aria-hidden="true" />{formatElapsedSeconds(ownTaskSeconds)}</span>
-          <button type="button" className="kanban-task-timer-button" onClick={(event) => {
-            event.stopPropagation();
-            (activeSession ? onPauseTimer : onStartTimer)(task.id).catch(() => {});
-          }} onKeyDown={(event) => event.stopPropagation()} aria-label={`${activeSession ? 'Pause' : 'Start'} timer for ${task.title}`} title={activeSession ? 'Pause timer' : 'Start timer'}>
-            {activeSession ? 'Pause' : 'Start'}
-          </button>
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            {adjustedSessions.length > 0 && <span className="timer-adjusted-tag" title={adjustedTitle}>Adjusted</span>}
+            {latestOwnSession && (
+              <button type="button" className="kanban-task-timer-button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); setAdjusting(true); }} onKeyDown={(event) => event.stopPropagation()} aria-label={`Adjust timer for ${task.title}`} title="Forgot to stop? Set the time you really finished">
+                <Pencil size={11} aria-hidden="true" /> Adjust
+              </button>
+            )}
+            <button type="button" className="kanban-task-timer-button" onClick={(event) => {
+              event.stopPropagation();
+              (activeSession ? onPauseTimer : onStartTimer)(task.id).catch(() => {});
+            }} onKeyDown={(event) => event.stopPropagation()} aria-label={`${activeSession ? 'Pause' : 'Start'} timer for ${task.title}`} title={activeSession ? 'Pause timer' : 'Start timer'}>
+              {activeSession ? 'Pause' : 'Start'}
+            </button>
+          </span>
+          {adjusting && latestOwnSession && createPortal(
+            <TimerAdjustModal task={task} session={latestOwnSession} onClose={() => setAdjusting(false)} onSave={(payload) => onAdjustTimer(task.id, payload)} />,
+            document.body,
+          )}
         </div>
         )
       )}
@@ -187,6 +210,7 @@ export default function KanbanBoard({
   currentUserId,
   onStartTimer = async () => {},
   onPauseTimer = async () => {},
+  onAdjustTimer = async () => {},
   timerError = '',
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
@@ -620,6 +644,7 @@ export default function KanbanBoard({
                       timerNow={clockNow}
                       onStartTimer={onStartTimer}
                       onPauseTimer={onPauseTimer}
+                      onAdjustTimer={onAdjustTimer}
                       showKind={!isAdmin && scope === 'individual'}
                       isProjectTask={isLinkedProject(task)}
                     />

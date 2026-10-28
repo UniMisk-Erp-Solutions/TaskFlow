@@ -58,5 +58,13 @@ export function useTaskTimers() {
     }
   }, [refetch]);
 
-  return { sessions, people, loading, error, refetch, start, pause };
+  // Fix a timer that was forgotten: set when the latest session really ended.
+  const adjust = useCallback(async (taskId, payload) => {
+    const { data } = await api.post(`/tasks/${taskId}/timer/adjust`, payload);
+    setSessions((current) => current.map((session) => session.id === data.id ? data : session));
+    void refetch();
+    return data;
+  }, [refetch]);
+
+  return { sessions, people, loading, error, refetch, start, pause, adjust };
 }
