@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import { seoBuildPlugin } from './scripts/vite-seo-plugin.mjs';
 
 // Build stamp injected as a global so the Navbar can render the deployed
 // version at a glance — handy for telling whether a fresh build actually
@@ -12,7 +13,7 @@ export default defineConfig({
   define: {
     __TASKFLOW_BUILD__: JSON.stringify(BUILD_STAMP),
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), seoBuildPlugin()],
   resolve: {
     alias: {
       // Used by the imported marketing pages (`@/src/lib/utils`, etc.) so they
@@ -25,6 +26,7 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test/setup.js',
     css: false,
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'], // e2e/ is Playwright, not Vitest
   },
   build: {
     rollupOptions: {

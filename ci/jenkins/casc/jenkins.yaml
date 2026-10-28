@@ -1,0 +1,68 @@
+# Jenkins Configuration as Code for the TaskFlow pipeline: the CORE configuration (always loaded).
+# github.yaml (repository read credential + multibranch job) and local-verify.yaml (pre-GitHub job) are optional and
+# only loaded when CASC_FILES lists them (see docker-compose.yml).
+# Every ${VAR} below is REQUIRED: JCasC refuses to start when one is unset, so a missing secret fails loudly.
+#
+# TRUST MODEL
+#   * The controller runs NO builds (0 executors) and holds NO signing key and NO GitHub write token.
+#   * Branch/PR code is built only on the "untrusted" agent: a separate container with no secrets, no access to this
+#     controller's files or credential store, and no route to the gate.
+#   * Signing and GitHub statuses are done by the separate gate container (ci/gate-service), which re-verifies every build.
+jenkins:
+  systemMessage: "TaskFlow CI — configured as code (ci/jenkins). Changes made in the UI are lost on restart."
+  numExecutors: 0            # the controller never executes branch code
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "CI_TOOLKIT_REF"        # the trusted ref the central pipeline takes ci/ and the lint/typecheck/E2E setup from
+            value: "${CI_TOOLKIT_REF:-main}"
+          - key: "MONITOR_URL"           # the production URL the scheduled health check GETs (optional)
+            value: "${MONITOR_URL:-}"
+  scmCheckoutRetryCount: 2
+  mode: EXCLUSIVE
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+        - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
+          password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "USER:Overall/Administer:admin"
+        - "GROUP:Overall/Read:authenticated"
+        - "USER:Job/Read:gate"
+        - "USER:Job/Discover:gate"
+        - "USER:Job/Build:gate"
+  crumbIssuer: "standard"
+  remotingSecurity:
+    enabled: true
+  nodes:
+    - permanent:
+        name: "untrusted-1"
+        labelString: "untrusted"
+        remoteFS: "/home/jenkins/agent"
+        numExecutors: 1       # one build at a time keeps the shared host safe
+        mode: EXCLUSIVE
+        launcher:
+          inbound:
+            webSocket: true
+
+security:
+  queueItemAuthenticator:
+    authenticators: []
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: true
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
+  globalConfigFiles:
+    configs:
+      - custom:
+          id: "taskflow-central-jenkinsfile"
+          name: "TaskFlow central Jenkinsfile"
+          comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
+          content: "${readFile:/usr/share/jenkins/ref/casc/Jenkinsfile.central}"

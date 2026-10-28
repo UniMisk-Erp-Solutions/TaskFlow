@@ -12,11 +12,14 @@ function storageKey(userId) {
 }
 
 function clampPosition(position) {
+  const mobile = window.matchMedia('(max-width: 760px)').matches;
+  const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tf-safe-bottom')) || 0;
+  const minBottom = mobile ? 66 + safeBottom + 14 : MARGIN;
   const maxRight = Math.max(MARGIN, window.innerWidth - SIZE - MARGIN);
-  const maxBottom = Math.max(MARGIN, window.innerHeight - SIZE - MARGIN);
+  const maxBottom = Math.max(minBottom, window.innerHeight - SIZE - MARGIN);
   return {
     right: Math.min(maxRight, Math.max(MARGIN, position.right)),
-    bottom: Math.min(maxBottom, Math.max(MARGIN, position.bottom)),
+    bottom: Math.min(maxBottom, Math.max(minBottom, position.bottom)),
   };
 }
 

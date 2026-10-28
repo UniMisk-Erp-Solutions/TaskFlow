@@ -14,7 +14,7 @@ export default function FilterBar({
     filters.search || filters.status || filters.priority || filters.type || filters.assignee_id;
 
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div className="tf-filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
         <Search size={17} strokeWidth={2} style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', color: 'var(--tf-muted)', pointerEvents: 'none' }} />
         <input

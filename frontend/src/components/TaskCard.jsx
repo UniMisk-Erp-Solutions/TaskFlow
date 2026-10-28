@@ -65,6 +65,7 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
 
   return (
     <div
+      className="employee-task-card"
       role={onOpenDetail ? 'button' : undefined}
       tabIndex={onOpenDetail ? 0 : undefined}
       onKeyDown={(e) => {
@@ -93,20 +94,20 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: 16, color: 'var(--tf-text)', lineHeight: 1.35, letterSpacing: '-0.015em' }}>{task.title}</div>
+          <div className="employee-task-card-title" style={{ fontWeight: 600, fontSize: 16, color: 'var(--tf-text)', lineHeight: 1.35, letterSpacing: '-0.015em' }}>{task.title}</div>
           {task.project_name && (
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tf-muted)', marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
               Project · {task.project_name}
             </div>
           )}
           {task.description && (
-            <div style={{ fontSize: 14, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>{task.description}</div>
+            <div className="employee-task-card-description" style={{ fontSize: 14, color: 'var(--tf-muted)', marginTop: 6, lineHeight: 1.47 }}>{task.description}</div>
           )}
         </div>
         <PriorityBadge priority={task.priority} />
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+      <div className="employee-task-card-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
         <StatusBadge status={task.status} />
         {task.due_date && (
           <div
@@ -125,7 +126,7 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
         )}
       </div>
 
-      <div style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', justifyContent: 'flex-start' }}>
+      <div className="employee-task-card-footer" style={{ borderTop: '1px solid var(--tf-border)', paddingTop: 14, display: 'flex', justifyContent: 'flex-start' }}>
         {(() => {
           const adminOwnedStatus = task.status === 'completed' || task.status === 'changes_requested';
           return (

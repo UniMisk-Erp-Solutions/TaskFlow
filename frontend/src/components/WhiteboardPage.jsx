@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Excalidraw, reconcileElements, CaptureUpdateAction } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
-import { Globe, Users, Plus, X } from 'lucide-react';
+import { Globe, Users, Plus, X, Menu, ZoomIn, ZoomOut } from 'lucide-react';
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
 import { useTheme } from '../ThemeContext';
@@ -50,6 +50,7 @@ function Board({ boardId }) {
   const [saveState, setSaveState] = useState('saved');
 
   const apiRef = useRef(null);
+  const canvasRef = useRef(null);
   const channelRef = useRef(null);
   const syncedRef = useRef(new Map());     // element id -> last version known to be shared
   const outboxRef = useRef(new Map());     // element id -> element waiting to broadcast
@@ -260,6 +261,15 @@ function Board({ boardId }) {
     fetchMissingFiles(api.getSceneElements());
   }, [fetchMissingFiles]);
 
+  const changeZoom = useCallback((step) => {
+    const api = apiRef.current;
+    if (!api) return;
+    const current = api.getAppState().zoom.value;
+    api.updateScene({ appState: { zoom: { value: Math.max(0.1, Math.min(3, Math.round((current + step) * 100) / 100)) } } });
+  }, []);
+
+  const clickCanvasControl = (selector) => canvasRef.current?.querySelector(selector)?.click();
+
   if (error) {
     return (
       <div>
@@ -270,7 +280,7 @@ function Board({ boardId }) {
   if (!board) return <div className="spinner" style={{ width: 22, height: 22 }} />;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 220px)', minHeight: 420 }}>
+    <div className="tf-whiteboard-stage" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 220px)', minHeight: 420 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--tf-muted)', padding: '3px 9px', border: '1px solid var(--tf-border)', borderRadius: 20 }}>
           <Globe size={12} /> Live for everyone
@@ -282,7 +292,7 @@ function Board({ boardId }) {
           {saveState === 'saved' ? 'All changes saved' : saveState === 'saving' ? 'Saving…' : 'Save failed — retrying on next change'}
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--tf-border)', borderRadius: 14, overflow: 'hidden' }}>
+      <div ref={canvasRef} className="tf-whiteboard-canvas" style={{ flex: 1, minHeight: 0, border: '1px solid var(--tf-border)', borderRadius: 14, overflow: 'hidden', position: 'relative' }}>
         <Excalidraw
           excalidrawAPI={onApi}
           initialData={initialData}
@@ -293,6 +303,13 @@ function Board({ boardId }) {
           name={board.name}
           UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
         />
+        <div className="tf-whiteboard-zoom-controls" aria-label="Canvas zoom controls">
+          <button type="button" onClick={() => changeZoom(-0.1)} aria-label="Zoom out" title="Zoom out"><ZoomOut size={18} /></button>
+          <button type="button" onClick={() => changeZoom(0.1)} aria-label="Zoom in" title="Zoom in"><ZoomIn size={18} /></button>
+        </div>
+      </div>
+      <div className="tf-whiteboard-canvas-actions" aria-label="Canvas actions">
+        <button type="button" onClick={() => clickCanvasControl('.main-menu-trigger')} aria-label="Open canvas menu" title="Canvas menu"><Menu size={17} /><span>Menu</span></button>
       </div>
     </div>
   );
@@ -388,7 +405,7 @@ export default function WhiteboardPage() {
             </span>
           );
         })}
-        <button type="button" className="btn btn-primary btn-sm" onClick={addScreen} style={{ flexShrink: 0 }}>
+        <button type="button" className="btn btn-primary btn-sm tf-whiteboard-new-screen" onClick={addScreen} style={{ flexShrink: 0 }}>
           <Plus size={14} /> New screen
         </button>
       </div>

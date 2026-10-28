@@ -25,3 +25,8 @@ full_backup.sql
 full_backup.dump
 local_before_restore.dump
 supabase/taskflow_full_setup.sql
+
+# CI artifacts (ci/ pipeline results, attestation, Playwright output)
+.ci/
+frontend/playwright-report/
+frontend/test-results/

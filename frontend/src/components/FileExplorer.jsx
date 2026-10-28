@@ -1,15 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { downloadFromApi, fileErrorMessage, previewKind } from '../lib/fileAccess';
+import { zipSync } from 'fflate';
+import { downloadFromApi, fetchFileBlob, fileErrorMessage, previewKind, saveBlob } from '../lib/fileAccess';
 import FilePreviewModal from './FilePreviewModal';
 import {
   ChevronRight, Download, File as FileIcon, FileImage, FileText, FileArchive, FileVideo, FileAudio, FolderPlus,
-  Folder, Eye, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History,
+  Folder, Eye, Globe, Home, Info, Lock, Pencil, Search, Trash2, Upload, X, ArrowUp, FileSpreadsheet, History, Plus, FolderUp,
 } from 'lucide-react';
 import api from '../api';
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
 import Pagination, { usePagination } from './Pagination';
+import SelectMenu from './SelectMenu';
 
 function formatSize(bytes) {
   if (!bytes) return '—';
@@ -42,7 +44,7 @@ function csvCell(value) {
 }
 
 const ACTION_LABELS = {
-  uploaded: 'Uploaded', created: 'Folder created', renamed: 'Renamed', visibility_changed: 'Access changed',
+  uploaded: 'Uploaded', created: 'Folder created', renamed: 'Renamed', moved: 'Moved', visibility_changed: 'Access changed',
   opened: 'Opened', downloaded: 'Downloaded', deleted: 'Deleted',
 };
 
@@ -50,6 +52,7 @@ function describeActivity(entry) {
   const d = entry.details || {};
   switch (entry.action) {
     case 'renamed': return `"${d.from}" → "${d.to}"`;
+    case 'moved': return d.to_folder ? 'Moved into a folder' : 'Moved to My files';
     case 'visibility_changed': return `${d.from === 'public' ? 'Public' : 'Private'} → ${d.to === 'public' ? 'Public' : 'Private'}`;
     case 'uploaded': return [d.size_bytes ? formatSize(d.size_bytes) : '', d.content_type || '', d.visibility ? (d.visibility === 'public' ? 'Public' : 'Private') : ''].filter(Boolean).join(' · ');
     case 'created': return d.visibility ? (d.visibility === 'public' ? 'Public' : 'Private') : '';
@@ -84,6 +87,118 @@ function VisibilityBadge({ visibility, onClick, disabled }) {
   );
 }
 
+const ACCESS_OPTIONS = [
+  { value: 'all', label: 'Public & private' },
+  { value: 'public', label: 'Public only' },
+  { value: 'private', label: 'Private only' },
+];
+
+// Operating-system junk that should never be uploaded with a folder.
+const IGNORED_FILE_NAMES = new Set(['.ds_store', 'thumbs.db', 'desktop.ini']);
+const MAX_FOLDER_UPLOAD_FILES = 10000;
+// Several files are sent at the same time; more than this mostly just queues in the browser.
+const UPLOAD_CONCURRENCY = 8;
+// Files per prepare / complete request to the API.
+const UPLOAD_CHUNK = 40;
+// Folders that are never uploaded with a dropped/picked folder (dependencies and version-control data).
+const SKIPPED_FOLDER_NAMES = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.pytest_cache', '.gradle']);
+
+/** Adds up every file inside a folder, subfolders included, by listing each level. Stops after a short time budget (partial = true)
+ *  and reports a running total through onProgress, so a huge folder shows "≥ X" instead of calculating for minutes. */
+async function sumFolderTree(rootId, onProgress) {
+  const started = Date.now();
+  let bytes = 0;
+  let files = 0;
+  let requests = 0;
+  let partial = false;
+  const overBudget = () => requests >= 150 || Date.now() - started > 15000;
+  const queue = [rootId];
+  while (queue.length) {
+    const batch = queue.splice(0, 6);
+    await Promise.all(batch.map(async (id) => {
+      if (overBudget()) { partial = true; return; }
+      requests += 1;
+      try {
+        const { data } = await api.get('/drive', { params: { folder_id: id } });
+        (data.files || []).forEach((f) => { bytes += Number(f.size_bytes) || 0; files += 1; });
+        (data.folders || []).forEach((f) => queue.push(f.id));
+        onProgress?.({ bytes, files });
+      } catch {
+        partial = true;
+      }
+    }));
+  }
+  return { bytes, files, partial };
+}
+
+/** Lists every file and folder under a folder, with its path inside the folder: { files: [{ id, path, size }], folders: [path] }. */
+async function collectFolderTree(rootId, rootName, limits) {
+  const files = [];
+  const folders = [rootName];
+  const queue = [{ id: rootId, path: rootName }];
+  let bytes = 0;
+  while (queue.length) {
+    const batch = queue.splice(0, 6);
+    await Promise.all(batch.map(async ({ id, path }) => {
+      const { data } = await api.get('/drive', { params: { folder_id: id } });
+      (data.files || []).forEach((f) => {
+        files.push({ id: f.id, path: `${path}/${f.name}`, size: Number(f.size_bytes) || 0 });
+        bytes += Number(f.size_bytes) || 0;
+      });
+      (data.folders || []).forEach((f) => { folders.push(`${path}/${f.name}`); queue.push({ id: f.id, path: `${path}/${f.name}` }); });
+    }));
+    if (files.length > limits.maxFiles || bytes > limits.maxBytes) return { files, folders, bytes, tooBig: true };
+  }
+  return { files, folders, bytes, tooBig: false };
+}
+
+/** Runs `worker` over `items`, at most `limit` at a time. Never rejects: workers handle their own errors. */
+async function runPool(items, limit, worker) {
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next];
+      next += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(lanes);
+}
+// Same cleaning the API applies to folder names, so we can find a folder that already exists.
+const cleanFolderName = (name) => String(name ?? '').replace(/[\\/\u0000-\u001f]+/g, ' ').trim().slice(0, 120);
+
+/** Turns the picker's FileList (webkitdirectory) into { file, dirs } entries; dirs = folder path above the file. */
+export function entriesFromPicker(fileList) {
+  return Array.from(fileList || []).map((file) => {
+    const parts = String(file.webkitRelativePath || '').split('/').filter(Boolean);
+    return { file, dirs: parts.length > 1 ? parts.slice(0, -1) : [] };
+  });
+}
+
+/** Reads everything dropped on the page, descending into dropped folders. Must start synchronously inside the drop event. */
+export async function entriesFromDrop(dataTransfer) {
+  const roots = Array.from(dataTransfer?.items || []).map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null));
+  if (!roots.length || roots.some((entry) => !entry)) {
+    return Array.from(dataTransfer?.files || []).map((file) => ({ file, dirs: [] }));
+  }
+  const out = [];
+  async function walk(entry, dirs) {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      out.push({ file, dirs });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!batch.length) break;
+        for (const child of batch) await walk(child, [...dirs, entry.name]);
+      }
+    }
+  }
+  for (const entry of roots) await walk(entry, []);
+  return out;
+}
+
 export default function FileExplorer() {
   const { profile } = useAuth();
   const [folderId, setFolderId] = useState(null);
@@ -91,7 +206,9 @@ export default function FileExplorer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
+  const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState('all'); // all | mine | shared
+  const [access, setAccess] = useState('all'); // all | public | private
   const [uploadVisibility, setUploadVisibility] = useState('public');
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -112,6 +229,23 @@ export default function FileExplorer() {
   const [activityQuery, setActivityQuery] = useState('');
   const isAdmin = profile?.role === 'admin';
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false); // the "+" menu: New folder / Upload files
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onPointerDown = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [menuOpen]);
+  const draggedRef = useRef(null); // { kind, id, name } while an item is dragged inside the explorer
+  const [dropTarget, setDropTarget] = useState(null); // folder id, '__root__' or null
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -150,10 +284,45 @@ export default function FileExplorer() {
   const showing = searchResults || data;
   const items = useMemo(() => {
     const all = [...(showing.folders || []), ...(showing.files || [])];
-    return all.filter((item) => (filter === 'mine' ? item.is_owner : filter === 'shared' ? !item.is_owner : true));
-  }, [showing, filter]);
+    return all
+      .filter((item) => (filter === 'mine' ? item.is_owner : filter === 'shared' ? !item.is_owner : true))
+      .filter((item) => access === 'all' || item.visibility === access);
+  }, [showing, filter, access]);
 
-  const paging = usePagination(items, { resetKey: `${folderId}|${filter}|${query.trim()}` });
+  const paging = usePagination(items, { resetKey: `${folderId}|${filter}|${access}|${query.trim()}` });
+
+  // Folder sizes. The API sends a folder's total when it can; otherwise the totals are added up here by walking the folder.
+  const sizeCache = useRef(new Map()); // folder id -> 'loading' | { bytes, files, partial }
+  const [, setSizeTick] = useState(0);
+  function invalidateSizes() { sizeCache.current.clear(); setSizeTick((t) => t + 1); }
+  useEffect(() => {
+    const pending = paging.pageItems.filter((item) => item.kind === 'folder' && item.size_bytes === undefined && !sizeCache.current.has(item.id));
+    if (!pending.length) return undefined;
+    let cancelled = false;
+    pending.forEach((item) => sizeCache.current.set(item.id, 'loading'));
+    setSizeTick((t) => t + 1);
+    (async () => {
+      await runPool(pending, 3, async (item) => {
+        const total = await sumFolderTree(item.id, (running) => {
+          if (cancelled) return;
+          sizeCache.current.set(item.id, { ...running, partial: true, loading: true });
+          setSizeTick((t) => t + 1);
+        });
+        if (cancelled) { sizeCache.current.delete(item.id); return; }
+        sizeCache.current.set(item.id, total);
+        setSizeTick((t) => t + 1);
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [paging.pageItems]);
+  function folderSizeLabel(item) {
+    if (item.size_bytes !== undefined) return item.file_count ? formatSize(item.size_bytes) : 'Empty';
+    const entry = sizeCache.current.get(item.id);
+    if (!entry || entry === 'loading') return 'Calculating…';
+    if (entry.loading) return entry.files ? `≥ ${formatSize(entry.bytes)} …` : 'Calculating…';
+    if (!entry.files) return entry.partial ? '—' : 'Empty';
+    return `${entry.partial ? '≥ ' : ''}${formatSize(entry.bytes)}`;
+  }
 
   // Click a file: preview it in the app when the type allows it, otherwise download it.
   function openFile(item) {
@@ -168,6 +337,48 @@ export default function FileExplorer() {
     setPreview({ path: `/drive/files/${item.id}/content`, name: item.name, contentType: item.content_type, size: item.size_bytes });
   }
 
+  // Folder download: every file is fetched and packed into one ZIP in the browser (no server-side zipping needed).
+  const ZIP_LIMITS = { maxFiles: 3000, maxBytes: 1024 * 1024 * 1024 };
+  async function downloadFolder(item) {
+    setError('');
+    setNotice('');
+    setBusy(`Reading "${item.name}"…`);
+    try {
+      const tree = await collectFolderTree(item.id, cleanFolderName(item.name) || 'folder', ZIP_LIMITS);
+      if (tree.tooBig) {
+        setError(`"${item.name}" is too big to download as one ZIP (over ${ZIP_LIMITS.maxFiles} files or ${formatSize(ZIP_LIMITS.maxBytes)}). Open it and download its subfolders or files separately.`);
+        return;
+      }
+      if (!tree.files.length) { setError(`"${item.name}" has no files to download.`); return; }
+      const entries = {};
+      tree.folders.forEach((path) => { entries[`${path}/`] = new Uint8Array(0); }); // keeps empty folders
+      const taken = new Set();
+      let done = 0;
+      const failed = [];
+      await runPool(tree.files, 4, async (f) => {
+        try {
+          const blob = await fetchFileBlob(`/drive/files/${f.id}/content`, { download: 1 });
+          let path = f.path;
+          for (let n = 2; taken.has(path); n += 1) path = f.path.replace(/(\.[^./]+)?$/, ` (${n})$1`);
+          taken.add(path);
+          entries[path] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }]; // stored, not compressed: much faster
+        } catch {
+          failed.push(f.path);
+        } finally {
+          done += 1;
+          setBusy(`Preparing ZIP: ${done} of ${tree.files.length} files`);
+        }
+      });
+      setBusy('Building ZIP…');
+      saveBlob(new Blob([zipSync(entries)], { type: 'application/zip' }), `${cleanFolderName(item.name) || 'folder'}.zip`);
+      if (failed.length) setError(`${failed.length} file${failed.length === 1 ? '' : 's'} could not be added to the ZIP: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? '…' : ''}`);
+    } catch (err) {
+      setError(await fileErrorMessage(err, 'Could not download the folder.'));
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function downloadFile(item) {
     setError('');
     setBusy(`Downloading ${item.name}…`);
@@ -180,39 +391,256 @@ export default function FileExplorer() {
     }
   }
 
+  // Drag an item you own onto a folder (row, breadcrumb or the "Back" row) to move it there.
+  const isInternalDrag = (e) => Boolean(draggedRef.current) && !e.dataTransfer?.types?.includes('Files');
+
+  function dropProps(targetId) {
+    const key = targetId ?? '__root__';
+    return {
+      onDragOver: (e) => {
+        const dragged = draggedRef.current;
+        if (!isInternalDrag(e) || (dragged.kind === 'folder' && dragged.id === targetId)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        if (dropTarget !== key) setDropTarget(key);
+      },
+      onDragLeave: (e) => {
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        setDropTarget((current) => (current === key ? null : current));
+      },
+      onDrop: (e) => {
+        if (!isInternalDrag(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const dragged = draggedRef.current;
+        draggedRef.current = null;
+        setDropTarget(null);
+        void moveItem(dragged, targetId);
+      },
+    };
+  }
+
+  async function moveItem(item, targetFolderId) {
+    if (!item || (item.kind === 'folder' && item.id === targetFolderId)) return;
+    if (item.parentId !== undefined && (item.parentId ?? null) === (targetFolderId ?? null)) return;
+    setBusy(`Moving ${item.name}…`);
+    setError('');
+    try {
+      await api.patch(`/drive/${item.kind === 'folder' ? 'folders' : 'files'}/${item.id}`, { folder_id: targetFolderId });
+      invalidateSizes();
+    await load({ silent: true });
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Could not move the item.');
+    } finally {
+      setBusy('');
+    }
+  }
+
   function enterFolder(id) {
     setQuery('');
     setSearchResults(null);
     setFolderId(id);
   }
 
-  async function uploadFiles(fileList) {
-    const files = Array.from(fileList || []);
-    if (!files.length) return;
+  // Creates the folder, or reuses the one you already have with that name in the same place.
+  async function ensureFolder(parentId, rawName) {
+    const name = cleanFolderName(rawName);
+    if (!name) throw new Error('Folder name is empty.');
+    try {
+      const { data: created } = await api.post('/drive/folders', { name, parent_id: parentId, visibility: uploadVisibility });
+      return created.id;
+    } catch (err) {
+      if (err.response?.status !== 409) throw err;
+      const { data: listing } = await api.get('/drive', { params: parentId ? { folder_id: parentId } : {} });
+      const existing = (listing?.folders || []).find((f) => f.name === name && f.is_owner);
+      if (!existing) throw err;
+      return existing.id;
+    }
+  }
+
+  // Uploads { file, dirs } entries into the current folder, recreating each file's folder path first.
+  // Speed: folders are created level by level, then files are sent several at a time instead of one by one.
+  async function uploadTree(entries) {
+    const all = (entries || []).filter((entry) => entry?.file && !IGNORED_FILE_NAMES.has(String(entry.file.name).toLowerCase()));
+    // Dependency / VCS folders are never worth uploading and are what usually makes a folder huge.
+    const skippedByFolder = new Map();
+    const list = all.filter((entry) => {
+      const hit = entry.dirs.find((dir) => SKIPPED_FOLDER_NAMES.has(dir.toLowerCase()));
+      if (hit) skippedByFolder.set(hit, (skippedByFolder.get(hit) || 0) + 1);
+      return !hit;
+    });
+    const skippedNote = skippedByFolder.size
+      ? `Skipped ${[...skippedByFolder.values()].reduce((a, b) => a + b, 0)} files in ${[...skippedByFolder.keys()].join(', ')}.`
+      : '';
+    if (!list.length) {
+      if (skippedNote) setError(`Nothing to upload. ${skippedNote}`);
+      return;
+    }
+    if (list.length > MAX_FOLDER_UPLOAD_FILES) {
+      setError(`That is ${list.length} files${skippedNote ? ` (after skipping ${skippedNote.replace('Skipped ', '').replace(/\.$/, '')})` : ''}. Upload at most ${MAX_FOLDER_UPLOAD_FILES} files at a time (split the folder).`);
+      return;
+    }
     setError('');
+    setNotice('');
     const failures = [];
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      setBusy(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
+    const folderCache = new Map([['', folderId]]); // 'a/b' -> folder id
+    const failedFolders = new Set();
+
+    // 1) Create every folder first, shallowest first, several at a time within one level.
+    setBusy('Preparing folders…');
+    const wanted = new Map(); // 'a/b' -> { parentKey, name }
+    list.forEach(({ dirs }) => {
+      let key = '';
+      dirs.forEach((dir) => {
+        const parentKey = key;
+        key = key ? `${key}/${dir}` : dir;
+        if (!wanted.has(key)) wanted.set(key, { parentKey, name: dir });
+      });
+    });
+    const byDepth = new Map();
+    wanted.forEach((info, key) => {
+      const depth = key.split('/').length;
+      byDepth.set(depth, [...(byDepth.get(depth) || []), key]);
+    });
+    for (const depth of [...byDepth.keys()].sort((a, b) => a - b)) {
+      await runPool(byDepth.get(depth), UPLOAD_CONCURRENCY, async (key) => {
+        const { parentKey, name } = wanted.get(key);
+        if (failedFolders.has(parentKey)) { failedFolders.add(key); return; }
+        try {
+          folderCache.set(key, await ensureFolder(folderCache.get(parentKey), name));
+        } catch (err) {
+          failedFolders.add(key);
+          failures.push(`folder "${key}": ${err.response?.data?.error || err.message}`);
+        }
+      });
+    }
+
+    // 2) Upload the files. The API is only asked once per chunk (prepare and complete in bulk); the bytes go straight to storage,
+    //    several at a time.
+    let done = 0;
+    const total = list.length;
+    const startedAt = Date.now();
+    const progress = () => {
+      const seconds = (Date.now() - startedAt) / 1000;
+      const remaining = done > 3 ? Math.max(1, Math.round((seconds / done) * (total - done))) : null;
+      const eta = remaining ? ` · about ${remaining >= 90 ? `${Math.round(remaining / 60)} min` : `${remaining}s`} left` : '';
+      setBusy(`Uploading ${done} of ${total}${eta}`);
+    };
+    progress();
+    const fail = (label, err) => failures.push(`${label}: ${typeof err === 'string' ? err : (err.response?.data?.error || err.message)}`);
+    const contentTypeOf = (file) => file.type || 'application/octet-stream';
+
+    // One file at a time through the single-file endpoints: used only when the server has no batch endpoints yet.
+    async function uploadOneLegacy({ file, label, targetId }) {
       try {
-        // Files go straight to storage, so size is not limited by the API.
-        const { data: ticket } = await api.post('/drive/files/prepare', { name: file.name, folder_id: folderId, visibility: uploadVisibility });
-        const { error: uploadError } = await supabase.storage
-          .from(ticket.bucket)
-          .uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: file.type || 'application/octet-stream' });
+        const { data: ticket } = await api.post('/drive/files/prepare', { name: file.name, folder_id: targetId, visibility: uploadVisibility });
+        const { error: uploadError } = await supabase.storage.from(ticket.bucket).uploadToSignedUrl(ticket.path, ticket.token, file, { contentType: contentTypeOf(file) });
         if (uploadError) throw new Error(uploadError.message);
-        await api.post('/drive/files/complete', {
-          file_id: ticket.file_id, name: file.name, folder_id: folderId, visibility: uploadVisibility, content_type: file.type || null,
-        });
+        await api.post('/drive/files/complete', { file_id: ticket.file_id, name: file.name, folder_id: targetId, visibility: uploadVisibility, content_type: file.type || null });
       } catch (err) {
-        failures.push(`${file.name}: ${err.response?.data?.error || err.message}`);
+        fail(label, err);
+      } finally {
+        done += 1;
+        progress();
       }
     }
+
+    let legacy = false;
+    const chunks = [];
+    for (let i = 0; i < list.length; i += UPLOAD_CHUNK) chunks.push(list.slice(i, i + UPLOAD_CHUNK));
+    await runPool(chunks, 2, async (chunk) => {
+      const ready = [];
+      chunk.forEach(({ file, dirs }) => {
+        const key = dirs.join('/');
+        const label = dirs.length ? `${dirs.join('/')}/${file.name}` : file.name;
+        if (failedFolders.has(key) || !folderCache.has(key)) { fail(label, `its folder "${key}" could not be created`); done += 1; return; }
+        ready.push({ file, label, targetId: folderCache.get(key) });
+      });
+      if (!ready.length) { progress(); return; }
+      if (legacy) { await runPool(ready, UPLOAD_CONCURRENCY, uploadOneLegacy); return; }
+
+      let tickets;
+      try {
+        const { data } = await api.post('/drive/files/prepare-batch', { files: ready.map((r) => ({ name: r.file.name, folder_id: r.targetId })) });
+        tickets = data.results;
+      } catch (err) {
+        if (err.response?.status === 404) { legacy = true; await runPool(ready, UPLOAD_CONCURRENCY, uploadOneLegacy); return; }
+        ready.forEach((r) => fail(r.label, err));
+        done += ready.length;
+        progress();
+        return;
+      }
+
+      const uploaded = [];
+      await runPool(ready.map((r, i) => ({ r, t: tickets?.[i] })), UPLOAD_CONCURRENCY, async ({ r, t }) => {
+        try {
+          if (!t || t.error) throw new Error(t?.error || 'could not be prepared');
+          const { error: uploadError } = await supabase.storage.from(t.bucket).uploadToSignedUrl(t.path, t.token, r.file, { contentType: contentTypeOf(r.file) });
+          if (uploadError) throw new Error(uploadError.message);
+          uploaded.push({ r, t });
+        } catch (err) {
+          fail(r.label, err);
+        } finally {
+          done += 1;
+          progress();
+        }
+      });
+      if (uploaded.length) {
+        try {
+          const { data } = await api.post('/drive/files/complete-batch', {
+            files: uploaded.map(({ r, t }) => ({ file_id: t.file_id, name: r.file.name, folder_id: r.targetId, content_type: r.file.type || null })),
+            visibility: uploadVisibility,
+          });
+          (data.results || []).forEach((res, i) => { if (res?.error) fail(uploaded[i].r.label, res.error); });
+        } catch (err) {
+          uploaded.forEach(({ r }) => fail(r.label, err));
+        }
+      }
+    });
+
     setBusy('');
     if (fileInputRef.current) fileInputRef.current.value = '';
-    if (failures.length) setError(`Could not upload ${failures.length} file${failures.length === 1 ? '' : 's'}. ${failures.join(' | ')}`);
+    if (folderInputRef.current) folderInputRef.current.value = '';
+    // Refresh first: a successful refresh clears the error banner, which would hide these failures.
+    invalidateSizes();
     await load({ silent: true });
+    if (failures.length) {
+      const shown = failures.slice(0, 8).join(' | ');
+      setError(`Could not upload ${failures.length} file${failures.length === 1 ? '' : 's'}. ${shown}${failures.length > 8 ? ` … and ${failures.length - 8} more` : ''}${skippedNote ? ` ${skippedNote}` : ''}`);
+    } else if (skippedNote) {
+      setNotice(`Uploaded ${total} files. ${skippedNote}`);
+    }
   }
+
+  // Drop zone = the whole page, not just the file list. A folder or file dropped anywhere else would otherwise be opened by the
+  // browser itself; here it is uploaded into the folder you are viewing (folders keep their structure, no zipping needed).
+  const uploadTreeRef = useRef(uploadTree);
+  uploadTreeRef.current = uploadTree;
+  const shellRef = useRef(null);
+  useEffect(() => {
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+    const onOver = (e) => { if (hasFiles(e)) { e.preventDefault(); setDragOver(true); } };
+    const onLeave = (e) => { if (!e.relatedTarget) setDragOver(false); }; // left the browser window
+    const onDrop = (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragOver(false);
+      if (shellRef.current?.contains(e.target)) return; // the list handles its own drops
+      void entriesFromDrop(e.dataTransfer).then((entries) => uploadTreeRef.current(entries));
+    };
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
+
+  const uploadFiles = (fileList) => uploadTree(Array.from(fileList || []).map((file) => ({ file, dirs: [] })));
+  const uploadFolder = (fileList) => uploadTree(entriesFromPicker(fileList));
 
   async function createFolder(e) {
     e.preventDefault();
@@ -222,7 +650,8 @@ export default function FileExplorer() {
       await api.post('/drive/folders', { name: newName.trim(), parent_id: folderId, visibility: uploadVisibility });
       setNewName('');
       setCreating(false);
-      await load({ silent: true });
+      invalidateSizes();
+    await load({ silent: true });
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     } finally {
@@ -234,7 +663,8 @@ export default function FileExplorer() {
     const next = item.visibility === 'public' ? 'private' : 'public';
     try {
       await api.patch(`/drive/${item.kind === 'folder' ? 'folders' : 'files'}/${item.id}`, { visibility: next });
-      await load({ silent: true });
+      invalidateSizes();
+    await load({ silent: true });
       if (searchResults) setSearchResults(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -305,7 +735,8 @@ export default function FileExplorer() {
       await api.patch(`/drive/${editing.kind === 'folder' ? 'folders' : 'files'}/${editing.id}`, patch);
       setEditing(null);
       if (searchResults) setSearchResults(null);
-      await load({ silent: true });
+      invalidateSizes();
+    await load({ silent: true });
     } catch (err) {
       setError(err.response?.data?.error || err.message);
     } finally {
@@ -318,7 +749,8 @@ export default function FileExplorer() {
     if (!window.confirm(`Delete ${what}? This cannot be undone.`)) return;
     try {
       await api.delete(`/drive/${item.kind === 'folder' ? 'folders' : 'files'}/${item.id}`);
-      await load({ silent: true });
+      invalidateSizes();
+    await load({ silent: true });
       if (searchResults) setSearchResults(null);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -330,19 +762,20 @@ export default function FileExplorer() {
 
   return (
     <section
+      ref={shellRef}
       className={`fx-shell${dragOver ? ' is-dragover' : ''}`}
       aria-label="File explorer"
       onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
-      onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadFiles(e.dataTransfer.files); }}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); void entriesFromDrop(e.dataTransfer).then(uploadTree); }}
     >
       <div className="fx-toolbar">
         <nav className="fx-breadcrumbs" aria-label="Folder path">
-          <button type="button" onClick={() => enterFolder(null)} className={!inFolder ? 'is-current' : ''}><Home size={14} aria-hidden="true" /> My files</button>
+          <button type="button" onClick={() => enterFolder(null)} className={`${!inFolder ? 'is-current' : ''}${dropTarget === '__root__' ? ' is-drop-target' : ''}`} {...dropProps(null)}><Home size={14} aria-hidden="true" /> My files</button>
           {data.breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.id}>
               <ChevronRight size={14} aria-hidden="true" />
-              <button type="button" onClick={() => enterFolder(crumb.id)} className={index === data.breadcrumbs.length - 1 ? 'is-current' : ''}>{crumb.name}</button>
+              <button type="button" onClick={() => enterFolder(crumb.id)} className={`${index === data.breadcrumbs.length - 1 ? 'is-current' : ''}${dropTarget === crumb.id ? ' is-drop-target' : ''}`} {...dropProps(crumb.id)}>{crumb.name}</button>
             </React.Fragment>
           ))}
         </nav>
@@ -352,9 +785,25 @@ export default function FileExplorer() {
             <button type="button" className={uploadVisibility === 'public' ? 'is-active' : ''} aria-pressed={uploadVisibility === 'public'} onClick={() => setUploadVisibility('public')} title="New uploads and folders are visible to your whole organization"><Globe size={13} aria-hidden="true" /> Public</button>
           </div>
           {isAdmin && <button type="button" className="btn btn-ghost btn-sm" onClick={exportDetails} disabled={!items.length} title="Download a CSV with full details of the items listed below"><FileSpreadsheet size={14} /> Export details</button>}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreating(true)}><FolderPlus size={14} /> New folder</button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload</button>
+          <div className="fx-plus" ref={menuRef}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm fx-plus-button"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Add"
+              onClick={() => setMenuOpen((open) => !open)}
+            ><Plus size={16} aria-hidden="true" /> New</button>
+            {menuOpen && (
+              <div className="fx-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setCreating(true); }}><FolderPlus size={15} aria-hidden="true" /> New folder</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); fileInputRef.current?.click(); }}><Upload size={15} aria-hidden="true" /> Upload files</button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); folderInputRef.current?.click(); }}><FolderUp size={15} aria-hidden="true" /> Upload folder</button>
+              </div>
+            )}
+          </div>
           <input ref={fileInputRef} type="file" multiple hidden onChange={(e) => uploadFiles(e.target.files)} />
+          <input ref={folderInputRef} type="file" multiple hidden webkitdirectory="true" data-testid="folder-input" aria-label="Upload folder" onChange={(e) => uploadFolder(e.target.files)} />
         </div>
       </div>
 
@@ -411,15 +860,21 @@ export default function FileExplorer() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search files and folders" aria-label="Search files and folders" />
           {query && <button type="button" onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}
         </label>
-        <div className="fx-segmented" role="group" aria-label="Show">
-          {[['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']].map(([key, label]) => (
-            <button type="button" key={key} className={filter === key ? 'is-active' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
-          ))}
+        <div className="fx-show">
+          <div className="fx-segmented" role="group" aria-label="Show">
+            {[['all', 'All'], ['mine', 'Mine'], ['shared', 'Shared with me']].map(([key, label]) => (
+              <button type="button" key={key} className={filter === key ? 'is-active' : ''} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
+            ))}
+          </div>
+          <div className="fx-access">
+            <SelectMenu value={access} onChange={setAccess} options={ACCESS_OPTIONS} ariaLabel="Filter by access" />
+          </div>
         </div>
       </div>
 
       {error && <div className="fx-error" role="alert"><span>{error}</span><button type="button" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="fx-busy" role="status"><span className="spinner" /> {busy}</div>}
+      {notice && !busy && <div className="fx-busy" role="status">{notice} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNotice('')}>Dismiss</button></div>}
 
       {creating && (
         <form className="fx-newfolder" onSubmit={createFolder}>
@@ -439,26 +894,40 @@ export default function FileExplorer() {
             <span role="columnheader">Size</span><span role="columnheader">Modified</span><span role="columnheader" className="fx-col-actions">Actions</span>
           </div>
           {inFolder && !searchResults && (
-            <button type="button" className="fx-row fx-up" onClick={() => enterFolder(parentCrumb)}>
+            <button type="button" className={`fx-row fx-up${dropTarget === (parentCrumb ?? '__root__') ? ' is-drop-target' : ''}`} onClick={() => enterFolder(parentCrumb)} {...dropProps(parentCrumb)}>
               <span className="fx-name"><ArrowUp size={16} aria-hidden="true" /> Back to {parentCrumb ? 'parent folder' : 'My files'}</span>
             </button>
           )}
           {paging.pageItems.map((item) => {
             const Icon = iconFor(item);
             return (
-              <div className="fx-row" role="row" key={`${item.kind}-${item.id}`}>
+              <div
+                className={`fx-row${item.is_owner ? ' is-draggable' : ''}${item.kind === 'folder' && dropTarget === item.id ? ' is-drop-target' : ''}`}
+                role="row"
+                key={`${item.kind}-${item.id}`}
+                draggable={Boolean(item.is_owner)}
+                onDragStart={(e) => {
+                  if (!item.is_owner) return;
+                  draggedRef.current = { kind: item.kind, id: item.id, name: item.name, parentId: searchResults ? undefined : folderId };
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', item.name);
+                }}
+                onDragEnd={() => { draggedRef.current = null; setDropTarget(null); }}
+                {...(item.kind === 'folder' ? dropProps(item.id) : {})}
+              >
                 <span className="fx-name" role="cell">
                   <Icon size={18} aria-hidden="true" className={item.kind === 'folder' ? 'is-folder' : ''} />
                   <button type="button" className="fx-open" onClick={() => (item.kind === 'folder' ? enterFolder(item.id) : openFile(item))} title={item.name}>{item.name}</button>
                 </span>
                 <span role="cell" className="fx-muted">{item.is_owner ? 'You' : item.owner_name}</span>
                 <span role="cell"><VisibilityBadge visibility={item.visibility} disabled={!item.is_owner} onClick={() => toggleVisibility(item)} /></span>
-                <span role="cell" className="fx-muted">{item.kind === 'folder' ? '—' : formatSize(item.size_bytes)}</span>
+                <span role="cell" className="fx-muted">{item.kind === 'folder' ? folderSizeLabel(item) : formatSize(item.size_bytes)}</span>
                 <span role="cell" className="fx-muted">{formatDate(item.created_at)}</span>
                 <span role="cell" className="fx-col-actions">
                   {(item.is_owner || isAdmin) && <button type="button" className="fx-icon-btn" onClick={() => showHistory(item)} aria-label={`History of ${item.name}`} title="History"><History size={15} /></button>}
                   {isAdmin && item.details && <button type="button" className="fx-icon-btn" onClick={() => setProperties(item)} aria-label={`Properties of ${item.name}`} title="Properties"><Info size={15} /></button>}
                   {item.kind === 'file' && previewKind(item.content_type, item.name, item.size_bytes) && <button type="button" className="fx-icon-btn" onClick={() => previewOnly(item)} aria-label={`Preview ${item.name}`} title="Preview"><Eye size={15} /></button>}
+                  {item.kind === 'folder' && <button type="button" className="fx-icon-btn" onClick={() => downloadFolder(item)} aria-label={`Download ${item.name} as ZIP`} title="Download folder as ZIP"><Download size={15} /></button>}
                   {item.kind === 'file' && <button type="button" className="fx-icon-btn" onClick={() => downloadFile(item)} aria-label={`Download ${item.name}`} title="Download"><Download size={15} /></button>}
                   {item.is_owner && <button type="button" className="fx-icon-btn" onClick={() => openEdit(item)} aria-label={`Edit ${item.name}`} title="Edit name and access"><Pencil size={15} /></button>}
                   {(item.is_owner || (profile?.role === 'admin' && item.visibility === 'public')) && (
@@ -471,7 +940,7 @@ export default function FileExplorer() {
           {!items.length && (
             <div className="fx-empty">
               <Folder size={30} aria-hidden="true" />
-              <p>{searchResults ? 'Nothing matches your search.' : filter === 'shared' ? 'No one has shared anything here yet.' : 'This folder is empty. Upload files or drag them here.'}</p>
+              <p>{searchResults ? 'Nothing matches your search.' : access !== 'all' ? `No ${access} items here.` : filter === 'shared' ? 'No one has shared anything here yet.' : 'This folder is empty. Upload files or drag them here.'}</p>
             </div>
           )}
         </div>

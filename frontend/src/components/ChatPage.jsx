@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Hash, Lock, Search, Send, Trash2, ArrowLeft, MessageSquarePlus, Paperclip, Mic, Square, Pencil, X,
-  FileText, Download, Reply, Users, Plus, Check, LogOut, Crown, UserPlus, Info,
+  FileText, Download, Reply, MoreVertical, Copy, Users, Plus, Check, LogOut, Crown, UserPlus, Info, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
 
 const MESSAGE_LIMIT = 300;
+// Last-seen messages per conversation, kept for the session so reopening a chat paints instantly (and is then refreshed).
+const messageCache = new Map();
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const SWIPE_TRIGGER = 56;
 const MSG_COLS = 'id, conversation_id, sender_id, body, created_at, edited_at, kind, reply_to_id, attachment_path, attachment_name, attachment_type, attachment_size';
@@ -76,23 +79,100 @@ function Avatar({ name, size = 34, group = false, team = false }) {
   );
 }
 
+// Signed links for chat attachments are cached (and shared between messages asking at the same time). A long chat otherwise
+// requests one link per image on every open or refresh, which piles up behind the auth lock and slows everything down.
+const chatUrlCache = new Map(); // path -> { promise, at }
+const CHAT_URL_TTL_MS = 50 * 60 * 1000; // links are signed for an hour
+function chatFileUrl(path) {
+  const hit = chatUrlCache.get(path);
+  if (hit && Date.now() - hit.at < CHAT_URL_TTL_MS) return hit.promise;
+  const promise = (async () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const { data } = await supabase.storage.from('chat-files').createSignedUrl(path, 3600);
+        if (data?.signedUrl) return data.signedUrl;
+      } catch { /* try once more, then give up quietly */ }
+      await new Promise((r) => { window.setTimeout(r, 400); });
+    }
+    chatUrlCache.delete(path); // do not remember a failure
+    return null;
+  })();
+  chatUrlCache.set(path, { promise, at: Date.now() });
+  return promise;
+}
+
+/** Full-screen image viewer: opens in the same tab and closes with the X, Esc, or a click outside the picture. */
+function ImageLightbox({ url, name, onClose }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onKey, true); document.body.style.overflow = previousOverflow; };
+  }, [onClose]);
+
+  const round = { position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(30,30,30,0.7)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer', textDecoration: 'none' };
+  // Events inside a portal still bubble to the message underneath (double-click = reply, swipe = reply): stop them here.
+  const stop = (e) => e.stopPropagation();
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={name || 'Image'}
+      onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) onClose(); }}
+      onPointerDown={stop}
+      onPointerMove={stop}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      onDoubleClick={stop}
+      style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: '64px 16px 16px' }}
+    >
+      <button ref={closeRef} type="button" aria-label="Close image" title="Close (Esc)" onClick={onClose} style={{ ...round, right: 12 }}><X size={20} /></button>
+      <a aria-label="Download image" title="Download" href={url} download={name} style={{ ...round, right: 60 }}><Download size={18} /></a>
+      {/* Sized from the screen (not from the box around it, which has no fixed height): never bigger than ~90% of the width or
+          ~75% of the height, never stretched beyond its real size. */}
+      <img src={url} alt={name} style={{ width: 'auto', height: 'auto', maxWidth: 'min(90vw, 900px)', maxHeight: 'min(75vh, 700px)', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} />
+    </div>,
+    document.body,
+  );
+}
+
 function Attachment({ msg }) {
   const [url, setUrl] = useState(null);
+  const [viewing, setViewing] = useState(false); // image opened full screen
   useEffect(() => {
     let alive = true;
-    supabase.storage.from('chat-files').createSignedUrl(msg.attachment_path, 3600)
-      .then(({ data }) => { if (alive) setUrl(data?.signedUrl || null); });
+    chatFileUrl(msg.attachment_path).then((signed) => { if (alive) setUrl(signed); });
     return () => { alive = false; };
   }, [msg.attachment_path]);
   const type = msg.attachment_type || '';
   if (!url) return <div style={{ fontSize: 12, opacity: 0.7 }}>Loading attachment…</div>;
   if (type.startsWith('image/')) {
-    return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} /></a>;
+    return (
+      <>
+        <a
+          className="tf-chat-attach"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => {
+            if (e.metaKey || e.ctrlKey || e.shiftKey) return; // Ctrl/Cmd-click still opens a new tab
+            e.preventDefault();
+            setViewing(true);
+          }}
+        >
+          <img draggable={false} src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} />
+        </a>
+        {viewing && <ImageLightbox url={url} name={msg.attachment_name} onClose={() => setViewing(false)} />}
+      </>
+    );
   }
   if (type.startsWith('audio/')) return <audio src={url} controls preload="metadata" style={{ maxWidth: 260 }} />;
   if (type.startsWith('video/')) return <video src={url} controls preload="metadata" style={{ maxWidth: 280, borderRadius: 10 }} />;
   return (
-    <a href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
+    <a className="tf-chat-attach" href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
       style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none' }}>
       <FileText size={20} />
       <span style={{ minWidth: 0 }}>
@@ -104,13 +184,68 @@ function Attachment({ msg }) {
   );
 }
 
+// Turn web addresses in a message into real links (http(s)://… and www.…). Everything else stays plain text, and React
+// escapes it, so message text can never inject markup. Trailing punctuation ("see https://x.com.") is not part of the link.
+const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>"'`]+/gi;
+function splitUrl(candidate) {
+  let url = candidate;
+  let tail = '';
+  for (;;) {
+    const last = url[url.length - 1];
+    const unbalanced = last === ')' && (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length;
+    if (/[.,;:!?'"\]}>]/.test(last) || unbalanced) { tail = last + tail; url = url.slice(0, -1); } else break;
+  }
+  return [url, tail];
+}
+export function Linkified({ text, linkColor, mine }) {
+  const value = String(text ?? '');
+  const parts = [];
+  let last = 0;
+  let key = 0;
+  for (const match of value.matchAll(URL_PATTERN)) {
+    const [url, tail] = splitUrl(match[0]);
+    const href = /^www\./i.test(url) ? `https://${url}` : url;
+    if (url.length < 5 || !/^https?:\/\/[^/]+\./i.test(href)) continue;
+    if (match.index > last) parts.push(value.slice(last, match.index));
+    parts.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        style={{ color: linkColor || (mine ? '#fff' : 'var(--color-primary)'), textDecoration: 'underline', textUnderlineOffset: 2, overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+      >
+        {url}
+      </a>,
+    );
+    if (tail) parts.push(tail);
+    last = match.index + match[0].length;
+  }
+  if (last < value.length) parts.push(value.slice(last));
+  return <>{parts.length ? parts : value}</>;
+}
+
 /** One chat bubble with swipe-right / double-click to reply and hover actions. */
-function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
+/** True on devices where touch is the main way of pointing (phones, tablets) and inside the installed app. */
+export function swipeReplyAvailable() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  const installedApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const touchFirst = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  return installedApp || touchFirst;
+}
+
+export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
   const bubbleRef = useRef(null);
   const drag = useRef(null);
+  const swallowClick = useRef(false); // a swipe that began on an image/file must not also open it
 
   function onPointerDown(e) {
-    if (e.target.closest('button, a, audio, video, input')) return;
+    // Swipe-to-reply is for phones and the installed app only. On a desktop (mouse, pen, a touchscreen laptop, a window
+    // dragged narrow) dragging sideways means "select this text", so people reply from the three-dot menu or by double-clicking.
+    if (e.pointerType !== 'touch' || !swipeReplyAvailable()) return;
+    // Controls keep their own gestures; attachments (images, files) are fine to swipe from.
+    if (e.target.closest('audio, video, input, .tf-chat-actions, a:not(.tf-chat-attach), button:not(.tf-chat-attach)')) return;
     drag.current = { x: e.clientX, y: e.clientY, active: false, pointerId: e.pointerId };
   }
   function onPointerMove(e) {
@@ -137,6 +272,7 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
       bubbleRef.current.style.transform = 'translateX(0)';
       window.setTimeout(() => { if (bubbleRef.current) bubbleRef.current.style.transition = ''; }, 180);
     }
+    if (d?.active) { swallowClick.current = true; window.setTimeout(() => { swallowClick.current = false; }, 400); }
     if (d?.active && d.shift >= SWIPE_TRIGGER) onReply(msg);
   }
 
@@ -156,6 +292,7 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onClickCapture={(e) => { if (swallowClick.current) { e.preventDefault(); e.stopPropagation(); } }}
       onDoubleClick={(e) => { if (!e.target.closest('button, a, audio, video')) onReply(msg); }}
     >
       {showName && <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', margin: '6px 4px 2px' }}>{senderName}</span>}
@@ -188,21 +325,89 @@ function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highl
             </button>
           )}
           {msg.attachment_path && <div style={{ marginBottom: msg.body ? 6 : 0 }}><Attachment msg={msg} /></div>}
-          {msg.body}
+          <Linkified text={msg.body} mine={mine} />
           {msg.edited_at && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 6 }}>(edited)</span>}
         </div>
-        <span className="tf-chat-actions" style={{ display: 'flex', flexShrink: 0 }}>
-          <button type="button" aria-label="Reply" title="Reply" onClick={() => onReply(msg)} style={iconBtn}><Reply size={14} /></button>
-          {mine && !msg.attachment_path && (
-            <button type="button" aria-label="Edit message" title="Edit" onClick={() => onEdit(msg)} style={iconBtn}><Pencil size={13} /></button>
-          )}
-          {mine && (
-            <button type="button" aria-label="Delete message" title="Delete" onClick={() => onDelete(msg.id)} style={iconBtn}><Trash2 size={13} /></button>
-          )}
-        </span>
+        <MessageMenu msg={msg} mine={mine} onReply={onReply} onEdit={onEdit} onDelete={onDelete} iconBtn={iconBtn} />
       </div>
       <span style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '2px 4px 0' }}>{timeLabel(msg.created_at)}</span>
     </div>
+  );
+}
+
+/** Three-dot menu on a message: Reply, Copy, and (for your own messages) Edit and Delete. Drawn in a portal so the chat list never clips it. */
+export function MessageMenu({ msg, mine, onReply, onEdit, onDelete, iconBtn }) {
+  const [pos, setPos] = useState(null); // { top, left } while open
+  const [copied, setCopied] = useState(false);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const canCopy = !!msg.body;
+  const canEdit = mine && !msg.attachment_path;
+
+  const close = useCallback(() => { setPos(null); setCopied(false); }, []);
+
+  function toggle() {
+    if (pos) { close(); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    const width = 176;
+    const height = 44 * (1 + (canCopy ? 1 : 0) + (canEdit ? 1 : 0) + (mine ? 1 : 0)) + 8;
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, mine ? r.right - width : r.left));
+    const below = r.bottom + 6;
+    const top = below + height > window.innerHeight - 8 ? Math.max(8, r.top - height - 6) : below;
+    setPos({ top, left });
+  }
+
+  useEffect(() => {
+    if (!pos) return undefined;
+    const onDown = (e) => { if (!menuRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btnRef.current?.focus(); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [pos, close]);
+
+  async function copy() {
+    const text = msg.body || '';
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const area = document.createElement('textarea'); // older browsers / insecure origins
+      area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+      document.body.appendChild(area); area.select();
+      try { document.execCommand('copy'); } catch { /* nothing more we can do */ }
+      area.remove();
+    }
+    setCopied(true);
+    window.setTimeout(close, 700);
+  }
+
+  const item = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 44, padding: '0 12px', border: 'none', borderRadius: 9, background: 'transparent', color: 'var(--tf-text)', font: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer' };
+  const run = (fn) => () => { close(); fn(); };
+
+  return (
+    <span className="tf-chat-actions" style={{ display: 'flex', flexShrink: 0 }}>
+      <button ref={btnRef} type="button" aria-label="Message options" title="More" aria-haspopup="menu" aria-expanded={!!pos} onClick={toggle} style={{ ...iconBtn, padding: 5, borderRadius: '50%' }}>
+        <MoreVertical size={16} />
+      </button>
+      {pos && createPortal(
+        <div ref={menuRef} role="menu" style={{ position: 'fixed', top: pos.top, left: pos.left, width: 176, zIndex: 80, padding: 4, background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.35)' }}>
+          <button type="button" role="menuitem" style={item} onClick={run(() => onReply(msg))}><Reply size={16} /> Reply</button>
+          {canCopy && <button type="button" role="menuitem" style={item} onClick={copy}>{copied ? <Check size={16} /> : <Copy size={16} />} {copied ? 'Copied' : 'Copy'}</button>}
+          {canEdit && <button type="button" role="menuitem" style={item} onClick={run(() => onEdit(msg))}><Pencil size={16} /> Edit</button>}
+          {mine && <button type="button" role="menuitem" style={{ ...item, color: 'var(--status-danger)' }} onClick={run(() => onDelete(msg.id))}><Trash2 size={16} /> Delete</button>}
+        </div>,
+        document.body,
+      )}
+    </span>
   );
 }
 
@@ -265,7 +470,115 @@ function MemberPicker({ people, selected, onToggle }) {
   );
 }
 
+// On phones, size the chat to the space that is actually left on screen (below the page header, above the bottom
+// edge / home indicator) instead of subtracting a fixed header height, which left a blank band under the composer.
+function useFitChatToViewport(el) {
+  useEffect(() => {
+    if (!el || typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(max-width: 1100px)'); // phones and tablets: fit the chat to the space left on screen
+    const originalHeight = el.style.height; // React's own inline height, restored on wide screens
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    let timer = 0;
+    const fit = () => {
+      timer = 0;
+      if (!mq.matches) { if (originalHeight) el.style.setProperty('height', originalHeight); else el.style.removeProperty('height'); return; }
+      const vv = window.visualViewport;
+      const viewportHeight = vv ? vv.height : window.innerHeight;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const safeBottom = probe.getBoundingClientRect().height || 0;
+      const height = Math.max(320, Math.round(viewportHeight - top - 18 - safeBottom));
+      el.style.setProperty('height', height + 'px', 'important');
+    };
+    const schedule = () => { window.clearTimeout(timer); timer = window.setTimeout(fit, 40); };
+    fit();
+    schedule(); // once more after the first paint, when the header above has settled
+    window.addEventListener('resize', schedule);
+    window.addEventListener('orientationchange', schedule);
+    window.visualViewport?.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    observer?.observe(document.body);
+    return () => {
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('orientationchange', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+      observer?.disconnect();
+      window.clearTimeout(timer);
+      probe.remove();
+    };
+  }, [el]);
+}
+
+// Conversation-list sizing on tablets and larger (>= 600 px, which includes iPad mini portrait): drag the divider to resize, drag it far left (or use the
+// button) to close the list, and reopen it from the thread header. The choice is remembered per browser.
+const LIST_MIN = 200;
+const LIST_MAX = 480;
+const LIST_DEFAULT = 290;
+const LIST_SNAP_CLOSE = 150; // dragging narrower than this closes the list
+function readStored(key, fallback) {
+  try { const v = window.localStorage.getItem(key); return v === null ? fallback : v; } catch { return fallback; }
+}
+function writeStored(key, value) {
+  try { window.localStorage.setItem(key, String(value)); } catch { /* storage unavailable */ }
+}
+function useIsWide() {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 600px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 600px)');
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, []);
+  return wide;
+}
+
 export default function ChatPage() {
+  // The chat box only exists once the conversation list has loaded, so track the element itself (not a ref object).
+  const [chatRoot, setChatRoot] = useState(null);
+  useFitChatToViewport(chatRoot);
+  const isWide = useIsWide();
+  const [listOpen, setListOpen] = useState(() => readStored('taskflow:chat-list-open', '1') !== '0');
+  const [listWidth, setListWidth] = useState(() => {
+    const n = Number(readStored('taskflow:chat-list-width', LIST_DEFAULT));
+    return Number.isFinite(n) ? Math.min(LIST_MAX, Math.max(LIST_MIN, n)) : LIST_DEFAULT;
+  });
+  const [resizing, setResizing] = useState(false);
+  const setOpen = useCallback((open) => { setListOpen(open); writeStored('taskflow:chat-list-open', open ? '1' : '0'); }, []);
+  const commitWidth = useCallback((w) => { setListWidth(w); writeStored('taskflow:chat-list-width', w); }, []);
+  const startResize = useCallback((e) => {
+    if (!chatRoot || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    const left = chatRoot.getBoundingClientRect().left;
+    let latest = null;
+    let close = false;
+    try { handle.setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+    setResizing(true);
+    const move = (ev) => {
+      const rawWidth = ev.clientX - left;
+      close = rawWidth < LIST_SNAP_CLOSE;
+      latest = Math.min(LIST_MAX, Math.max(LIST_MIN, rawWidth));
+      setListWidth(latest);
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      setResizing(false);
+      if (close) { setOpen(false); return; }
+      if (latest !== null) writeStored('taskflow:chat-list-width', latest);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }, [chatRoot, setOpen]);
+  const onResizeKey = useCallback((e) => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); commitWidth(Math.max(LIST_MIN, listWidth - 16)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); commitWidth(Math.min(LIST_MAX, listWidth + 16)); }
+    else if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); setOpen(false); }
+  }, [listWidth, commitWidth, setOpen]);
   const { profile } = useAuth();
   const meId = profile?.id;
   const orgId = profile?.org_id;
@@ -279,6 +592,7 @@ export default function ChatPage() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadedId, setLoadedId] = useState(null); // conversation whose messages have been fetched (or restored from cache)
   const [sending, setSending] = useState(false);
   const [mobileThread, setMobileThread] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -298,6 +612,8 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
 
   const bottomRef = useRef(null);
+  const listRef = useRef(null);
+  const stickRef = useRef(true); // true while the reader is at (or near) the bottom of the message list
   const inputRef = useRef(null);
   const activeRef = useRef(null);
   const pendingRef = useRef([]);
@@ -365,8 +681,10 @@ export default function ChatPage() {
       .eq('conversation_id', id)
       .order('created_at', { ascending: false })
       .limit(MESSAGE_LIMIT);
-    if (msgErr) { setError(msgErr.message); return; }
-    if (activeRef.current === id) setMessages((data || []).reverse());
+    if (msgErr) { setError(msgErr.message); if (activeRef.current === id) setLoadedId(id); return; }
+    const list = (data || []).reverse();
+    messageCache.set(id, list);
+    if (activeRef.current === id) { setMessages(list); setLoadedId(id); }
   }, []);
 
   const markRead = useCallback(async (id) => {
@@ -398,7 +716,9 @@ export default function ChatPage() {
   // Switching conversation.
   useEffect(() => {
     if (!activeId) return;
-    setMessages([]);
+    const cached = messageCache.get(activeId);
+    setMessages(cached || []);
+    setLoadedId(cached ? activeId : null); // no cache yet: show a spinner (not "No messages") until the first fetch lands
     setEditingId(null);
     setReplyTo(null);
     setShowInfo(false);
@@ -449,9 +769,33 @@ export default function ChatPage() {
     loadConversations().catch(() => {});
   }, [loadMessages, loadConversations]), 6000);
 
+  // Keep the newest message in view like any chat app: opening a conversation jumps to the bottom, and new messages /
+  // late-loading images / a taller composer keep it pinned there unless the reader has scrolled up on purpose.
+  // Scrolls only the message list (never the page), so the composer stays on screen.
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useEffect(() => { stickRef.current = true; }, [activeId]);
+
+  useLayoutEffect(() => {
+    if (stickRef.current) scrollToBottom();
+  }, [messages.length, activeId, loading, scrollToBottom]);
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length, activeId]);
+    const el = listRef.current;
+    if (!el) return undefined;
+    const pin = () => { if (stickRef.current) scrollToBottom(); };
+    el.addEventListener('load', pin, true); // images/videos finishing after the list was already scrolled
+    // The list's own box never changes when content grows, so watch every message row (their height changes as
+    // images, previews and fonts settle) and pin again a few times right after a conversation opens.
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(pin) : null;
+    observer?.observe(el);
+    Array.from(el.children).forEach((child) => observer?.observe(child));
+    const timers = [60, 200, 500, 1200].map((ms) => window.setTimeout(pin, ms));
+    return () => { el.removeEventListener('load', pin, true); observer?.disconnect(); timers.forEach(window.clearTimeout); };
+  }, [activeId, messages.length, scrollToBottom]);
 
   useEffect(() => () => {
     pendingRef.current.forEach((p) => p.url && URL.revokeObjectURL(p.url));
@@ -528,6 +872,7 @@ export default function ChatPage() {
     event?.preventDefault();
     if (sending || !activeId) return;
     const body = text.trim();
+    stickRef.current = true; // sending always brings you to the newest message
     setError('');
 
     if (editingId) {
@@ -758,19 +1103,32 @@ export default function ChatPage() {
   const composerDisabled = !active;
 
   return (
-    <div className="tf-chat" style={{ display: 'flex', height: 'calc(100vh - 150px)', minHeight: 420, border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
+    <div ref={setChatRoot} className="tf-chat" style={{ display: 'flex', height: 'calc(100vh - 150px)', minHeight: 420, border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
       <style>{`
         .tf-chat-actions { opacity: 0; transition: opacity 120ms ease; }
         .tf-chat-msg:hover .tf-chat-actions, .tf-chat-msg:focus-within .tf-chat-actions { opacity: 1; }
         @media (hover: none) { .tf-chat-actions { opacity: 0.7; } }
-        @media (max-width: 760px) {
+        @media (max-width: 599px) {
           .tf-chat-list { width: 100% !important; display: ${showList ? 'flex' : 'none'} !important; }
           .tf-chat-thread { display: ${showList ? 'none' : 'flex'} !important; }
         }
       `}</style>
 
       {/* Conversation list */}
-      <div className="tf-chat-list" style={{ width: 290, flexShrink: 0, borderRight: '1px solid var(--tf-border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div
+        className="tf-chat-list"
+        aria-hidden={isWide && !listOpen ? true : undefined}
+        style={{
+          width: isWide ? (listOpen ? listWidth : 0) : 290,
+          flexShrink: 0,
+          borderRight: isWide && !listOpen ? 'none' : '1px solid var(--tf-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: isWide && !listOpen ? 'hidden' : undefined,
+          transition: resizing ? 'none' : 'width 160ms ease',
+        }}
+      >
         <div style={{ padding: 12, borderBottom: '1px solid var(--tf-border)', display: 'flex', gap: 8 }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: 'var(--tf-muted)' }} />
@@ -785,6 +1143,11 @@ export default function ChatPage() {
           <button type="button" className="btn btn-primary btn-sm btn-icon" title="Create group" aria-label="Create group" onClick={() => setShowCreate(true)}>
             <Plus size={16} />
           </button>
+          {isWide && (
+            <button type="button" className="btn btn-ghost btn-sm btn-icon" title="Hide conversation list" aria-label="Hide conversation list" onClick={() => setOpen(false)}>
+              <PanelLeftClose size={16} />
+            </button>
+          )}
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
@@ -844,10 +1207,30 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {isWide && listOpen && (
+        <div
+          className="tf-chat-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize conversation list (drag, or use the arrow keys; Escape closes it)"
+          aria-valuemin={LIST_MIN}
+          aria-valuemax={LIST_MAX}
+          aria-valuenow={listWidth}
+          tabIndex={0}
+          title="Drag to resize · drag left to close · double-click to reset"
+          onPointerDown={startResize}
+          onDoubleClick={() => commitWidth(LIST_DEFAULT)}
+          onKeyDown={onResizeKey}
+          style={{ flex: '0 0 12px', margin: '0 -6px', zIndex: 5, cursor: 'col-resize', touchAction: 'none', position: 'relative' }}
+        >
+          <span aria-hidden="true" style={{ position: 'absolute', top: 0, bottom: 0, left: 5, width: 2, borderRadius: 2, background: resizing ? 'var(--color-primary)' : 'transparent', transition: 'background 120ms' }} />
+        </div>
+      )}
+
       {/* Thread */}
       <div
         className="tf-chat-thread"
-        style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}
+        style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}
         onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDropActive(true); } }}
         onDragLeave={(e) => { if (e.currentTarget === e.target) setDropActive(false); }}
         onDrop={(e) => {
@@ -864,6 +1247,11 @@ export default function ChatPage() {
         )}
 
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isWide && !listOpen && (
+            <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Show conversation list" title="Show conversation list" onClick={() => setOpen(true)}>
+              <PanelLeftOpen size={16} />
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Back to chats" onClick={() => setMobileThread(false)} style={{ display: showList ? 'none' : undefined }}>
             <ArrowLeft size={16} />
           </button>
@@ -883,9 +1271,14 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {loading && <div className="spinner" style={{ width: 20, height: 20, margin: 'auto' }} />}
-          {!loading && messages.length === 0 && (
+        <div
+          ref={listRef}
+          className="tf-chat-messages"
+          onScroll={(e) => { const t = e.currentTarget; stickRef.current = t.scrollHeight - t.scrollTop - t.clientHeight < 120; }}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', padding: '16px', display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+          {(loading || loadedId !== activeId) && messages.length === 0 && <div className="spinner" style={{ width: 20, height: 20, margin: 'auto' }} />}
+          {!loading && loadedId === activeId && messages.length === 0 && (
             <div style={{ margin: 'auto', color: 'var(--tf-muted)', fontSize: 14 }}>No messages yet. Say hello 👋</div>
           )}
           {messages.map((m, i) => {
@@ -996,10 +1389,10 @@ export default function ChatPage() {
             </div>
           ) : (
             <>
-              <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Attach file" title="Attach file" disabled={composerDisabled || sending || !!editingId} onClick={() => fileRef.current?.click()}>
+              <button type="button" className="btn btn-ghost btn-sm btn-icon tf-chat-icon-btn" aria-label="Attach file" title="Attach file" disabled={composerDisabled || sending || !!editingId} onClick={() => fileRef.current?.click()}>
                 <Paperclip size={16} />
               </button>
-              <button type="button" className="btn btn-ghost btn-sm btn-icon" aria-label="Record voice message" title="Record voice message" disabled={composerDisabled || sending || !!editingId} onClick={startRecording}>
+              <button type="button" className="btn btn-ghost btn-sm btn-icon tf-chat-icon-btn" aria-label="Record voice message" title="Record voice message" disabled={composerDisabled || sending || !!editingId} onClick={startRecording}>
                 <Mic size={16} />
               </button>
               <input
@@ -1016,11 +1409,11 @@ export default function ChatPage() {
                 aria-label="Message"
                 maxLength={4000}
                 disabled={composerDisabled}
-                style={{ ...fieldStyle, flex: 1, width: 'auto', padding: '10px 14px', borderRadius: 12 }}
+                style={{ ...fieldStyle, flex: 1, width: 'auto', minWidth: 0, padding: '10px 14px', borderRadius: 12 }}
               />
               <button
                 type="submit"
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-sm tf-chat-icon-btn"
                 disabled={(!text.trim() && !pending.length) || sending || composerDisabled}
                 aria-label={editingId ? 'Save edit' : 'Send message'}
               >

@@ -1,6 +1,35 @@
 const supabase = require("../config/supabase");
 const axios = require("axios");
 
+// The Supabase Edge Function owns the image-capable, stateful assistant. Proxy every
+// /api/ai route there so image uploads and subsequent assignment/date replies share one draft.
+exports.proxyAssistant = async (req, res) => {
+  const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  if (!supabaseUrl) return res.status(503).json({ error: "AI assistant API is not configured." });
+
+  const path = `/ai${req.path}${req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : ""}`;
+  try {
+    const response = await axios.request({
+      method: req.method,
+      url: `${supabaseUrl}/functions/v1/api${path}`,
+      data: ["GET", "HEAD"].includes(req.method) ? undefined : req.body,
+      headers: {
+        Authorization: req.headers.authorization || "",
+        ...((req.headers.apikey || process.env.SUPABASE_ANON_KEY) ? { apikey: req.headers.apikey || process.env.SUPABASE_ANON_KEY } : {}),
+        "Content-Type": "application/json",
+      },
+      timeout: 125000,
+      maxBodyLength: 25 * 1024 * 1024,
+      maxContentLength: 25 * 1024 * 1024,
+      validateStatus: () => true,
+    });
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("AI assistant proxy error:", err.message);
+    return res.status(502).json({ error: "The AI assistant service is unavailable." });
+  }
+};
+
 exports.handleAIQuery = async (req, res) => {
   try {
     const { question } = req.body;

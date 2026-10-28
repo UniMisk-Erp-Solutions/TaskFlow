@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import GoogleConnectCard from './GoogleConnectCard';
+import { localYmd } from '../lib/localDate';
 
-function ymd(date) {
-  return date.toISOString().split('T')[0];
-}
+// Local-time day key (a UTC key would shift every date by one day in time zones ahead of UTC).
+const ymd = localYmd;
 
 function monthGrid(baseDate) {
   const year = baseDate.getFullYear();
@@ -102,57 +102,33 @@ export default function CalenderView({
   const monthMeetingCount = events.filter((e) => e.type === 'meeting').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Google Calendar connect bar — sits above the month grid so it's
-          unmistakable from any page state. */}
-      <div
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, flexWrap: 'wrap',
-          padding: '10px 14px',
-          border: '1px solid var(--tf-border)',
-          borderRadius: 14,
-          background: 'var(--tf-panel)',
-        }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.005em' }}>
-            Sync with Google Calendar
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
-            Connect your Gmail to auto-push new meetings to your Google calendar.
-          </span>
-        </div>
-        <GoogleConnectCard variant="inline" />
-      </div>
-
-      <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+    <div className="calendar-view" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="calendar-month" style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', overflow: 'hidden' }}>
+        <div className="calendar-month-toolbar" style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}>
               <ChevronLeft size={14} />
             </button>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tf-text)', minWidth: 170 }}>{prettyMonth(currentMonth)}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--tf-text)', minWidth: 140 }}>{prettyMonth(currentMonth)}</div>
             <button className="btn btn-ghost btn-sm btn-icon" onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}>
               <ChevronRight size={14} />
             </button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div className="tf-cal-filters">
             <input
               className="input"
               placeholder="Search tasks and meetings"
               value={filters.search}
               onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
-              style={{ width: 220 }}
             />
-            <select className="select" value={filters.type || ''} onChange={(e) => onFiltersChange({ ...filters, type: e.target.value })} style={{ width: 140 }}>
+            <select className="select" value={filters.type || ''} onChange={(e) => onFiltersChange({ ...filters, type: e.target.value })}>
               <option value="">All Types</option>
               <option value="task">Tasks</option>
               <option value="meeting">Meetings</option>
             </select>
             {includeEmployeeFilter && (
-              <select className="select" value={filters.assignee_id || ''} onChange={(e) => onFiltersChange({ ...filters, assignee_id: e.target.value })} style={{ width: 200 }}>
+              <select className="select" value={filters.assignee_id || ''} onChange={(e) => onFiltersChange({ ...filters, assignee_id: e.target.value })}>
                 <option value="">All team members</option>
                 {assignees.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -175,7 +151,8 @@ export default function CalenderView({
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--tf-border)' }}>
+        <div className="calendar-grid-scroll">
+        <div className="calendar-weekdays" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--tf-border)' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
             <div key={d} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--tf-muted)', textTransform: 'uppercase', letterSpacing: '0.3px', textAlign: 'center' }}>
               {d}
@@ -183,7 +160,7 @@ export default function CalenderView({
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        <div className="calendar-days" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {days.map((day) => {
             const date = ymd(day);
             const dayEvents = byDay[date] || [];
@@ -231,6 +208,28 @@ export default function CalenderView({
             );
           })}
         </div>
+        </div>
+      </div>
+      <div
+        className="calendar-google-sync"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, flexWrap: 'wrap',
+          padding: '10px 14px',
+          border: '1px solid var(--tf-border)',
+          borderRadius: 14,
+          background: 'var(--tf-panel)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.005em' }}>
+            Sync with Google Calendar
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--tf-muted)' }}>
+            Connect your Gmail to auto-push new meetings to your Google calendar.
+          </span>
+        </div>
+        <GoogleConnectCard variant="inline" />
       </div>
     </div>
   );

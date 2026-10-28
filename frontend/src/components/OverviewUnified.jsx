@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { localYmd } from '../lib/localDate';
 import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
 import { PriorityBadge } from './StatusBadge';
 import { formatDate, formatTime12 } from '../lib/dateFormat';
@@ -114,7 +115,7 @@ export default function OverviewUnified({
   const [deletingId, setDeletingId] = useState(null);
 
   const rows = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localYmd();
     const tRows = tasks.map((t) => ({
       kind: 'task',
       id: t.id,
@@ -210,7 +211,7 @@ export default function OverviewUnified({
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="tf-data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead style={{ background: 'var(--tf-pearl)' }}>
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Type" sortKey="kind" sort={sort} onSort={handleSort} />
@@ -248,7 +249,7 @@ export default function OverviewUnified({
                   {row.kind}
                 </span>
               </td>
-              <td
+              <td className="tf-col-title"
                 style={{
                   padding: '11px 14px',
                   maxWidth: 220,

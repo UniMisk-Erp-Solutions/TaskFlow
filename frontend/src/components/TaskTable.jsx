@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw } from 'lucide-react';
+import { Trash2, ChevronUp, ChevronDown, Check, XCircle, RotateCcw, Pencil } from 'lucide-react';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
 import { isOverdue } from './OverdueBadge';
 import { formatDate as fmt } from '../lib/dateFormat';
@@ -91,6 +91,7 @@ export default function TaskTable({
   onUpdateStatus,
   profileById,
   onOpenTask,
+  onEditTask,
   onApprove,
   onRequestChanges,
   onReopen,
@@ -127,7 +128,7 @@ export default function TaskTable({
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="tf-data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead style={{ background: 'var(--tf-pearl)' }}>
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Title"    sortKey="title"    sort={sort} onSort={handleSort} />
@@ -152,7 +153,7 @@ export default function TaskTable({
                   e.currentTarget.style.background = 'transparent';
                 }}>
 
-                <td
+                <td className="tf-col-title"
                   style={{ padding: '11px 14px', maxWidth: 300, cursor: onOpenTask ? 'pointer' : 'default' }}
                   onClick={() => onOpenTask?.(task)}
                   title={onOpenTask ? 'View details' : undefined}
@@ -227,6 +228,16 @@ export default function TaskTable({
                         onClick={(e) => { e.stopPropagation(); onReopen(task); }}
                       >
                         <RotateCcw size={14} />
+                      </RowIconBtn>
+                    )}
+                    {onEditTask && (
+                      <RowIconBtn
+                        title="Edit task"
+                        accent="var(--color-primary)"
+                        accentBg="var(--status-info-bg)"
+                        onClick={(e) => { e.stopPropagation(); onEditTask(task); }}
+                      >
+                        <Pencil size={13} />
                       </RowIconBtn>
                     )}
                     <RowIconBtn

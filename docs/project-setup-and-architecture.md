@@ -48,6 +48,8 @@ The app can use either API implementation. Point `VITE_API_URL` at the selected 
 
 For Kanban, the task's board lane and order are persisted alongside its business status. Employee submissions transition to a review state; administrators approve into completed work or reject back to active work. The detailed lifecycle and migration names are in [kanban-board-review-workflow.md](kanban-board-review-workflow.md).
 
+GitHub webhooks are a second input to that review flow: the Edge API validates the webhook signature, matches the pushed commits or pull request to an assigned task, and moves an In Progress task to the same `submitted` review state. See [github-integration.md](github-integration.md).
+
 ## Local development modes
 
 ### Frontend + hosted Edge API
@@ -72,7 +74,7 @@ Do not use a service-role key in the frontend. The Express API is not self-conta
 
 ### Local Supabase stack
 
-`supabase/config.toml` configures the local Supabase CLI stack. Running it requires Docker and the Supabase CLI (or `npx supabase`). This repository's SQL files and migrations include incremental changes for a pre-existing schema; they do not form a single guaranteed blank-database bootstrap. Review prerequisites before applying SQL to a local database. The Edge API's local serve instructions are in [supabase/functions/README.md](../supabase/functions/README.md).
+`supabase/config.toml` configures the local Supabase CLI stack. Running it requires the Supabase CLI (or `npx supabase`). This repository's SQL files and migrations include incremental changes for a pre-existing schema; they do not form a single guaranteed blank-database bootstrap. Review prerequisites before applying SQL to a local database. The Edge API's local serve instructions are in [supabase/functions/README.md](../supabase/functions/README.md).
 
 ## Environment variables
 
@@ -90,6 +92,8 @@ Do not use a service-role key in the frontend. The Express API is not self-conta
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Express | Optional | AI-related API features. |
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` | Express | Optional | Email integration settings. |
 | `VITE_STATUS_URL`, `VITE_STATUS_KEY` | Frontend | Optional | Separate status/maintenance project configuration. |
+| `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET` | Edge Function | Optional (required for GitHub integration) | GitHub App credentials and webhook secret; also `GITHUB_API_PUBLIC_URL`, `GITHUB_STATE_SECRET`, `GITHUB_RETURN_ORIGINS`. See [github-integration.md](github-integration.md). |
+| `GITHUB_TOKEN_ENC_KEY`, `GITHUB_POLL_INTERVAL_SECONDS`, `GITHUB_POLL_SECRET` | Edge Function | Optional | GitHub token/polling fallback: encryption key for saved user tokens, and the polling schedule. See [github-integration.md](github-integration.md). |
 
 See `frontend/.env.example` and `backend/.env.example` for templates. Do not commit local environment files.
 
@@ -102,10 +106,10 @@ Apply database changes to a development/staging project first, then deploy the m
 ## Deployment
 
 - `render.yaml` declares the Render backend container and static frontend services.
-- `backend/Dockerfile` builds the frontend assets and Express API into one image.
-- `docker-compose.yml` starts the Express container locally and expects `backend/.env`.
 - `frontend/vercel.json` supplies SPA route fallback rewrites for Vercel hosting.
 - `scripts/deploy-edge-api.sh` deploys the Edge API to the linked hosted Supabase project. Read `supabase/functions/README.md` before using it.
+
+- `Jenkinsfile` and `ci/` build, test and verify every branch before a PR can be merged; Vercel ships production only after an admin merges into `main`. See [ci-cd-pipeline.md](ci-cd-pipeline.md).
 
 Keep frontend/API versions compatible and deploy required migrations before traffic uses code that depends on the new schema.
 

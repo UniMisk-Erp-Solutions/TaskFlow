@@ -16,6 +16,8 @@ function actionLabel(action) {
     case 'approved': return 'approved';
     case 'rejected': return 'rejected';
     case 'changes_requested': return 'requested changes';
+    case 'github_linked': return 'linked GitHub activity';
+    case 'github_unlinked': return 'removed a GitHub link';
     default: return action || 'updated';
   }
 }

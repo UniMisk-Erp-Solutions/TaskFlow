@@ -118,7 +118,7 @@ export default function Onboarding() {
         <span style={{ fontSize: 19, fontWeight: 600, color: 'var(--tf-text)' }}>TaskFlow</span>
       </div>
 
-      <div style={card}>
+      <div className="onboarding-card" style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
           {[1, 2, 3].map((n) => (
             <React.Fragment key={n}>

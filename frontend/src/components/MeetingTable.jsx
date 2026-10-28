@@ -120,7 +120,7 @@ export default function MeetingTable({
 
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table className="tf-data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead style={{ background: 'var(--tf-pearl)' }}>
           <tr style={{ borderBottom: '1px solid var(--tf-border)' }}>
             <Th label="Title" sortKey="title" sort={sort} onSort={handleSort} />
@@ -143,7 +143,7 @@ export default function MeetingTable({
                 e.currentTarget.style.background = 'transparent';
               }}>
 
-              <td
+              <td className="tf-col-title"
                 style={{ padding: '11px 14px', maxWidth: 300, cursor: onOpenMeeting ? 'pointer' : 'default' }}
                 onClick={() => onOpenMeeting?.(meeting)}
                 title={onOpenMeeting ? 'View details' : undefined}

@@ -38,3 +38,13 @@
 - [Files Preview/Download, 40-Record Pagination, Task Edit Fix and Subtasks](docs/files-preview-pagination-edit-subtasks.md) — Documents the four fixes from 16/10/2026: working file download and in-app preview, 40 records per page, the task edit blink bug, and subtask adding.
 - [Kanban Rules, Admin Timers, Subtask Option, Multi-Device Login and File URL Fix](docs/kanban-rules-subtasks-sessions.md) — Documents blocking In Progress tasks from moving back, admin Kanban timers for all assignees, the Subtask-of option and badge, multi-device login (local sign-out) and the https file URL fix.
 - [Timer: Adjust a Forgotten Timer](docs/timer-adjust.md) — Documents the Adjust option to set the real finish time of a forgotten timer, the server checks, and the Adjusted tag admins see.
+
+- [Local CPU-Only AI Assistant (2 logical CPUs)](docs/local-ai-two-core.md) — Documents the self-hosted Qwen3-0.6B + multilingual-E5 AI stack capped to two logical CPUs, the planner service, gateway integration, setup steps and what is not yet verified.
+- [Progressive Web App (Install on Android, iOS and Desktop)](docs/pwa-installable-app.md) — Documents the PWA setup: manifest and icons, service worker with offline page, install banner and iOS steps, update prompt, hosting headers and limits.
+- [GitHub Integration](docs/github-integration.md) — Documents the GitHub App integration: connecting accounts, linking commits/branches/PRs to tasks, automatic In Progress to Done (pending approval) submission, admin notification, webhook security, setup, API routes and testing.
+
+- [Files: Drag and Drop to Move Items](docs/files-drag-drop-move.md) — Documents dragging files/folders onto folders, breadcrumbs or the Back row to move them, plus the new move option in the drive PATCH API.
+- [AI Assistant: Close with Esc](docs/ai-chat-esc-close.md) — Documents closing the AI Assistant panel with the Esc key.
+
+- [PWA Layout Fixes](docs/pwa-layout-fixes.md) — Documents the narrow-sidebar profile/theme overlap fix and the installed-app safe-area padding.
+- [CI/CD Pipeline](docs/ci-cd-pipeline.md) — Documents the Jenkins BUILD/TEST pipeline, the signed pre-PR verification gate, admin-only merge, Vercel preview/production separation, safe Playwright testing, the dependency updates made for Trivy, and the setup still needed before Jenkins is activated.

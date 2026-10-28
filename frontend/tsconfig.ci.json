@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "exclude": [
+    "src/components/BookingCalendar.tsx",
+    "src/components/AvailabilityPopover.tsx",
+    "src/components/use-bookings.ts"
+  ]
+}

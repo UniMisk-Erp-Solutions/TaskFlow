@@ -17,8 +17,8 @@ self.addEventListener('push', (event) => {
   const options = {
     body: payload.body,
     data: payload.data,
-    icon: '/favicon.ico',
-    badge: '/favicon.ico',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/favicon-32.png',
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });

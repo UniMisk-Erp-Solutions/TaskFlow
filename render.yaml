@@ -1,28 +1,5 @@
 services:
   - type: web
-    name: task-mng-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: .
-    plan: free
-    healthCheckPath: /
-    envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: OPENROUTER_API_KEY
-        sync: false
-      - key: OPENROUTER_MODEL
-        sync: false
-      - key: BREVO_API_KEY
-        sync: false
-      - key: BREVO_SENDER_EMAIL
-        sync: false
-      - key: BREVO_SENDER_NAME
-        sync: false
-
-  - type: web
     name: task-mng-frontend
     runtime: static
     buildCommand: cd frontend && npm run build
@@ -35,6 +12,15 @@ services:
       - path: /*
         name: X-Content-Type-Options
         value: nosniff
+      - path: /sw.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /sw-push.js
+        name: Cache-Control
+        value: no-cache, no-store, must-revalidate
+      - path: /manifest.webmanifest
+        name: Content-Type
+        value: application/manifest+json
     routes:
       - type: redirect
         source: /*

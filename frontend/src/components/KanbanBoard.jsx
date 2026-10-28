@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarDays, Clock3, FolderKanban, GripVertical, Pencil, Search, UserRound } from 'lucide-react';
+import { CalendarDays, Clock3, Filter, FolderKanban, GripVertical, Pencil, Search, UserRound } from 'lucide-react';
 import { formatDate } from '../lib/dateFormat';
 import { KANBAN_COLUMNS, compareKanbanTasks, kanbanColumnForTask, priorityColor } from '../lib/kanban';
 import StatusBadge, { PriorityBadge } from './StatusBadge';
@@ -14,8 +14,10 @@ function assigneeIds(task) {
 const APPROVED_TASK_VISIBLE_MS = 60_000;
 
 function approvedTaskTimeLeft(task, now) {
-  // Older approvals have no approval stamp, so fall back to the last update.
-  const approvedAt = Date.parse(task.kanban_approved_at || task.updated_at || '');
+  // Only tasks approved through the review flow carry an approval stamp. Older completed tasks have none and
+  // stay in Done (docs/kanban-approved-task-countdown.md); falling back to updated_at made every completed task
+  // vanish from the board a minute after its last edit.
+  const approvedAt = Date.parse(task.kanban_approved_at || '');
   if (!Number.isFinite(approvedAt)) return null;
   return Math.max(0, Math.min(APPROVED_TASK_VISIBLE_MS, approvedAt + APPROVED_TASK_VISIBLE_MS - now));
 }
@@ -150,6 +152,22 @@ function BoardCard({ task, profileById, onOpen, onMove, onPointerDragStart, cons
         )}
       </div>
 
+      {!locked && (
+        <label className="kanban-mobile-move" onClick={(event) => event.stopPropagation()}>
+          <span>Move to</span>
+          <select
+            aria-label={`Move ${task.title} to status`}
+            value={lane}
+            onChange={(event) => {
+              event.stopPropagation();
+              if (event.target.value !== lane) onMove(task, event.target.value);
+            }}
+          >
+            {KANBAN_COLUMNS.map((column) => <option key={column.id} value={column.id}>{column.label}</option>)}
+          </select>
+        </label>
+      )}
+
       {(task.status === 'submitted' || task.status === 'rejected' || task.status === 'blocked' || task.status === 'changes_requested') && (
         <div className="kanban-workflow-status"><StatusBadge status={task.status} /></div>
       )}
@@ -212,14 +230,19 @@ export default function KanbanBoard({
   onPauseTimer = async () => {},
   onAdjustTimer = async () => {},
   timerError = '',
+  actions = null,
 }) {
   const [filters, setFilters] = useState({ search: '', project: '', priority: '', assignee: '' });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mobileLane, setMobileLane] = useState('to_do');
+  const mobileLaneTouched = useRef(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [draggedTaskId, setDraggedTaskId] = useState(null);
   const [dragPreview, setDragPreview] = useState(null);
   const [overColumn, setOverColumn] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [error, setError] = useState('');
+  const [scopeNotice, setScopeNotice] = useState('');
   const [reviewTaskId, setReviewTaskId] = useState(null);
   const [submittingReview, setSubmittingReview] = useState(false);
   const pointerDragCleanup = useRef(null);
@@ -237,12 +260,20 @@ export default function KanbanBoard({
   const [scope, setScope] = useState(() => {
     try { return window.localStorage.getItem('taskflow:kanban-scope') === 'project' ? 'project' : 'individual'; } catch { return 'individual'; }
   });
-  const projectIds = useMemo(() => new Set((projects || []).map((project) => project.id)), [projects]);
-  const isLinkedProject = (task) => Boolean(task.project_id) && projectIds.has(task.project_id);
+  const isLinkedProject = (task) => Boolean(task.project_id);
   function changeScope(next) {
     setScope(next);
+    setScopeNotice('');
     try { window.localStorage.setItem('taskflow:kanban-scope', next); } catch { /* ignore */ }
   }
+
+  useEffect(() => {
+    if (isAdmin || scope !== 'project' || loading || !tasks.length) return;
+    if (tasks.some((task) => Boolean(task.project_id))) return;
+    setScope('individual');
+    setScopeNotice('No project-linked tasks were found, so all your tasks are shown.');
+    try { window.localStorage.setItem('taskflow:kanban-scope', 'individual'); } catch { /* ignore */ }
+  }, [isAdmin, scope, loading, tasks]);
 
   useEffect(() => () => pointerDragCleanup.current?.(), []);
 
@@ -293,7 +324,7 @@ export default function KanbanBoard({
       if (filters.assignee && !assigneeIds(task).includes(filters.assignee)) return false;
       return true;
     });
-  }, [tasks, filters, isAdmin, scope, projectIds]);
+  }, [tasks, filters, isAdmin, scope]);
 
   const visibleByColumn = useMemo(() => {
     const grouped = Object.fromEntries(KANBAN_COLUMNS.map((column) => [column.id, []]));
@@ -305,6 +336,13 @@ export default function KanbanBoard({
     Object.values(grouped).forEach((columnTasks) => columnTasks.sort(compareKanbanTasks));
     return grouped;
   }, [filteredTasks, clockNow]);
+
+  useEffect(() => {
+    if (mobileLaneTouched.current) return;
+    if (visibleByColumn[mobileLane]?.length) return;
+    const firstPopulatedLane = KANBAN_COLUMNS.find((column) => visibleByColumn[column.id].length);
+    if (firstPopulatedLane) setMobileLane(firstPopulatedLane.id);
+  }, [mobileLane, visibleByColumn]);
 
   const visibleTaskCount = Object.values(visibleByColumn).reduce((count, columnTasks) => count + columnTasks.length, 0);
   const timerSessionsByTask = useMemo(() => {
@@ -567,6 +605,43 @@ export default function KanbanBoard({
   return (
     <section className="kanban-shell" aria-label="Task Kanban board">
       <div className="kanban-toolbar">
+        <div className="kanban-toolbar-actions">
+          <div className="kanban-filter-menu-wrap">
+            <button type="button" className="kanban-filter-trigger" onClick={() => setFiltersOpen((open) => !open)} aria-expanded={filtersOpen} aria-controls="kanban-filter-menu">
+              <Filter size={15} aria-hidden="true" /> Filters
+              {Object.values(filters).filter(Boolean).length > 0 && <span className="kanban-filter-count">{Object.values(filters).filter(Boolean).length}</span>}
+            </button>
+            {filtersOpen && (
+              <div className="kanban-filter-menu" id="kanban-filter-menu" aria-label="Task filters">
+                <label>Project
+                  <select value={filters.project} onChange={(event) => setFilter('project', event.target.value)} aria-label="Filter by project">
+                    <option value="">All projects</option>
+                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                  </select>
+                </label>
+                <label>Priority
+                  <select value={filters.priority} onChange={(event) => setFilter('priority', event.target.value)} aria-label="Filter by priority">
+                    <option value="">All priorities</option>
+                    <option value="high">High priority</option>
+                    <option value="medium">Medium priority</option>
+                    <option value="low">Low priority</option>
+                  </select>
+                </label>
+                <label>Assignee
+                  <select value={filters.assignee} onChange={(event) => setFilter('assignee', event.target.value)} aria-label="Filter by assignee">
+                    <option value="">All assignees</option>
+                    {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.full_name || assignee.email}</option>)}
+                  </select>
+                </label>
+                <div className="kanban-filter-menu-actions">
+                  <button type="button" className="kanban-filter-clear" onClick={() => setFilters((current) => ({ ...current, project: '', priority: '', assignee: '' }))}>Clear filters</button>
+                  <button type="button" className="kanban-filter-apply" onClick={() => setFiltersOpen(false)}>Apply filters</button>
+                </div>
+              </div>
+            )}
+          </div>
+          {actions}
+        </div>
         {!isAdmin && (
           <div className="kanban-scope" role="group" aria-label="Board scope">
             <button type="button" className={scope === 'individual' ? 'is-active' : ''} aria-pressed={scope === 'individual'} onClick={() => changeScope('individual')} title="All your tasks: individual and project">
@@ -581,22 +656,10 @@ export default function KanbanBoard({
           <Search size={16} aria-hidden="true" />
           <input value={filters.search} onChange={(event) => setFilter('search', event.target.value)} placeholder="Search tasks" aria-label="Search tasks" />
         </label>
-        <select value={filters.project} onChange={(event) => setFilter('project', event.target.value)} aria-label="Filter by project">
-          <option value="">All projects</option>
-          {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-        </select>
-        <select value={filters.priority} onChange={(event) => setFilter('priority', event.target.value)} aria-label="Filter by priority">
-          <option value="">All priorities</option>
-          <option value="high">High priority</option>
-          <option value="medium">Medium priority</option>
-          <option value="low">Low priority</option>
-        </select>
-        <select value={filters.assignee} onChange={(event) => setFilter('assignee', event.target.value)} aria-label="Filter by assignee">
-          <option value="">All assignees</option>
-          {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.full_name || assignee.email}</option>)}
-        </select>
         <span className="kanban-result-count">{visibleTaskCount} task{visibleTaskCount === 1 ? '' : 's'}</span>
       </div>
+
+      {scopeNotice && <div className="kanban-scope-notice" role="status">{scopeNotice}</div>}
 
       {error && (
         <div className="kanban-error" role="alert">
@@ -606,14 +669,39 @@ export default function KanbanBoard({
       )}
       {timerError && <div className="kanban-error" role="alert"><span>{timerError}</span></div>}
 
+      <div className="kanban-mobile-lanes" role="tablist" aria-label="Task status">
+        {KANBAN_COLUMNS.map((column) => (
+          <button
+            key={column.id}
+            type="button"
+            role="tab"
+            id={`kanban-tab-${column.id}`}
+            aria-selected={mobileLane === column.id}
+            aria-controls={`kanban-panel-${column.id}`}
+            tabIndex={mobileLane === column.id ? 0 : -1}
+            className={mobileLane === column.id ? 'is-active' : ''}
+            onClick={() => {
+              mobileLaneTouched.current = true;
+              setMobileLane(column.id);
+            }}
+          >
+            <span>{column.label}</span>
+            <span className="kanban-mobile-lane-count">{visibleByColumn[column.id].length}</span>
+          </button>
+        ))}
+      </div>
       <div className="kanban-board">
         {KANBAN_COLUMNS.map((column) => {
           const columnTasks = visibleByColumn[column.id];
           return (
             <section
               key={column.id}
-              className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}`}
+              className={`kanban-column${overColumn === column.id ? ' is-drop-target' : ''}${mobileLane === column.id ? ' is-mobile-active' : ''}`}
               data-kanban-column={column.id}
+              role="tabpanel"
+              id={`kanban-panel-${column.id}`}
+              aria-labelledby={`kanban-tab-${column.id}`}
+              tabIndex={0}
               aria-label={`${column.label}, ${columnTasks.length} tasks`}
             >
               <header className="kanban-column-heading">
@@ -727,7 +815,7 @@ export default function KanbanBoard({
           </div>
         </div>
       )}
-      <p className="kanban-hint">Drag a card to change its lane. On touch screens, drag using the grip. Task priority colors: high pink, medium green, low blue.</p>
+      <p className="kanban-hint"><span className="kanban-desktop-hint">Drag a card to change its lane.</span><span className="kanban-mobile-hint">Use the “Move to” control on a task to change its status.</span> Task priority colors: high pink, medium green, low blue.</p>
     </section>
   );
 }
