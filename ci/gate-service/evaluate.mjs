@@ -8,6 +8,15 @@ import { createAttestation } from "../lib/attestation.mjs";
 
 export const PINNED_PATHS = ["Jenkinsfile", "ci/pipeline", "ci/lib", "ci/gate", "ci/verify"];
 
+const ANSI = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g");
+/** The most useful single line of a failed stage's output (what a developer needs to see on GitHub). */
+export function firstErrorLine(tail = "") {
+  const lines = String(tail).replace(ANSI, "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const noise = /^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)/i;
+  const hit = lines.find((l) => /\berror\b|✘|\bFAIL(ED)?\b|Error:|not defined|failed/i.test(l) && !noise.test(l));
+  return (hit || lines.at(-1) || "").replace(/^\[?\d{4}-\d\d-\d\dT[^\s\]]*\]?\s*/, "").slice(0, 110);
+}
+
 export function evaluateBuild({ sha, git, results, required, pin }) {
   const reasons = [];
   if (!git || !git.tree) return { verdict: "error", reasons: ["commit not found in the repository mirror"] };
@@ -21,10 +30,14 @@ export function evaluateBuild({ sha, git, results, required, pin }) {
     const r = results?.[name];
     if (!r) return { name, status: "MISSING" };
     if (r.commit !== sha || r.tree !== git.tree) return { name, status: "STALE" }; // produced for different code
-    return { name, status: r.status === "PASS" ? "PASS" : "FAIL", durationMs: r.durationMs };
+    return r.status === "PASS" ? { name, status: "PASS", durationMs: r.durationMs } : { name, status: "FAIL", durationMs: r.durationMs, detail: firstErrorLine(r.tail) };
   });
   const bad = checks.filter((c) => c.status !== "PASS");
-  if (bad.length) reasons.push(`not verified: ${bad.map((c) => `${c.name}=${c.status}`).join(", ")}`);
+  if (bad.length) {
+    // failing stages first, with their first error line: that is what GitHub shows (140 characters)
+    const failed = bad.filter((c) => c.status === "FAIL"), other = bad.filter((c) => c.status !== "FAIL");
+    reasons.push([...failed.map((c) => `${c.name} FAIL: ${c.detail || "see Jenkins"}`), ...other.map((c) => `${c.name}=${c.status}`)].join("; "));
+  }
   return reasons.length ? { verdict: "failed", reasons, checks } : { verdict: "passed", reasons: [], checks };
 }
 

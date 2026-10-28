@@ -487,6 +487,15 @@ The `production`-branch promotion and the signed release approval described abov
 
 **Owner steps:** (a) tell us the admin GitHub account(s) so CODEOWNERS can cover `*`; (b) create the `protect main` ruleset (pull request, 1 approval from Code Owners, required status `unimisk/verified`, dismiss stale approvals, block force pushes); (c) the account that opens a PR cannot approve its own PR, so the admin must be a different account.
 
+## Use as a code checker (owner decision, 2026-10-28)
+
+The pipeline is used to check code and reduce errors. It never merges and never deploys: **push -> Jenkins checks -> result on the commit -> developer fixes or opens a pull request -> admin reviews and merges by hand -> Vercel deploys `main` as before.**
+
+- **Error shown:** a failing commit gets `unimisk/verified` = failure on GitHub whose text names the failing stage and its first error line (for example `lint FAIL: 30:11 error 'process' is not defined`); stages that were skipped because an earlier one failed show as `=MISSING`. Developers do not need Jenkins access to see why a commit failed.
+- **Safe:** a commit that passes all 8 checks gets `unimisk/verified` = success ("All 8 required checks passed").
+- **Not used by this flow:** the signed release approval and promotion (`ci/release/`), and the `production` branch. The optional `taskflow-monitor` job only reads the live site's public URL.
+- Fix a red commit by pushing a new commit; the new push is checked again automatically.
+
 ## Revision log
 
 | Date | Change |
@@ -502,6 +511,7 @@ The `production`-branch promotion and the signed release approval described abov
 | 2026-10-27 | Free production workflow: CODEOWNERS, PR template, release promotion by fast-forwarding the `production` branch (no Vercel token), read-only smoke check, Jenkins `taskflow-monitor` health job; owner actions listed (rulesets, Vercel Production Branch, staging Supabase). |
 | 2026-10-27 | Instant push detection: the gate polls GitHub branch tips every 10 s with conditional requests and triggers the Jenkins scan on change (no webhook, tunnel or open port); 90 pipeline tests pass. |
 | 2026-10-28 | No manual steps after setup: central Jenkinsfile prefers `main` and falls back to the configured ref; the gate also accepts the pipeline at the tip of `main` (no re-pin); 93 pipeline tests pass. |
+| 2026-10-28 | Checker-only use documented; the GitHub failure text now names the failing stage and its first error line (94 pipeline tests pass). |
 | 2026-10-28 | Owner chose the simple flow: push -> Jenkins -> PR -> admin approval -> merge into main -> Vercel deploys main; production branch and signed release step not used. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |

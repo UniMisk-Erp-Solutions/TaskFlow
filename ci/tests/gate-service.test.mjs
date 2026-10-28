@@ -13,7 +13,7 @@ import { evaluateAttestation } from "../lib/attestation.mjs";
 import { REQUIRED_CHECKS } from "../pipeline/config.mjs";
 import { buildStatusBody, publishStatus } from "../lib/github-status.mjs";
 import { MAX_BODY_BYTES, createDebouncer, createRateLimiter, handleDelivery, sign, verifySignature } from "../gate-service/webhook.mjs";
-import { PINNED_PATHS, evaluateBuild } from "../gate-service/evaluate.mjs";
+import { PINNED_PATHS, evaluateBuild, firstErrorLine } from "../gate-service/evaluate.mjs";
 import { createGate, createPublisher } from "../gate-service/gate.mjs";
 import { createGitSource } from "../gate-service/git-source.mjs";
 import { createJenkinsClient } from "../gate-service/jenkins.mjs";
@@ -109,7 +109,7 @@ test("evaluateBuild: PASS only when every stage is PASS for THIS commit and tree
 test("evaluateBuild: FAIL / MISSING / STALE stage results block; a lying tree is detected", () => {
   const base = passAll(SHA1, "T1");
   const run = (results) => evaluateBuild({ sha: SHA1, git: gitFor("T1"), results, required: REQUIRED_CHECKS, pin: PIN });
-  assert.match(run({ ...base, lint: { ...base.lint, status: "FAIL" } }).reasons[0], /lint=FAIL/);
+  assert.match(run({ ...base, lint: { ...base.lint, status: "FAIL" } }).reasons[0], /lint FAIL:/);
   const { e2e, ...noE2e } = base; void e2e;
   assert.match(run(noE2e).reasons[0], /e2e=MISSING/);
   assert.match(run({ ...base, build: { ...base.build, tree: "OTHER" } }).reasons[0], /build=STALE/);
@@ -169,7 +169,7 @@ test("GATE: a failing stage publishes FAILURE naming the stage and writes NO att
   await h.gate.tick();
   const last = h.world.published.at(-1);
   assert.equal(last.state, "failure");
-  assert.match(last.description, /unit-tests=FAIL/);
+  assert.match(last.description, /unit-tests FAIL:/);
   assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false);
 });
 
@@ -375,4 +375,18 @@ test("NO MANUAL RE-PIN: a toolkit that is neither the baked pin nor the tip of m
   await h.gate.tick();
   assert.equal(h.world.published.at(-1).state, "failure");
   assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false);
+});
+
+test("FAILURE TEXT: the GitHub status names the failing stage and its first real error line, failing stages first", () => {
+  const ESC = String.fromCharCode(27), NL = String.fromCharCode(10);
+  const r = passAll(SHA1, "T1");
+  r.lint = { status: "FAIL", commit: SHA1, tree: "T1", tail: ESC + "[31m  30:11  error    'process' is not defined   no-undef" + ESC + "[0m" + NL + "✖ 20 problems (2 errors, 18 warnings)" };
+  r.typecheck = undefined;
+  const out = evaluateBuild({ sha: SHA1, git: gitFor("T1"), results: r, required: REQUIRED_CHECKS, pin: PIN });
+  assert.equal(out.verdict, "failed");
+  assert.ok(out.reasons[0].startsWith("lint FAIL: 30:11"), out.reasons[0]);
+  assert.ok(out.reasons[0].includes("'process' is not defined"));
+  assert.ok(out.reasons[0].includes("typecheck=MISSING"));
+  assert.equal(firstErrorLine("a" + NL + "[2026-10-27T12:45:40.317Z] src/Card.tsx(13,6): error TS2322: bad type" + NL + "z"), "src/Card.tsx(13,6): error TS2322: bad type");
+  assert.equal(firstErrorLine(""), "");
 });
