@@ -390,3 +390,23 @@ test("FAILURE TEXT: the GitHub status names the failing stage and its first real
   assert.equal(firstErrorLine("a" + NL + "[2026-10-27T12:45:40.317Z] src/Card.tsx(13,6): error TS2322: bad type" + NL + "z"), "src/Card.tsx(13,6): error TS2322: bad type");
   assert.equal(firstErrorLine(""), "");
 });
+
+test("PIPELINE PR: a pull request carrying the approved NEW pipeline files, judged with main's older toolkit, is accepted (each file matches an approved version)", async () => {
+  const MAIN = Object.fromEntries(PINNED_PATHS.map((p) => [p, `main-${p}`]));
+  const h = harness();
+  h.world.mainTip = MAIN; h.world.toolkitPinned = MAIN;   // toolkit = what main has
+  h.world.pinned = { ...PIN };                            // the branch carries the version pinned in the image
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "success");
+});
+
+test("PIPELINE PR: a branch pipeline file that matches neither the image pin nor main is still refused", async () => {
+  const MAIN = Object.fromEntries(PINNED_PATHS.map((p) => [p, `main-${p}`]));
+  const h = harness();
+  h.world.mainTip = MAIN; h.world.toolkitPinned = MAIN;
+  h.world.pinned = { ...PIN, Jenkinsfile: "evil" };
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "failure");
+});
