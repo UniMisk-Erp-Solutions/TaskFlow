@@ -137,7 +137,7 @@ function harness() {
     listBuilds: async () => world.builds.map((b) => ({ ...b })),
     artifactJson: async (p, rel) => rel === ".ci/toolkit.json" ? (world.toolkit ? { toolkitCommit: TK } : null) : world.artifacts[`${p}|${rel.replace(".ci/results/", "").replace(".json", "")}`] ?? null,
   };
-  const git = { refresh: async () => { world.refreshes += 1; }, inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
+  const git = { refresh: async () => { world.refreshes += 1; }, inspectRef: async (r) => (r === "main" && world.mainTip ? { tree: "MT", pinned: world.mainTip } : null), inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
   const state = createState(path.join(dir, "state.json"));
   const publish = async (s) => { if (world.failPublish) throw new Error("GitHub down"); world.published.push(s); };
   const gate = createGate({ cfg: { repo: REPO }, jenkins, git, state, publish, required: REQUIRED_CHECKS, pin: PIN, privateKeyPem, attestDir: path.join(dir, "att"), log: () => {} });
@@ -355,4 +355,24 @@ test("CENTRAL PIPELINE: never signed when the toolkit is not the approved pin, h
     assert.equal(h.world.published.at(-1).state, "failure", name);
     assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false, name);
   }
+});
+
+test("NO MANUAL RE-PIN: a pipeline that an admin-approved merge put on main is accepted even though the gate image was pinned earlier", async () => {
+  const NEW = Object.fromEntries(PINNED_PATHS.map((p) => [p, `new-${p}`]));
+  const h = harness();
+  h.world.mainTip = NEW; h.world.toolkitPinned = NEW;                 // the build used main's (new) toolkit
+  h.world.pinned = Object.fromEntries(PINNED_PATHS.map((p) => [p, null])); // the branch carries no pipeline files
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "success");
+});
+
+test("NO MANUAL RE-PIN: a toolkit that is neither the baked pin nor the tip of main is still refused", async () => {
+  const h = harness();
+  h.world.mainTip = { ...PIN, "ci/lib": "something-else" };           // main says one thing
+  h.world.toolkitPinned = { ...PIN, "ci/lib": "a-third-thing" };      // the build used another
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await h.gate.tick();
+  assert.equal(h.world.published.at(-1).state, "failure");
+  assert.equal(fs.existsSync(path.join(h.dir, "att", `${SHA1}.json`)), false);
 });

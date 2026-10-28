@@ -30,8 +30,19 @@ pipeline {
     stage('Trusted pipeline') {
       steps {
         script {
-          def ref = env.CI_TOOLKIT_REF ?: 'main'
-          dir('.ci-toolkit') { git url: 'https://github.com/' + env.CI_REPO + '.git', branch: ref, changelog: false, poll: false }
+          // main is preferred; until the pipeline has been merged into main the configured ref is used, so no switch-over step exists.
+          def pref = env.CI_TOOLKIT_REF ?: 'feature/ci-cd-pipeline'
+          def picked = null
+          for (String r : ['main', pref, 'feature/ci-cd-pipeline']) {
+            if (picked == null) {
+              sh 'rm -rf .ci-toolkit'
+              boolean cloned = true
+              try { dir('.ci-toolkit') { git url: 'https://github.com/' + env.CI_REPO + '.git', branch: r, changelog: false, poll: false } } catch (err) { cloned = false }
+              if (cloned && fileExists('.ci-toolkit/ci/pipeline/overlay.mjs')) { picked = r }
+            }
+          }
+          if (picked == null) { error('no trusted pipeline found (main or the configured ref)') }
+          echo 'trusted pipeline taken from ' + picked
         }
         sh 'node .ci-toolkit/ci/pipeline/overlay.mjs --toolkit .ci-toolkit --workspace .'
         sh 'rm -rf .ci-toolkit'

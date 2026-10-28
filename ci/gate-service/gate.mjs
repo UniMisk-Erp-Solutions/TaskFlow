@@ -40,16 +40,20 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
     // the branch carries must equal the pin as well.
     const tk = await jenkins.artifactJson(b.path, ".ci/toolkit.json");
     const tgi = tk && /^[0-9a-f]{40}$/.test(tk.toolkitCommit || "") ? await git.inspect(tk.toolkitCommit) : null;
-    const effective = gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
+    // The approved pipeline is the pin baked into this image OR the pipeline at the tip of main: a change reaches main only through a
+    // pull request an admin approved, so no manual re-pin is needed after such a merge.
+    const mainTip = await git.inspectRef?.("main");
+    const approvedPins = [pin, ...(mainTip?.pinned?.["ci/pipeline"] ? [mainTip.pinned] : [])];
+    const effectiveFor = (P) => gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
       const own = gi.pinned?.[p] ?? null, central = tgi?.pinned?.[p] ?? null;
-      return [p, central !== (pin?.[p] ?? undefined) ? `toolkit:${central}` : (own ?? central)];
+      return [p, central !== (P?.[p] ?? undefined) ? `toolkit:${central}` : (own ?? central)];
     })) };
     const results = {};
     for (const name of required) results[name] = await jenkins.artifactJson(b.path, `.ci/results/${name}.json`);
     const aborted = b.result !== "SUCCESS" && Object.values(results).every((r) => !r);
     let outcome;
     if (aborted) outcome = { verdict: "error", reasons: [`build ${b.result || "unknown"} before any stage result was produced`] };
-    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin });
+    else for (const P of approvedPins) { outcome = evaluateBuild({ sha: b.sha, git: effectiveFor(P), results, required, pin: P }); if (outcome.verdict !== "pipeline-changed") break; }
     if (outcome.verdict === "passed" && b.result !== "SUCCESS") outcome = { verdict: "failed", reasons: [`Jenkins result ${b.result}`] };
 
     const prev = published()[b.sha];
