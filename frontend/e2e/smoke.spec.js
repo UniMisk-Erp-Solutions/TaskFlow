@@ -1,11 +1,13 @@
 import { test, expect, expectNoProductionContact } from './fixtures.js';
 
 test.describe('public site + routing', () => {
-  test('landing page renders and unknown routes fall back to it', async ({ page, api }) => {
+  test('landing page renders and unknown routes show the 404 page', async ({ page, api }) => {
     await page.goto('/');
     await expect(page.locator('#root')).not.toBeEmpty();
     await page.goto('/definitely/not/a/route');
-    await expect(page).toHaveURL(/\/$/); // catch-all redirects to "/"
+    // Unknown URLs are no longer redirected to "/" (duplicate-content SEO fix): they show a 404 page.
+    await expect(page).toHaveURL(/definitely\/not\/a\/route$/);
+    await expect(page.getByText('We could not find that page')).toBeVisible();
     expectNoProductionContact(api);
   });
 
