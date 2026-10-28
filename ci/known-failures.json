@@ -1,0 +1,4 @@
+{
+  "_comment": "Tests that were already failing on main when the pipeline was introduced and could not be fixed safely, quarantined by exact id. Empty: main now passes every Vitest test (the drag-to-move and Esc fixes landed upstream). Any new failure fails the build.",
+  "tests": []
+}

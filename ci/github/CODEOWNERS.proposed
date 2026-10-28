@@ -1,0 +1,10 @@
+# PROPOSED — not active. Copy to .github/CODEOWNERS after replacing the handle with the real admin
+# team/user(s); a wrong handle would leave every PR without a valid reviewer and block all merges.
+# Branch protection requires a code-owner review, so these people are the "admin merge" gate.
+*                       @UniMisk-Erp-Solutions/REPLACE-WITH-ADMIN-TEAM
+
+# Anything that can change the gate itself needs an admin review too.
+/Jenkinsfile            @UniMisk-Erp-Solutions/REPLACE-WITH-ADMIN-TEAM
+/ci/                    @UniMisk-Erp-Solutions/REPLACE-WITH-ADMIN-TEAM
+/supabase/migrations/   @UniMisk-Erp-Solutions/REPLACE-WITH-ADMIN-TEAM
+/frontend/vercel.json   @UniMisk-Erp-Solutions/REPLACE-WITH-ADMIN-TEAM

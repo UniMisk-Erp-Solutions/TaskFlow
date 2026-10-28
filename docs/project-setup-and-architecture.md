@@ -109,6 +109,8 @@ Apply database changes to a development/staging project first, then deploy the m
 - `frontend/vercel.json` supplies SPA route fallback rewrites for Vercel hosting.
 - `scripts/deploy-edge-api.sh` deploys the Edge API to the linked hosted Supabase project. Read `supabase/functions/README.md` before using it.
 
+- `Jenkinsfile` and `ci/` build, test and verify every branch before a PR can be merged; Vercel ships production only after an admin merges into `main`. See [ci-cd-pipeline.md](ci-cd-pipeline.md).
+
 Keep frontend/API versions compatible and deploy required migrations before traffic uses code that depends on the new schema.
 
 ## Troubleshooting
