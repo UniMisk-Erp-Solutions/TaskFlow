@@ -16,8 +16,12 @@ export function firstErrorLine(tail = "") {
   // a failing test (node:test / TAP) names itself: that is the most useful line
   const failedTest = lines.find((l) => /^not ok \d+ - /.test(l));
   if (failedTest) return failedTest.replace(/^not ok \d+ - /, "test failed: ").slice(0, 110);
+  // Playwright marks a failing test with a leading cross; a passing test whose TITLE contains "FAILURE" must not be mistaken for it
+  const crossed = lines.find((l) => /^\u2718\s+\d+\s/.test(l));
+  if (crossed) return crossed.replace(/^\u2718\s+\d+\s+/, "test failed: ").replace(/\s+\(\d[\d.]*m?s\)$/, "").slice(0, 110);
+  const passed = /^[\u2713\u2714]\s/;
   const noise = /dbus|^[[]pid=|^[[]?[0-9]+[/][0-9]+:|^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration)/i;
-  const hit = lines.find((l) => /\berror\b|✘|\bFAIL(ED)?\b|Error:|not defined|failed/i.test(l) && !noise.test(l));
+  const hit = lines.find((l) => /\berror\b|✘|\bFAIL(ED)?\b|Error:|not defined|failed/i.test(l) && !noise.test(l) && !passed.test(l));
   return (hit || lines.filter((l) => !noise.test(l)).at(-1) || "").slice(0, 110);
 }
 

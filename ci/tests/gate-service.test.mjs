@@ -389,6 +389,9 @@ test("FAILURE TEXT: the GitHub status names the failing stage and its first real
   assert.ok(out.reasons[0].includes("typecheck=MISSING"));
   assert.equal(firstErrorLine("a" + NL + "[2026-10-27T12:45:40.317Z] src/Card.tsx(13,6): error TS2322: bad type" + NL + "z"), "src/Card.tsx(13,6): error TS2322: bad type");
   assert.equal(firstErrorLine(""), "");
+  // a PASSING test whose title contains the word FAILURE must not be reported as the failure
+  const pw = ["[2026-10-28T09:34:24.655Z] ✓  2 [chromium] › e2e/auth.spec.js:18:3 › login › FAILURE: rejected credentials show an error (1.2s)", "[2026-10-28T09:34:24.655Z] ✘  9 [chromium] › e2e/smoke.spec.js:4:3 › public site › unknown routes (11.5s)"].join(NL);
+  assert.equal(firstErrorLine(pw), "test failed: [chromium] › e2e/smoke.spec.js:4:3 › public site › unknown routes");
 });
 
 test("PIPELINE PR: a pull request carrying the approved NEW pipeline files, judged with main's older toolkit, is accepted (each file matches an approved version)", async () => {
