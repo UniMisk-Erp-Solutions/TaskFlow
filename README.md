@@ -185,3 +185,7 @@ render.yaml              Render service definitions
 - Only Supabase's anon/public key belongs in `VITE_SUPABASE_ANON_KEY`; all `VITE_` variables are included in browser code.
 - Use test accounts and a disposable database for development seed data.
 - Keep production service-role and provider keys in the hosting provider's secret settings.
+
+
+
+hello guys this for testing
