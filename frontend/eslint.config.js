@@ -37,7 +37,7 @@ export default [
     languageOptions: { globals: { ...globals.node, ...globals.browser, vi: 'readonly', describe: 'readonly', it: 'readonly', expect: 'readonly', beforeEach: 'readonly', afterEach: 'readonly', beforeAll: 'readonly', afterAll: 'readonly', test: 'readonly' } },
   },
   {
-    files: ['vite.config.js', 'playwright.config.js', 'e2e/**/*.{js,mjs}'],
+    files: ['vite.config.js', 'playwright.config.js', 'e2e/**/*.{js,mjs}', 'scripts/**/*.{js,mjs}'],
     languageOptions: { globals: { ...globals.node } },
     rules: { 'react-hooks/rules-of-hooks': 'off' }, // Playwright fixtures call `use(...)`, which is not a React hook
   },

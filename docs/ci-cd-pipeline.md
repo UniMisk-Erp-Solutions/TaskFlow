@@ -512,6 +512,7 @@ The pipeline is used to check code and reduce errors. It never merges and never 
 | 2026-10-27 | Instant push detection: the gate polls GitHub branch tips every 10 s with conditional requests and triggers the Jenkins scan on change (no webhook, tunnel or open port); 90 pipeline tests pass. |
 | 2026-10-28 | No manual steps after setup: central Jenkinsfile prefers `main` and falls back to the configured ref; the gate also accepts the pipeline at the tip of `main` (no re-pin); 93 pipeline tests pass. |
 | 2026-10-28 | Checker-only use documented; the GitHub failure text now names the failing stage and its first error line (94 pipeline tests pass). |
+| 2026-10-28 | Lint config: Node globals for frontend/scripts (new Vite SEO plugin failed lint on main); gate accepts either approved version per pipeline file (image pin or tip of main). A pull request that changes the pipeline is judged by main's older pipeline, so it can fail the "central Jenkinsfile identical" test until merged. |
 | 2026-10-28 | Owner chose the simple flow: push -> Jenkins -> PR -> admin approval -> merge into main -> Vercel deploys main; production branch and signed release step not used. |
 | 2026-10-27 | Jenkins pipeline, signed pre-PR gate, branch-protection preparation, Jenkins as code, safe Playwright suite. No change to the TaskFlow application's features. |
 | 2026-10-27 | Final verification: gate scenarios, Trivy audit with upgrade options, root cause of the quarantined tests (main moved on), CRLF-safe config tests. |
