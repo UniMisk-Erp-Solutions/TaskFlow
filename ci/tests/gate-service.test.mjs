@@ -410,3 +410,10 @@ test("PIPELINE PR: a branch pipeline file that matches neither the image pin nor
   await h.gate.tick();
   assert.equal(h.world.published.at(-1).state, "failure");
 });
+
+test("FAILURE TEXT: a failing node:test names the test, not the runner's summary line", () => {
+  const NL = String.fromCharCode(10);
+  const tail = ["# Subtest: x", "ok 1 - fine", "not ok 27 - CENTRAL PIPELINE: copies differ", "# tests 66", "# pass 65", "# fail 1"].join(NL);
+  assert.equal(firstErrorLine(tail), "test failed: CENTRAL PIPELINE: copies differ");
+  assert.equal(firstErrorLine(["# tests 3", "# fail 1"].join(NL)), "");
+});

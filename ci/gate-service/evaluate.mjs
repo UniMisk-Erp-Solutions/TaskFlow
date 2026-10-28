@@ -11,10 +11,14 @@ export const PINNED_PATHS = ["Jenkinsfile", "ci/pipeline", "ci/lib", "ci/gate", 
 const ANSI = new RegExp(String.fromCharCode(27) + "\\[[0-9;]*m", "g");
 /** The most useful single line of a failed stage's output (what a developer needs to see on GitHub). */
 export function firstErrorLine(tail = "") {
-  const lines = String(tail).replace(ANSI, "").split("\n").map((l) => l.trim()).filter(Boolean);
-  const noise = /^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)/i;
+  const clean = (l) => l.replace(/^\[?\d{4}-\d\d-\d\dT[^\s\]]*\]?\s*/, "").trim();
+  const lines = String(tail).replace(ANSI, "").split("\n").map(clean).filter(Boolean);
+  // a failing test (node:test / TAP) names itself: that is the most useful line
+  const failedTest = lines.find((l) => /^not ok \d+ - /.test(l));
+  if (failedTest) return failedTest.replace(/^not ok \d+ - /, "test failed: ").slice(0, 110);
+  const noise = /^\d+ problems?|errors? and \d+ warnings?|^npm (ERR|error) (code|path|command|A complete)|^# (tests|suites|pass|fail|cancelled|skipped|todo|duration)/i;
   const hit = lines.find((l) => /\berror\b|✘|\bFAIL(ED)?\b|Error:|not defined|failed/i.test(l) && !noise.test(l));
-  return (hit || lines.at(-1) || "").replace(/^\[?\d{4}-\d\d-\d\dT[^\s\]]*\]?\s*/, "").slice(0, 110);
+  return (hit || lines.filter((l) => !noise.test(l)).at(-1) || "").slice(0, 110);
 }
 
 export function evaluateBuild({ sha, git, results, required, pin }) {
