@@ -48,3 +48,4 @@
 
 - [PWA Layout Fixes](docs/pwa-layout-fixes.md) — Documents the narrow-sidebar profile/theme overlap fix and the installed-app safe-area padding.
 - [CI/CD Pipeline](docs/ci-cd-pipeline.md) — Documents the Jenkins BUILD/TEST pipeline, the signed pre-PR verification gate, admin-only merge, Vercel preview/production separation, safe Playwright testing, the dependency updates made for Trivy, and the setup still needed before Jenkins is activated.
+- [Bigger Buttons](docs/button-sizes.md) — Documents the larger default, small, header and Kanban timer button sizes.

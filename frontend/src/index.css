@@ -293,9 +293,9 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 11px 22px;
+  padding: 13px 26px;
   border-radius: var(--r-pill);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 400;
   font-family: inherit;
   letter-spacing: -0.022em;
@@ -349,8 +349,8 @@ h3 {
 }
 
 .btn-sm {
-  padding: 8px 16px;
-  font-size: 14px;
+  padding: 11px 20px;
+  font-size: 15px;
   letter-spacing: -0.016em;
 }
 .btn-lg {
@@ -792,7 +792,7 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
 }
 .kanban-task-timer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--tf-border) 80%, transparent); }
 .kanban-task-timer-value { display: inline-flex; align-items: center; gap: 5px; color: var(--tf-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.kanban-task-timer-button { border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--tf-border)); border-radius: 8px; padding: 4px 9px; color: var(--color-primary); background: var(--tf-panel); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.kanban-task-timer-button { border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--tf-border)); border-radius: 9px; padding: 7px 13px; color: var(--color-primary); background: var(--tf-panel); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .kanban-task-timer-button:hover { background: color-mix(in srgb, var(--color-primary) 8%, var(--tf-panel)); }
 .timer-analytics { display: grid; gap: 16px; }
 .timer-error { padding: 11px 14px; border: 1px solid var(--status-danger); border-radius: 10px; color: var(--status-danger); background: var(--status-danger-bg); font-size: 13px; }
@@ -1825,9 +1825,9 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .employee-header-actions { display: flex; align-items: center; gap: 7px; }
   .employee-dashboard-content .tf-dashboard-actions .btn-sm,
   .tf-subnav-actions .btn-sm {
-    min-height: 34px !important;
-    padding: 7px 10px !important;
-    font-size: 12px !important;
+    min-height: 40px !important;
+    padding: 9px 12px !important;
+    font-size: 13px !important;
   }
   .calendar-google-sync { order: 2; margin-top: 2px; }
   .calendar-google-sync > div:first-child span:last-child { max-width: 34ch; }
@@ -1876,7 +1876,7 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .kanban-filter-menu-wrap { flex: 0 0 auto; }
   .kanban-filter-trigger { min-height: 36px; padding-inline: 10px; }
   .kanban-task-actions { margin-left: auto; }
-  .kanban-task-actions .btn { min-height: 36px !important; padding: 7px 10px !important; font-size: 12px !important; }
+  .kanban-task-actions .btn { min-height: 42px !important; padding: 9px 12px !important; font-size: 13px !important; }
   .kanban-mobile-lanes { margin-bottom: 7px !important; }
   .kanban-mobile-lanes button { min-height: 44px !important; }
   .kanban-board { width: calc(100% - 8px); margin-inline: auto; padding: 0 0 8px !important; }
@@ -2019,8 +2019,8 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
 /* Match the compact Task/Meeting action buttons across dashboard tabs. */
 .employee-dashboard-content .tf-dashboard-actions .btn-sm,
 .tf-subnav-actions .btn-sm {
-  box-sizing: border-box; min-height: 34px !important; height: 34px;
-  padding: 7px 10px !important; font-size: 12px !important; line-height: 18px !important;
+  box-sizing: border-box; min-height: 42px !important; height: 42px;
+  padding: 9px 14px !important; font-size: 14px !important; line-height: 20px !important;
 }
 .tf-subtask-title-input::placeholder,
 .tf-work-note-input::placeholder { font-size: 13px !important; }
