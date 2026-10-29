@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BadgeCheck, Building2, Check, CalendarDays, Crown, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react';
-import supabase from '../supabaseClient';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 import { useBilling } from '../BillingContext';
-import { planSummary } from '../lib/useWorkspacePlan';
+import { planSummary, usePlanWithFallback } from '../useWorkspacePlan';
 import { PLAN_DETAILS } from '../lib/planDetails';
 
 const fieldStyle = {
@@ -21,17 +20,7 @@ const fieldStyle = {
 
 /** The workspace's plan with its price and what it includes. Uses the server's billing status; if that is not available yet it reads the plan itself. */
 function PlanCard({ billing, orgId }) {
-  const [fallbackPlan, setFallbackPlan] = useState(null);
-  useEffect(() => {
-    if (billing || !orgId) { setFallbackPlan(null); return undefined; }
-    let alive = true;
-    supabase.from('organizations').select('plan').eq('id', orgId).maybeSingle()
-      .then(({ data }) => { if (alive) setFallbackPlan(data?.plan in PLAN_DETAILS ? data.plan : 'free'); })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [billing, orgId]);
-
-  const key = billing?.plan || fallbackPlan;
+  const key = usePlanWithFallback(billing, orgId);
   const info = key ? PLAN_DETAILS[key] : null;
   if (!info) return null;
   const status = billing ? planSummary(billing) : info.name;

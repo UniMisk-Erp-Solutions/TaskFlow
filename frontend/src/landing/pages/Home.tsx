@@ -136,161 +136,167 @@ function IconBadge({ children, tint }: { children: ReactNode; tint?: string }) {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────
-export default function Home() {
+function DashboardMockup() {
   return (
-    <div style={{ background: c.bg, color: c.fg }}>
-      {/* ─── HERO ──────────────────────────────────────────────────────── */}
-      <section style={{
-        position: "relative",
+    <motion.div
+      initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.7 }}
+      style={{ marginTop: 72 }}
+    >
+      <div style={{
+        borderRadius: 16,
+        border: `1px solid ${c.border}`,
+        background: c.card,
+        boxShadow: "0 30px 80px -30px rgba(15,23,42,0.25)",
         overflow: "hidden",
-        background: c.bg,
-        padding: "128px 24px 80px",
+        textAlign: "left",
       }}>
         <div style={{
-          position: "absolute", inset: 0, top: 0, height: 640,
-          background: `radial-gradient(60% 50% at 50% 0%, ${PRIMARY}26 0%, transparent 70%)`,
-          pointerEvents: "none", zIndex: 0,
-        }} />
-        <div style={{ position: "relative", maxWidth: 1080, margin: "0 auto", textAlign: "center" }}>
-          <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "6px 12px", borderRadius: 999,
-              background: `${PRIMARY}14`, color: PRIMARY,
-              border: `1px solid ${PRIMARY}33`,
-              fontSize: 12, fontWeight: 500, letterSpacing: "-0.01em",
-            }}
-          >
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: PRIMARY }} />
-            New · AI workflow automation
-          </motion.div>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-            style={{
-              ...display,
-              fontSize: "clamp(40px, 7vw, 76px)",
-              fontWeight: 600,
-              lineHeight: 1.05,
-              margin: "32px 0 24px",
-              color: c.fg,
-              letterSpacing: "-0.035em",
-            }}
-          >
-            The execution workspace<br />
-            <span style={{ color: PRIMARY }}>for teams that move fast.</span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-            style={{
-              fontSize: 18, lineHeight: 1.65, color: c.muted,
-              maxWidth: 640, margin: "0 auto 40px",
-            }}
-          >
-            Plan, assign, and ship work without the friction. One calm workspace
-            for tasks, meetings, and the people who get them done.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-            style={{
-              display: "flex", flexWrap: "wrap", gap: 12,
-              justifyContent: "center", alignItems: "center",
-            }}
-          >
-            <Button size="lg" to="/login?mode=signup">
-              Start free <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
-            </Button>
-            <Button variant="outline" size="lg" to="/features">
-              See how it works
-            </Button>
-          </motion.div>
-
-          <div style={{
-            marginTop: 28,
-            display: "flex", flexWrap: "wrap", justifyContent: "center",
-            gap: 24, fontSize: 12, color: c.muted,
-          }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <CheckCircle2 size={14} color="#10b981" /> No credit card
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <CheckCircle2 size={14} color="#10b981" /> 7-day Pro trial
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <CheckCircle2 size={14} color="#10b981" /> Cancel anytime
-            </span>
-          </div>
-
-          {/* Dashboard mockup */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, duration: 0.7 }}
-            style={{ marginTop: 72 }}
-          >
-            <div style={{
-              borderRadius: 16,
-              border: `1px solid ${c.border}`,
-              background: c.card,
-              boxShadow: "0 30px 80px -30px rgba(15,23,42,0.25)",
-              overflow: "hidden",
-              textAlign: "left",
-            }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 16px", borderBottom: `1px solid ${c.border}`,
-                background: `${c.bg}99`,
-              }}>
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: "#ef4444aa" }} />
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: "#f59e0baa" }} />
-                <span style={{ width: 10, height: 10, borderRadius: 999, background: "#10b981aa" }} />
-                <span style={{ marginLeft: 12, fontSize: 11, color: c.muted, fontFamily: "monospace" }}>
-                  app.taskflow.io / projects
-                </span>
-              </div>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 16, padding: 24,
-              }}>
-                {[
-                  { title: "Backlog", dot: "#94a3b8", items: ["Update brand guidelines", "Audit landing copy"] },
-                  { title: "In Progress", dot: PRIMARY, items: ["Launch announcement", "API documentation refresh"] },
-                  { title: "Done", dot: "#10b981", items: ["Q2 retrospective", "Onboarding videos"] },
-                ].map((col) => (
-                  <div key={col.title} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 999, background: col.dot }} />
-                      <p style={{
-                        fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
-                        textTransform: "uppercase", color: c.muted, margin: 0,
-                      }}>{col.title}</p>
-                    </div>
-                    {col.items.map((t) => (
-                      <div key={t} style={{
-                        padding: 12, borderRadius: 12,
-                        border: `1px solid ${c.border}`,
-                        background: `${c.bg}99`,
-                      }}>
-                        <p style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, color: c.fg, margin: 0 }}>{t}</p>
-                        <div style={{
-                          marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between",
-                        }}>
-                          <span style={{ fontSize: 11, color: c.muted }}>Due Aug 24</span>
-                          <div style={{ width: 16, height: 16, borderRadius: 999, background: `${PRIMARY}4D` }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 16px", borderBottom: `1px solid ${c.border}`,
+          background: `${c.bg}99`,
+        }}>
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#ef4444aa" }} />
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#f59e0baa" }} />
+          <span style={{ width: 10, height: 10, borderRadius: 999, background: "#10b981aa" }} />
+          <span style={{ marginLeft: 12, fontSize: 11, color: c.muted, fontFamily: "monospace" }}>
+            app.taskflow.io / projects
+          </span>
         </div>
-      </section>
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 16, padding: 24,
+        }}>
+          {[
+            { title: "Backlog", dot: "#94a3b8", items: ["Update brand guidelines", "Audit landing copy"] },
+            { title: "In Progress", dot: PRIMARY, items: ["Launch announcement", "API documentation refresh"] },
+            { title: "Done", dot: "#10b981", items: ["Q2 retrospective", "Onboarding videos"] },
+          ].map((col) => (
+            <div key={col.title} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: col.dot }} />
+                <p style={{
+                  fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
+                  textTransform: "uppercase", color: c.muted, margin: 0,
+                }}>{col.title}</p>
+              </div>
+              {col.items.map((t) => (
+                <div key={t} style={{
+                  padding: 12, borderRadius: 12,
+                  border: `1px solid ${c.border}`,
+                  background: `${c.bg}99`,
+                }}>
+                  <p style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4, color: c.fg, margin: 0 }}>{t}</p>
+                  <div style={{
+                    marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}>
+                    <span style={{ fontSize: 11, color: c.muted }}>Due Aug 24</span>
+                    <div style={{ width: 16, height: 16, borderRadius: 999, background: `${PRIMARY}4D` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
-      {/* ─── LOGO BAR ──────────────────────────────────────────────────── */}
+function Hero() {
+  return (
+    <section style={{
+      position: "relative",
+      overflow: "hidden",
+      background: c.bg,
+      padding: "128px 24px 80px",
+    }}>
+      <div style={{
+        position: "absolute", inset: 0, top: 0, height: 640,
+        background: `radial-gradient(60% 50% at 50% 0%, ${PRIMARY}26 0%, transparent 70%)`,
+        pointerEvents: "none", zIndex: 0,
+      }} />
+      <div style={{ position: "relative", maxWidth: 1080, margin: "0 auto", textAlign: "center" }}>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "6px 12px", borderRadius: 999,
+            background: `${PRIMARY}14`, color: PRIMARY,
+            border: `1px solid ${PRIMARY}33`,
+            fontSize: 12, fontWeight: 500, letterSpacing: "-0.01em",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: PRIMARY }} />
+          New · AI workflow automation
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+          style={{
+            ...display,
+            fontSize: "clamp(40px, 7vw, 76px)",
+            fontWeight: 600,
+            lineHeight: 1.05,
+            margin: "32px 0 24px",
+            color: c.fg,
+            letterSpacing: "-0.035em",
+          }}
+        >
+          The execution workspace<br />
+          <span style={{ color: PRIMARY }}>for teams that move fast.</span>
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          style={{
+            fontSize: 18, lineHeight: 1.65, color: c.muted,
+            maxWidth: 640, margin: "0 auto 40px",
+          }}
+        >
+          Plan, assign, and ship work without the friction. One calm workspace
+          for tasks, meetings, and the people who get them done.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          style={{
+            display: "flex", flexWrap: "wrap", gap: 12,
+            justifyContent: "center", alignItems: "center",
+          }}
+        >
+          <Button size="lg" to="/login?mode=signup">
+            Start free <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
+          </Button>
+          <Button variant="outline" size="lg" to="/features">
+            See how it works
+          </Button>
+        </motion.div>
+
+        <div style={{
+          marginTop: 28,
+          display: "flex", flexWrap: "wrap", justifyContent: "center",
+          gap: 24, fontSize: 12, color: c.muted,
+        }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <CheckCircle2 size={14} color="#10b981" /> No credit card
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <CheckCircle2 size={14} color="#10b981" /> 7-day Pro trial
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <CheckCircle2 size={14} color="#10b981" /> Cancel anytime
+          </span>
+        </div>
+
+        <DashboardMockup />
+      </div>
+    </section>
+  );
+}
+
+function LogoBar() {
+  return (
       <section style={{
         background: c.bg, borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`,
         padding: "48px 24px",
@@ -318,8 +324,11 @@ export default function Home() {
           </div>
         </div>
       </section>
+  );
+}
 
-      {/* ─── FEATURES ─────────────────────────────────────────────────── */}
+function FeaturesSection() {
+  return (
       <Section>
         <SectionHead
           eyebrow="What's inside"
@@ -342,8 +351,11 @@ export default function Home() {
           ))}
         </div>
       </Section>
+  );
+}
 
-      {/* ─── HOW IT WORKS ─────────────────────────────────────────────── */}
+function HowItWorksSection() {
+  return (
       <Section style={{ borderTop: `1px solid ${c.border}` }}>
         <SectionHead
           eyebrow="How it works"
@@ -374,8 +386,11 @@ export default function Home() {
           ))}
         </div>
       </Section>
+  );
+}
 
-      {/* ─── TESTIMONIAL ──────────────────────────────────────────────── */}
+function TestimonialSection() {
+  return (
       <Section>
         <figure style={{
           maxWidth: 840, margin: "0 auto",
@@ -401,8 +416,11 @@ export default function Home() {
           </figcaption>
         </figure>
       </Section>
+  );
+}
 
-      {/* ─── STATS ────────────────────────────────────────────────────── */}
+function StatsSection() {
+  return (
       <section style={{
         background: "#020617", color: "white", padding: "72px 24px",
         position: "relative", overflow: "hidden",
@@ -432,8 +450,11 @@ export default function Home() {
           ))}
         </div>
       </section>
+  );
+}
 
-      {/* ─── FAQ ──────────────────────────────────────────────────────── */}
+function FaqSection() {
+  return (
       <Section style={{ borderTop: `1px solid ${c.border}` }}>
         <section aria-labelledby="home-faq-heading">
           <SectionHead
@@ -468,8 +489,11 @@ export default function Home() {
           </div>
         </section>
       </Section>
+  );
+}
 
-      {/* ─── CTA ──────────────────────────────────────────────────────── */}
+function CtaSection() {
+  return (
       <Section>
         <div style={{
           position: "relative", overflow: "hidden",
@@ -510,6 +534,20 @@ export default function Home() {
           </div>
         </div>
       </Section>
+  );
+}
+
+export default function Home() {
+  return (
+    <div style={{ background: c.bg, color: c.fg }}>
+      <Hero />
+      <LogoBar />
+      <FeaturesSection />
+      <HowItWorksSection />
+      <TestimonialSection />
+      <StatsSection />
+      <FaqSection />
+      <CtaSection />
     </div>
   );
 }
