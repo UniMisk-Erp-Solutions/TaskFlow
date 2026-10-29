@@ -22,6 +22,7 @@ const cfg = {
   scanEverySeconds: Number(env.GATE_SCAN_EVERY_SECONDS || 120),
   watchSeconds: Number(env.GATE_WATCH_SECONDS ?? 10), // 0 disables push detection by polling
   statusMode: env.GATE_STATUS_MODE || "record",
+  dashboardUrl: env.GATE_DASHBOARD_URL || "", // where developers open Jenkins (office network); empty = no link on the GitHub status
 };
 if (!["record", "github-status"].includes(cfg.statusMode)) { console.error("✘ GATE_STATUS_MODE must be record or github-status"); process.exit(1); }
 

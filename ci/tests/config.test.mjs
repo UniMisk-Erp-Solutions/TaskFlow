@@ -60,11 +60,13 @@ test("Jenkins compose: no docker.sock, not privileged, no host network/pid", () 
   assert.match(compose, /cap_drop:\s*\[ALL\]/);
 });
 
-test("Jenkins compose: hard resource limits, loopback-only port, own network + volume", () => {
+test("Jenkins compose: hard resource limits, loopback-only admin port, own network + volume", () => {
   assert.match(compose, /mem_limit:\s*4g/);
   assert.match(compose, /cpus:\s*2\.0/);
-  assert.match(compose, /pids_limit:\s*\d+/);
   assert.match(compose, /"127\.0\.0\.1:8088:8080"/);
+  // the developer dashboard port is loopback unless the admin sets JENKINS_LAN_BIND to the office LAN address; never 0.0.0.0
+  assert.match(compose, /"\$\{JENKINS_LAN_BIND:-127\.0\.0\.1}:\$\{JENKINS_LAN_PORT:-8081}:8080"/);
+  assert.match(compose, /pids_limit:\s*\d+/);
   assert.match(compose, /name:\s*taskflow_ci/);
   assert.match(compose, /name:\s*taskflow_jenkins_home/);
   assert.doesNotMatch(compose, /^\s*-\s*"?0\.0\.0\.0:/m);
@@ -98,8 +100,9 @@ test("JCasC core: the controller runs no builds and holds no signing key or writ
   assert.doesNotMatch(core, /attest|github-app|secretBytes|gitHubApp/i);
   assert.match(core, /labelString: "untrusted"/);
   assert.match(core, /webSocket: true/);
-  const perms = [...core.matchAll(/"USER:([^:"]+):gate"/g)].map((m) => m[1]);
-  assert.deepEqual(perms.sort(), ["Job/Build", "Job/Discover", "Job/Read"].sort().map((p) => p));
+  const gateRole = core.split("          - name: \"gate\"")[1].split("          - name: ")[0];
+  assert.ok(gateRole.includes('permissions: ["Job/Read", "Job/Discover", "Job/Build"]'), "the gate may read jobs and start builds, nothing else");
+  assert.ok(gateRole.includes('- user: "gate"'));
   assert.doesNotMatch(core, /Administer:gate|Overall\/Manage:gate|Credentials/);
   const github = read("ci", "jenkins", "casc", "github.yaml");
   assert.match(github, /usernamePassword:/);
@@ -124,7 +127,7 @@ test("ISOLATION: the build agent has no secret but its own agent secret, no publ
 test("ISOLATION: the controller holds neither the signing key nor the webhook secret nor a GitHub write token", () => {
   const jenkins = service("jenkins");
   const secrets = listOf(jenkins, "secrets");
-  assert.deepEqual(secrets.sort(), ["gate_jenkins_password", "github_read_token"]);
+  assert.deepEqual(secrets.sort(), ["dev_users_password", "developer_password", "gate_jenkins_password", "github_read_token"]);
   assert.deepEqual(listOf(jenkins, "networks").sort(), ["taskflow_agent", "taskflow_ci"]);
 });
 
@@ -266,4 +269,32 @@ test("every Jenkins configuration YAML file parses (a broken file puts Jenkins i
   for (const f of fs.readdirSync(path.join(REPO_ROOT, "ci/jenkins/casc")).filter((n) => n.endsWith(".yaml"))) {
     assert.doesNotThrow(() => yaml.load(read(`ci/jenkins/casc/${f}`)), f);
   }
+});
+
+test("ROLES: each branch developer sees only branches under their own name and can never build, configure or administer", () => {
+  const core = read("ci", "jenkins", "casc", "jenkins.yaml");
+  assert.match(core, /roleBased:/);
+  assert.doesNotMatch(core, /globalMatrix/);
+  const items = core.slice(core.indexOf("        items:"), core.indexOf("  crumbIssuer:"));
+  const blocks = items.split("          - name: ").slice(1);
+  const role = (n) => blocks.find((b) => b.startsWith('"' + n + '"'));
+  const devs = ["naveena246", "salomi2810", "lakshyabyteo", "nikunjbyteo", "jacktechie", "unimisk-erp-solutions", "preet1249"];
+  for (const d of devs) {
+    const b = role("branches-" + d);
+    assert.ok(b, "a branch role for " + d);
+    assert.ok(b.includes('pattern: "(?i)^taskflow/(' + d), "pattern anchored to the TaskFlow folder and starting with the username: " + d);
+    assert.ok(b.includes('(%2F|/).*$"'), "the prefix must be followed by the branch separator, so naveena never matches naveenaX");
+    assert.ok(b.includes('permissions: ["Job/Read", "Job/Discover"]'), "read only: " + d);
+    assert.equal((b.match(/- user:/g) || []).length, 1, "exactly one user per branch role: " + d);
+    assert.ok(b.includes('- user: "' + d + '"'));
+    assert.ok(core.includes('- id: "' + d + '"'), "a login exists for " + d);
+  }
+  // nobody but admin may administer, and only the gate may build
+  assert.equal(core.split("Overall/Administer").length - 1, 1);
+  assert.equal(core.split("Job/Build").length - 1, 1);
+  assert.doesNotMatch(core, /ChaosInTheWake/i, "no password literal in the repository");
+  assert.match(read("ci", "jenkins", "plugins.txt"), /^role-strategy$/m);
+  const github = read("ci", "jenkins", "casc", "github.yaml");
+  assert.ok(github.includes("buildOriginBranchWithPR(true)"), "a branch with a PR is built as the branch, so the job name keeps the owner");
+  assert.ok(github.includes("buildOriginPRHead(false)"), "no PR-N job (it carries no owner name)");
 });

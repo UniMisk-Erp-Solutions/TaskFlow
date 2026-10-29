@@ -27,7 +27,8 @@ services:
         JENKINS_UC_DOWNLOAD: "${JENKINS_UC_DOWNLOAD:-}"
     container_name: taskflow-jenkins
     ports:
-      - "127.0.0.1:8088:8080"
+      - "127.0.0.1:8088:8080"                                         # admin access: SSH tunnel to this loopback port, always
+      - "${JENKINS_LAN_BIND:-127.0.0.1}:${JENKINS_LAN_PORT:-8081}:8080"   # developer dashboard: set JENKINS_LAN_BIND to the office-LAN address (never 0.0.0.0)
     environment:
       JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}"
       JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"
@@ -35,10 +36,14 @@ services:
       CI_TOOLKIT_REF: "${CI_TOOLKIT_REF:-main}"   # trusted ref of the central pipeline (feature/ci-cd-pipeline until it is merged, then main)
       CASC_JENKINS_CONFIG: "${CASC_FILES:-/usr/share/jenkins/ref/casc/jenkins.yaml}"
       GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
+      DEVELOPER_PASSWORD_FILE: /run/secrets/developer_password
+      DEV_USERS_PASSWORD_FILE: /run/secrets/dev_users_password
       GITHUB_READ_TOKEN_FILE: /run/secrets/github_read_token
       GITHUB_READ_USER: "${GITHUB_READ_USER:-unused}"
     secrets:
       - gate_jenkins_password
+      - developer_password
+      - dev_users_password
       - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -98,6 +103,7 @@ services:
       GATE_REPO: "${GATE_REPO:-UniMisk-Erp-Solutions/TaskFlow}"
       GATE_GIT_SOURCE: "${GATE_GIT_SOURCE:?set GATE_GIT_SOURCE}"
       GATE_JENKINS_URL: http://taskflow-jenkins:8080
+      GATE_DASHBOARD_URL: "${JENKINS_URL:?set JENKINS_URL}"   # GitHub status link target; ignored while it is a loopback address
       GATE_JENKINS_FOLDER: "${GATE_JENKINS_FOLDER:-taskflow-local}"
       GATE_STATUS_MODE: "${GATE_STATUS_MODE:-record}"
       GATE_WEBHOOK_SECRET_FILE: /run/secrets/gate_webhook_secret
@@ -137,6 +143,10 @@ networks:
     driver: bridge
 
 secrets:
+  dev_users_password:
+    file: "${DEV_USERS_PASSWORD_PATH:?path to the password file of the per-branch developer logins}"
+  developer_password:
+    file: "${DEVELOPER_PASSWORD_PATH:?path to the read-only developer login password}"
   gate_jenkins_password:
     file: "${GATE_JENKINS_PASSWORD_PATH:?path to the gate user's Jenkins password}"
   github_read_token:

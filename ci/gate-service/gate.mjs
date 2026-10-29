@@ -7,14 +7,14 @@ import { PINNED_PATHS, evaluateBuild, signAttestation } from "./evaluate.mjs";
 import { publishStatus } from "../lib/github-status.mjs";
 
 export function createPublisher({ mode, repo, token, recordFile, fetchImpl = fetch }) {
-  return async function publish({ sha, state, description }) {
+  return async function publish({ sha, state, description, targetUrl }) {
     if (mode === "record") {
       // Test / dry-run mode: GitHub is never contacted. Clearly separate from a live integration.
       fs.mkdirSync(path.dirname(recordFile), { recursive: true });
       fs.appendFileSync(recordFile, JSON.stringify({ at: new Date().toISOString(), repo, sha, state, description }) + "\n");
       return { ok: true, recorded: true };
     }
-    return publishStatus({ repo, sha, state, description, token, fetchImpl });
+    return publishStatus({ repo, sha, state, description, targetUrl, token, fetchImpl });
   };
 }
 
@@ -22,10 +22,15 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
   const published = () => state.data.statuses;
 
   // Returns "published", "same" (that fact is already shown for this SHA: never publish it twice) or "failed".
-  async function publishOnce(sha, st, description, extra = {}) {
+  // Link on the GitHub status: the Jenkins build page, but only when a real (non-loopback) dashboard address is configured.
+  const linkFor = (buildPath) => {
+    try { const u = new URL(cfg.dashboardUrl); if (u.hostname === "localhost" || u.hostname === "[::1]" || u.hostname.startsWith("127.") || !buildPath) return undefined; return u.origin + buildPath; } catch { return undefined; }
+  };
+  async function publishOnce(sha, st, description, extraIn = {}) {
+    const { path: buildPath, ...extra } = extraIn;
     const cur = published()[sha];
     if (cur && cur.state === st && (st === "success" || cur.description === description)) return "same";
-    try { await publish({ sha, state: st, description }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
+    try { await publish({ sha, state: st, description, targetUrl: linkFor(buildPath) }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
     published()[sha] = { state: st, description, at: now(), ...extra };
     state.save();
     return "published";
@@ -66,10 +71,10 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
       const att = signAttestation({ repo: cfg.repo, branch: b.job, sha: b.sha, tree: gi.tree, checks: outcome.checks, required, privateKeyPem, buildUrl: null, now: now() });
       fs.mkdirSync(attestDir, { recursive: true });
       fs.writeFileSync(path.join(attestDir, `${b.sha}.json`), JSON.stringify(att, null, 2));
-      var shown = await publishOnce(b.sha, "success", `All ${required.length} required checks passed (build #${b.number})`, { job: b.job, build: b.number });
+      var shown = await publishOnce(b.sha, "success", `All ${required.length} required checks passed (build #${b.number})`, { job: b.job, build: b.number, path: b.path });
     } else {
       const st = outcome.verdict === "error" ? "error" : "failure";
-      var shown = await publishOnce(b.sha, st, outcome.reasons.join("; "), { job: b.job, build: b.number });
+      var shown = await publishOnce(b.sha, st, outcome.reasons.join("; "), { job: b.job, build: b.number, path: b.path });
     }
     if (shown === "failed") return false; // GitHub unreachable: leave the build unprocessed so the next tick retries
     state.data.builds[key] = { sha: b.sha, verdict: outcome.verdict, at: now() };
@@ -88,7 +93,7 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
         const key = `${b.folder ? b.folder + "/" : ""}${b.job}#${b.number}`; // folder-qualified: two Jenkins jobs can both have "feature/x#3"
         if (b.building) {
           const cur = published()[b.sha];
-          if (!cur) await publishOnce(b.sha, "pending", `Verification running (build #${b.number})`, { job: b.job, build: b.number });
+          if (!cur) await publishOnce(b.sha, "pending", `Verification running (build #${b.number})`, { job: b.job, build: b.number, path: b.path });
           continue;
         }
         if (state.data.builds[key]) continue;

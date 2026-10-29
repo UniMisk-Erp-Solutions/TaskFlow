@@ -127,7 +127,7 @@ test("PIPELINE PIN: a branch that changes the Jenkinsfile or ci scripts can neve
 });
 
 // ── the gate over fake Jenkins / Git / GitHub ─────────────────────────────────
-function harness() {
+function harness(cfgExtra = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-"));
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" });
@@ -140,7 +140,7 @@ function harness() {
   const git = { refresh: async () => { world.refreshes += 1; }, inspectRef: async (r) => (r === "main" && world.mainTip ? { tree: "MT", pinned: world.mainTip } : null), inspect: async (sha) => sha === TK ? { tree: "TKT", pinned: world.toolkitPinned } : (world.trees[sha] ? { tree: world.trees[sha], pinned: world.pinned } : null) };
   const state = createState(path.join(dir, "state.json"));
   const publish = async (s) => { if (world.failPublish) throw new Error("GitHub down"); world.published.push(s); };
-  const gate = createGate({ cfg: { repo: REPO }, jenkins, git, state, publish, required: REQUIRED_CHECKS, pin: PIN, privateKeyPem, attestDir: path.join(dir, "att"), log: () => {} });
+  const gate = createGate({ cfg: { repo: REPO, ...cfgExtra }, jenkins, git, state, publish, required: REQUIRED_CHECKS, pin: PIN, privateKeyPem, attestDir: path.join(dir, "att"), log: () => {} });
   const addBuild = (b, results) => { world.builds.push(b); if (results) for (const [n, r] of Object.entries(results)) world.artifacts[`${b.path}|${n}`] = r; };
   return { dir, world, gate, state, publicKeyPem, addBuild };
 }
@@ -293,10 +293,11 @@ test("git source: tree and pinned-path hashes come from Git and change when pipe
   assert.equal(await src.inspect("not-a-sha"), null);
 });
 
-test("GitHub status: only valid states, 140-char description, https-only link, SHA required, token never required to be logged", async () => {
+test("GitHub status: only valid states, 140-char description, http(s) link, SHA required, token never required to be logged", async () => {
   assert.throws(() => buildStatusBody({ state: "great" }), /invalid status state/);
   assert.equal(buildStatusBody({ state: "success", description: "x".repeat(300) }).description.length, 140);
-  assert.equal(buildStatusBody({ state: "success", targetUrl: "http://127.0.0.1:8088/" }).target_url, undefined);
+  assert.equal(buildStatusBody({ state: "success", targetUrl: "http://192.168.23.15:8088/job/x/1/" }).target_url, "http://192.168.23.15:8088/job/x/1/");
+  assert.equal(buildStatusBody({ state: "success", targetUrl: "javascript:alert(1)" }).target_url, undefined);
   assert.equal((await publishStatus({ repo: REPO, sha: SHA1, state: "success", token: "" })).skipped, true);
   await assert.rejects(() => publishStatus({ repo: REPO, sha: "abc", state: "success", token: "t" }), /40-character/);
   let seen;
@@ -425,4 +426,17 @@ test("FAILURE TEXT: browser/Chromium log noise (dbus, pid lines) is never shown 
   const NL = String.fromCharCode(10);
   const tail = ["[pid=36049][err] [1028/075623.622047:ERROR:dbus/bus.cc:405] Failed to connect", "Error: browserContext.newPage: Target crashed"].join(NL);
   assert.equal(firstErrorLine(tail), "Error: browserContext.newPage: Target crashed");
+});
+
+test("DASHBOARD LINK: the GitHub status links to the Jenkins build only when a real (non-loopback) dashboard address is set", async () => {
+  const on = harness({ dashboardUrl: "http://192.168.23.15:8088/" });
+  on.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  await on.gate.tick();
+  assert.equal(on.world.published.at(-1).targetUrl, "http://192.168.23.15:8088/job/f/job/x/1/");
+  for (const url of ["", "http://127.0.0.1:8088/", "http://localhost:8088/", "http://[::1]:8088/"]) {
+    const off = harness({ dashboardUrl: url });
+    off.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+    await off.gate.tick();
+    assert.equal(off.world.published.at(-1).targetUrl, undefined, url);
+  }
 });

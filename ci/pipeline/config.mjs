@@ -24,6 +24,24 @@ export const CI_BUILD_ENV = {
  * (BUILD / TEST). A stage is PASS only when every command exits 0.
  */
 export const STAGES = {
+  // Engineering-quality gates (docs/engineering-quality.md): static, fast, and blocking only NEW or WORSENED problems against
+  // ci/verify/quality/baseline.json. The engine and its policy live in the pinned ci/verify folder, so a branch cannot weaken them.
+  "repo-policy": {
+    phase: "build", title: "Repository policy (lockfiles, suppressions, test removal, protected config)",
+    commands: [{ cmd: "node", args: ["ci/verify/quality/run.mjs", "repo-policy"] }],
+  },
+  "code-standards": {
+    phase: "build", title: "Code standards (unsafe types, debug code, HTML injection, hygiene)",
+    commands: [{ cmd: "node", args: ["ci/verify/quality/run.mjs", "standards"] }],
+  },
+  maintainability: {
+    phase: "build", title: "Maintainability (function size, complexity, nesting, file size, duplication)",
+    commands: [{ cmd: "node", args: ["ci/verify/quality/run.mjs", "maintainability"] }],
+  },
+  architecture: {
+    phase: "build", title: "Architecture compliance (layers, forbidden imports, cycles, broken imports)",
+    commands: [{ cmd: "node", args: ["ci/verify/quality/run.mjs", "architecture"] }],
+  },
   lint: {
     phase: "build", title: "ESLint",
     commands: [
