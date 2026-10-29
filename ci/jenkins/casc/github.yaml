@@ -24,8 +24,8 @@ jobs:
             scanCredentialsId('taskflow-github-read')
             // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
             buildOriginBranch(true)          // branches without a pull request
-            buildOriginBranchWithPR(false)   // a branch that has a PR is built once, as the PR head (no duplicate build of one commit)
-            buildOriginPRHead(true)          // the PR head commit, so the status lands on the commit GitHub shows
+            buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)
+            buildOriginPRHead(false)         // no separate PR job: the status is stored on the commit, so the pull request shows it exactly as before
           }
         }
         // CENTRAL PIPELINE: branches need no Jenkinsfile. The one stored in Jenkins (config file below) is used for every

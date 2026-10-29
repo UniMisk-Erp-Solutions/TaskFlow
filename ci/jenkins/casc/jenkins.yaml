@@ -28,19 +28,106 @@ jenkins:
           password: "${JENKINS_ADMIN_PASSWORD}"
         - id: "developer"     # read-only: see jobs, stages and logs; cannot build, configure or see credentials
           password: "${trim:${readFile:${DEVELOPER_PASSWORD_FILE}}}"
+        - id: "naveena246"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "salomi2810"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "lakshyabyteo"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "nikunjbyteo"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "jacktechie"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "unimisk-erp-solutions"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "preet1249"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
           password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
   authorizationStrategy:
-    globalMatrix:
-      permissions:
-        - "USER:Overall/Administer:admin"
-        - "GROUP:Overall/Read:authenticated"
-        - "USER:Job/Read:gate"
-        - "USER:Job/Discover:gate"
-        - "USER:Job/Build:gate"
-        - "USER:Job/Read:developer"
-        - "USER:Job/Discover:developer"
-        - "USER:View/Read:developer"
+    # Role Strategy: every branch developer sees ONLY the jobs of branches that start with their GitHub username (or the
+    # short form the team already uses, e.g. naveena/...). The job name of a branch is "taskflow/<branch with / as %2F>".
+    # Patterns are case-insensitive. Anything that matches no role is invisible to that user.
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Full control"
+            permissions: ["Overall/Administer"]
+            entries:
+              - user: "admin"
+          - name: "authenticated"
+            description: "Every logged-in user may open the UI; what they see is decided by the item roles"
+            permissions: ["Overall/Read", "View/Read"]
+            entries:
+              - group: "authenticated"
+        items:
+          - name: "gate"
+            description: "The gate container: read jobs and start builds, nothing else"
+            pattern: ".*"
+            permissions: ["Job/Read", "Job/Discover", "Job/Build"]
+            entries:
+              - user: "gate"
+          - name: "read-only-all"
+            description: "Shared read-only login that sees every job (kept for the team lead; not a branch developer)"
+            pattern: ".*"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "developer"
+          - name: "folder-visible"
+            description: "The TaskFlow folder itself, so a developer can open it; it lists only the children they may read"
+            pattern: "^taskflow$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "naveena246"
+              - user: "salomi2810"
+              - user: "lakshyabyteo"
+              - user: "nikunjbyteo"
+              - user: "jacktechie"
+              - user: "unimisk-erp-solutions"
+              - user: "preet1249"
+          - name: "branches-naveena246"
+            description: "Branches of naveena246"
+            pattern: "(?i)^taskflow/(naveena246|naveena)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "naveena246"
+          - name: "branches-salomi2810"
+            description: "Branches of salomi2810"
+            pattern: "(?i)^taskflow/(salomi2810|salomi)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "salomi2810"
+          - name: "branches-lakshyabyteo"
+            description: "Branches of lakshyabyteo"
+            pattern: "(?i)^taskflow/(lakshyabyteo|lakshya)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "lakshyabyteo"
+          - name: "branches-nikunjbyteo"
+            description: "Branches of nikunjbyteo"
+            pattern: "(?i)^taskflow/(nikunjbyteo|nikunj)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "nikunjbyteo"
+          - name: "branches-jacktechie"
+            description: "Branches of jacktechie"
+            pattern: "(?i)^taskflow/(jacktechie)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "jacktechie"
+          - name: "branches-unimisk-erp-solutions"
+            description: "Branches of unimisk-erp-solutions"
+            pattern: "(?i)^taskflow/(unimisk-erp-solutions)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "unimisk-erp-solutions"
+          - name: "branches-preet1249"
+            description: "Branches of preet1249"
+            pattern: "(?i)^taskflow/(preet1249|preet)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "preet1249"
   crumbIssuer: "standard"
   remotingSecurity:
     enabled: true

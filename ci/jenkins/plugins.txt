@@ -12,5 +12,6 @@ timestamper
 ws-cleanup
 build-timeout
 matrix-auth
+role-strategy
 config-file-provider
 pipeline-multibranch-defaults

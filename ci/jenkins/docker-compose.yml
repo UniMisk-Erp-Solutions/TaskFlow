@@ -37,11 +37,13 @@ services:
       CASC_JENKINS_CONFIG: "${CASC_FILES:-/usr/share/jenkins/ref/casc/jenkins.yaml}"
       GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
       DEVELOPER_PASSWORD_FILE: /run/secrets/developer_password
+      DEV_USERS_PASSWORD_FILE: /run/secrets/dev_users_password
       GITHUB_READ_TOKEN_FILE: /run/secrets/github_read_token
       GITHUB_READ_USER: "${GITHUB_READ_USER:-unused}"
     secrets:
       - gate_jenkins_password
       - developer_password
+      - dev_users_password
       - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -141,6 +143,8 @@ networks:
     driver: bridge
 
 secrets:
+  dev_users_password:
+    file: "${DEV_USERS_PASSWORD_PATH:?path to the password file of the per-branch developer logins}"
   developer_password:
     file: "${DEVELOPER_PASSWORD_PATH:?path to the read-only developer login password}"
   gate_jenkins_password:
