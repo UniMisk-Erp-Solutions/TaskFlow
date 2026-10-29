@@ -60,11 +60,12 @@ test("Jenkins compose: no docker.sock, not privileged, no host network/pid", () 
   assert.match(compose, /cap_drop:\s*\[ALL\]/);
 });
 
-test("Jenkins compose: hard resource limits, loopback-only port, own network + volume", () => {
+test("Jenkins compose: hard resource limits, loopback-by-default port, own network + volume", () => {
   assert.match(compose, /mem_limit:\s*4g/);
   assert.match(compose, /cpus:\s*2\.0/);
   assert.match(compose, /pids_limit:\s*\d+/);
-  assert.match(compose, /"127\.0\.0\.1:8088:8080"/);
+  // loopback unless the admin sets JENKINS_BIND to the office LAN address (dashboard for developers); never 0.0.0.0
+  assert.match(compose, /"\$\{JENKINS_BIND:-127\.0\.0\.1}:8088:8080"/);
   assert.match(compose, /name:\s*taskflow_ci/);
   assert.match(compose, /name:\s*taskflow_jenkins_home/);
   assert.doesNotMatch(compose, /^\s*-\s*"?0\.0\.0\.0:/m);
@@ -124,7 +125,7 @@ test("ISOLATION: the build agent has no secret but its own agent secret, no publ
 test("ISOLATION: the controller holds neither the signing key nor the webhook secret nor a GitHub write token", () => {
   const jenkins = service("jenkins");
   const secrets = listOf(jenkins, "secrets");
-  assert.deepEqual(secrets.sort(), ["gate_jenkins_password", "github_read_token"]);
+  assert.deepEqual(secrets.sort(), ["developer_password", "gate_jenkins_password", "github_read_token"]);
   assert.deepEqual(listOf(jenkins, "networks").sort(), ["taskflow_agent", "taskflow_ci"]);
 });
 

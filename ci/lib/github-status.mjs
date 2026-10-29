@@ -9,7 +9,7 @@ const STATES = new Set(["pending", "success", "failure", "error"]);
 export function buildStatusBody({ state, description, targetUrl, context = STATUS_CONTEXT }) {
   if (!STATES.has(state)) throw new Error(`invalid status state "${state}"`);
   const body = { state, context, description: String(description || "").replace(/\s+/g, " ").slice(0, 140) };
-  if (targetUrl && /^https:\/\//.test(targetUrl)) body.target_url = targetUrl; // GitHub requires a reachable URL; our Jenkins is not public
+  if (targetUrl && /^https?:\/\//.test(targetUrl)) body.target_url = targetUrl; // the link opens the Jenkins build page for people on the office network
   return body;
 }
 

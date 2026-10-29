@@ -26,6 +26,8 @@ jenkins:
       users:
         - id: "admin"
           password: "${JENKINS_ADMIN_PASSWORD}"
+        - id: "developer"     # read-only: see jobs, stages and logs; cannot build, configure or see credentials
+          password: "${trim:${readFile:${DEVELOPER_PASSWORD_FILE}}}"
         - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
           password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
   authorizationStrategy:
@@ -36,6 +38,9 @@ jenkins:
         - "USER:Job/Read:gate"
         - "USER:Job/Discover:gate"
         - "USER:Job/Build:gate"
+        - "USER:Job/Read:developer"
+        - "USER:Job/Discover:developer"
+        - "USER:View/Read:developer"
   crumbIssuer: "standard"
   remotingSecurity:
     enabled: true
