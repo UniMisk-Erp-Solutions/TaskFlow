@@ -55,7 +55,7 @@
 
   /* Surfaces. */
   --color-canvas: #ffffff;             /* primary panel surface         */
-  --color-canvas-parchment: #fafaf9;   /* page bg (surface-soft)        */
+  --color-canvas-parchment: #eaebed;   /* page bg (surface-soft)        */
   --color-surface-pearl: #f6f5f4;      /* quieter raised area (surface) */
   --color-surface-tile-1: #1a2a52;     /* dark tile (brand-navy-mid)    */
   --color-surface-tile-2: #1f3268;     /* dark tile variant             */
@@ -108,9 +108,9 @@
   /* Marketing tokens consumed by `src/landing/*` (Tailwind utilities like
      `bg-[var(--background)]`). Keep names distinct from `--tf-*` so the two
      surfaces can be tuned independently. */
-  --background: #ffffff;
+  --background: #eaebed;
   --foreground: #020617;
-  --card: #ffffff;
+  --card: #fbfbfd;
   --card-foreground: #020617;
   --border: #e2e8f0;
   --muted: #475569;
@@ -2255,7 +2255,7 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 
 /* Header icon trio (AI assistant, refresh, theme): round buttons with room between them, in every panel. */
 .employee-header-actions,
-.tf-subnav-actions { gap: 14px !important; }
+.tf-subnav-actions { gap: 28px !important; }
 .employee-header-actions > button,
 .employee-header-actions > .tf-theme-toggle,
 .tf-subnav-actions > .tf-header-ai-button,
@@ -2323,7 +2323,7 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 
 /* Very small phones: slimmer header icons so the page title keeps its room. */
 @media (max-width: 380px) {
-  .employee-header-actions, .tf-subnav-actions { gap: 8px !important; }
+  .employee-header-actions, .tf-subnav-actions { gap: 20px !important; }
   .employee-header-actions > button,
   .employee-header-actions > .tf-theme-toggle,
   .tf-subnav-actions > .tf-header-ai-button,
@@ -2359,3 +2359,9 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .fx-access { width: 100%; min-width: 170px; }
 .fx-access .tf-selectmenu-button { min-height: 38px; padding: 6px 14px; font-size: 13px; border-radius: 12px; }
 @media (max-width: 640px) { .fx-show { width: 100%; justify-items: stretch; } .fx-show .fx-segmented { justify-self: stretch; } .fx-show .fx-segmented button { flex: 1; justify-content: center; } }
+
+/* The "+ Task" / "+ Meeting" buttons sit a little further in from the right edge. */
+.tf-dashboard-actions { padding-right: 14px; }
+.tf-admin-actions { padding-right: 38px; }
+@media (max-width: 1100px) { .tf-admin-actions { padding-right: 32px; } }
+@media (max-width: 640px) { .tf-admin-actions { padding-right: 10px; } }

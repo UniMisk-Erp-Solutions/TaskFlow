@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import supabase from '../supabaseClient';
 import api from '../api';
+import { saveBlob } from '../lib/fileAccess';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
 
@@ -102,9 +103,34 @@ function chatFileUrl(path) {
   return promise;
 }
 
-/** Full-screen image viewer: opens in the same tab and closes with the X, Esc, or a click outside the picture. */
-function ImageLightbox({ url, name, onClose }) {
+// The files are served from another address than the app, so the browser ignores <a download> and just opens them in a new tab.
+// Fetching the file and saving the bytes makes the Download button really download.
+async function downloadChatFile(url, name) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('download failed');
+    saveBlob(await res.blob(), name);
+  } catch {
+    window.open(url, '_blank', 'noopener'); // last resort: let the browser handle the link
+  }
+}
+
+/** Full-screen viewer for an image or a PDF: opens in the same tab and closes with the X, Esc, or a click outside it. */
+function ImageLightbox({ url, name, onClose, pdf = false }) {
   const closeRef = useRef(null);
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfFailed, setPdfFailed] = useState(false);
+  useEffect(() => {
+    if (!pdf) return undefined;
+    let alive = true;
+    let made = '';
+    fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error('load failed')))).then((blob) => {
+      if (!alive) return;
+      made = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      setPdfUrl(made);
+    }).catch(() => { if (alive) setPdfFailed(true); });
+    return () => { alive = false; if (made) URL.revokeObjectURL(made); };
+  }, [pdf, url]);
   useEffect(() => {
     closeRef.current?.focus();
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
@@ -130,11 +156,17 @@ function ImageLightbox({ url, name, onClose }) {
       onDoubleClick={stop}
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: '64px 16px 16px' }}
     >
-      <button ref={closeRef} type="button" aria-label="Close image" title="Close (Esc)" onClick={onClose} style={{ ...round, right: 12 }}><X size={20} /></button>
-      <a aria-label="Download image" title="Download" href={url} download={name} style={{ ...round, right: 60 }}><Download size={18} /></a>
+      <button ref={closeRef} type="button" aria-label={pdf ? 'Close preview' : 'Close image'} title="Close (Esc)" onClick={onClose} style={{ ...round, right: 12 }}><X size={20} /></button>
+      <button type="button" aria-label={pdf ? 'Download file' : 'Download image'} title="Download" onClick={() => downloadChatFile(url, name)} style={{ ...round, right: 60 }}><Download size={18} /></button>
       {/* Sized from the screen (not from the box around it, which has no fixed height): never bigger than ~90% of the width or
           ~75% of the height, never stretched beyond its real size. */}
-      <img src={url} alt={name} style={{ width: 'auto', height: 'auto', maxWidth: 'min(90vw, 900px)', maxHeight: 'min(75vh, 700px)', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} />
+      {pdf ? (
+        pdfUrl
+          ? <iframe title={name} src={pdfUrl} style={{ width: 'min(94vw, 1000px)', height: '100%', border: 0, borderRadius: 10, background: '#fff' }} />
+          : <span style={{ color: '#fff', fontSize: 14 }}>{pdfFailed ? 'Could not load the preview. Use the download button.' : 'Loading…'}</span>
+      ) : (
+        <img src={url} alt={name} style={{ width: 'auto', height: 'auto', maxWidth: 'min(90vw, 900px)', maxHeight: 'min(75vh, 700px)', objectFit: 'contain', borderRadius: 10, boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }} />
+      )}
     </div>,
     document.body,
   );
@@ -172,16 +204,33 @@ function Attachment({ msg }) {
   }
   if (type.startsWith('audio/')) return <audio src={url} controls preload="metadata" style={{ maxWidth: 260 }} />;
   if (type.startsWith('video/')) return <video src={url} controls preload="metadata" style={{ maxWidth: 280, borderRadius: 10 }} />;
+  const isPdf = type === 'application/pdf' || /.pdf$/i.test(msg.attachment_name || '');
+  const name = msg.attachment_name;
   return (
-    <a className="tf-chat-attach" href={url} target="_blank" rel="noreferrer" download={msg.attachment_name}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none' }}>
-      <FileText size={20} />
-      <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' }}>{msg.attachment_name}</span>
-        <span style={{ fontSize: 11, opacity: 0.75 }}>{formatSize(msg.attachment_size)}</span>
-      </span>
-      <Download size={15} />
-    </a>
+    <>
+    <div className="tf-chat-attach" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* The file itself: a PDF opens the preview, any other file downloads. */}
+      <a href={url} target="_blank" rel="noreferrer" download={name}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey) return; // Ctrl/Cmd-click still opens a new tab
+          e.preventDefault();
+          if (isPdf) setViewing(true); else downloadChatFile(url, name);
+        }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
+        <FileText size={20} />
+        <span style={{ minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere' }}>{name}</span>
+          <span style={{ fontSize: 11, opacity: 0.75 }}>{formatSize(msg.attachment_size)}</span>
+        </span>
+      </a>
+      {/* The arrow always downloads, for every file type. */}
+      <button type="button" aria-label={`Download ${name}`} title="Download" onClick={(e) => { e.stopPropagation(); downloadChatFile(url, name); }}
+        style={{ background: 'none', border: 0, padding: 4, color: 'inherit', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+        <Download size={15} />
+      </button>
+    </div>
+    {viewing && <ImageLightbox pdf url={url} name={msg.attachment_name} onClose={() => setViewing(false)} />}
+    </>
   );
 }
 

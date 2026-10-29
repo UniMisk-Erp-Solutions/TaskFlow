@@ -56,7 +56,9 @@ export default function Login() {
         }
         await signUp(email, password, name.trim(), 'admin');
       }
-      navigate('/app');
+      // Back to where the person came from (e.g. the pricing page) when it is a path inside this site.
+      const next = new URLSearchParams(location.search).get('next');
+      navigate(next && /^\/(?![/\\])/.test(next) ? next : '/app');
     } catch (err) {
       setError(err.message || 'Something went wrong');
     } finally {

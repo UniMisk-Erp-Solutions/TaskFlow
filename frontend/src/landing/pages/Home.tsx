@@ -2,9 +2,10 @@ import type { ReactNode, CSSProperties } from "react";
 import { motion } from "motion/react";
 import {
   ArrowRight, Zap, Shield, Users, BarChart3, Clock, Sparkles,
-  CheckCircle2, MessageSquare, Star,
+  CheckCircle2, MessageSquare, Star, ChevronDown,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { HOME_FAQS } from "../../seo/homeFaqs.js";
 
 /**
  * Marketing Home page.
@@ -216,7 +217,7 @@ export default function Home() {
               <CheckCircle2 size={14} color="#10b981" /> No credit card
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <CheckCircle2 size={14} color="#10b981" /> 14-day Pro trial
+              <CheckCircle2 size={14} color="#10b981" /> 7-day Pro trial
             </span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <CheckCircle2 size={14} color="#10b981" /> Cancel anytime
@@ -431,6 +432,39 @@ export default function Home() {
           ))}
         </div>
       </section>
+
+      {/* ─── FAQ ──────────────────────────────────────────────────────── */}
+      <Section style={{ borderTop: `1px solid ${c.border}` }}>
+        <section aria-labelledby="home-faq-heading">
+          <SectionHead
+            eyebrow="FAQ"
+            title={<span id="home-faq-heading">Frequently asked questions</span>}
+            blurb="Straight answers about what TaskFlow does, who it is for and how it works."
+          />
+          {/* Native <details>: keyboard and screen-reader accessible, and every answer is in the page HTML for search engines. */}
+          <style>{".tf-faq summary::-webkit-details-marker{display:none}.tf-faq summary svg{transition:transform .2s}.tf-faq[open] summary svg{transform:rotate(180deg)}.tf-faq summary:focus-visible{outline:2px solid #8B5CF6;outline-offset:4px;border-radius:4px}"}</style>
+          <div style={{
+            maxWidth: 760, margin: "0 auto",
+            borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`,
+          }}>
+            {HOME_FAQS.map((f: { q: string; a: string }, i: number) => (
+              <details key={f.q} className="tf-faq" style={{
+                padding: "20px 0",
+                borderBottom: i !== HOME_FAQS.length - 1 ? `1px solid ${c.border}` : "none",
+              }}>
+                <summary style={{
+                  cursor: "pointer", listStyle: "none",
+                  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16,
+                }}>
+                  <h3 style={{ ...display, fontSize: 17, fontWeight: 600, margin: 0, color: c.fg }}>{f.q}</h3>
+                  <ChevronDown size={18} color={c.muted} aria-hidden="true" style={{ flexShrink: 0 }} />
+                </summary>
+                <p style={{ fontSize: 15, lineHeight: 1.65, color: c.muted, margin: "12px 0 0" }}>{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      </Section>
 
       {/* ─── CTA ──────────────────────────────────────────────────────── */}
       <Section>

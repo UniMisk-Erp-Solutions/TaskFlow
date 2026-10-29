@@ -1,6 +1,8 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import { BillingProvider } from './BillingContext';
+import SubscriptionGate from './components/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import Seo, { NoIndex } from './seo/Seo';
 import { LANDING_PAGES, BLOG_POSTS } from './seo/seoPages.js';
@@ -184,6 +186,7 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
+          <BillingProvider>
           <Suspense fallback={<FullLoader />}>
           <Routes>
             {/* Marketing / public surfaces. */}
@@ -220,6 +223,8 @@ export default function App() {
           </Suspense>
           <PwaPrompt />
           <PushPrompt />
+          <SubscriptionGate />
+          </BillingProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

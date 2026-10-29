@@ -4,6 +4,7 @@ import {
   safeEqual, signState, taskRefOf, verifyGithubSignature, verifyState,
   type GhFetch, type GithubHooks,
 } from "./github.ts";
+import { accessState, TRIAL_DAYS, validateInquiry, type OrgBilling } from "./billing.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inlined push module. Nothing here loads Node-only npm modules at module
@@ -1465,7 +1466,34 @@ async function requireAuth(req: Request): Promise<{ error: Response } | { user: 
   const user = await getAuthUser(req);
   if (!user) return { error: json({ error: "Unauthorized" }, 401) };
   const hydrated = await hydrateEmployeeOrg(user);
+  // Billing lock: a workspace whose Pro trial ended (or whose payment lapsed) cannot use protected features until it pays.
+  // Sign-in, profile, billing and notification routes stay open so people can still pay or sign out.
+  if (hydrated.org_id && !LOCK_EXEMPT.some((p) => stripApiPrefix(new URL(req.url).pathname).startsWith(p))) {
+    const billing = await getOrgBilling(hydrated.org_id);
+    if (accessState(billing).locked) {
+      return {
+        error: json({
+          error: "Your Pro trial has ended. Your workspace admin needs to subscribe to keep using TaskFlow.",
+          code: "subscription_required",
+        }, 402),
+      };
+    }
+  }
   return { user: hydrated };
+}
+
+const LOCK_EXEMPT = ["/auth/", "/billing/", "/notifications/"];
+
+const orgBillingCache = new Map<string, { at: number; row: OrgBilling | null }>();
+const ORG_BILLING_TTL_MS = 10_000;
+async function getOrgBilling(orgId: string, fresh = false): Promise<OrgBilling | null> {
+  const hit = orgBillingCache.get(orgId);
+  if (!fresh && hit && Date.now() - hit.at < ORG_BILLING_TTL_MS) return hit.row;
+  const { data } = await supabase.from("organizations")
+    .select("plan, plan_status, trial_started_at, trial_ends_at, trial_used, paid_until").eq("id", orgId).maybeSingle();
+  const row = (data as OrgBilling | null) ?? null;
+  orgBillingCache.set(orgId, { at: Date.now(), row });
+  return row;
 }
 
 function requireAdmin(user: AppUser) {
@@ -6968,6 +6996,115 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
   return null;
 }
 
+// ── Billing ─────────────────────────────────────────────────────────────────────────────────────
+// Which payment provider is connected. There is none until PAYMENT_PROVIDER (and that provider's keys) are set on the server;
+// until then checkout answers 503 and never records a payment.
+function paymentProvider(): string | null {
+  const p = (Deno.env.get("PAYMENT_PROVIDER") || "").trim().toLowerCase();
+  return p || null;
+}
+
+async function billingPayload(user: AppUser) {
+  const org = user.org_id ? await getOrgBilling(user.org_id, true) : null;
+  const state = accessState(org);
+  let lastPayment: { status: string; failure_reason: string | null; at: string } | null = null;
+  if (user.org_id) {
+    const { data } = await supabase.from("payments").select("status, failure_reason, created_at")
+      .eq("org_id", user.org_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) lastPayment = { status: data.status, failure_reason: data.failure_reason ?? null, at: data.created_at };
+  }
+  return { ...state, trialDays: TRIAL_DAYS, canManageBilling: user.role === "admin", paymentsEnabled: !!paymentProvider(), lastPayment };
+}
+
+async function handleBilling(req: Request, path: string) {
+  if (!path.startsWith("/billing/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+
+  if (req.method === "GET" && path === "/billing/status") return json(await billingPayload(user));
+
+  // Only a workspace admin can start a trial or pay.
+  const denied = requireAdmin(user);
+  if (denied) return denied;
+  if (!user.org_id) return json({ error: "You need a workspace first." }, 400);
+
+  if (req.method === "POST" && path === "/billing/start-trial") {
+    const now = new Date();
+    const ends = new Date(now.getTime() + TRIAL_DAYS * 86_400_000);
+    // One atomic, conditional update: only a Free workspace that has never had a trial can start one, so a paid plan is never
+    // overwritten and a trial can never be started twice.
+    const { data, error } = await supabase.from("organizations")
+      .update({ plan: "pro", plan_status: "trialing", trial_started_at: now.toISOString(), trial_ends_at: ends.toISOString(), trial_used: true })
+      .eq("id", user.org_id).eq("plan", "free").eq("plan_status", "none").eq("trial_used", false)
+      .select("id");
+    if (error) return json({ error: error.message }, 400);
+    orgBillingCache.delete(user.org_id);
+    if (!data?.length) {
+      const state = accessState(await getOrgBilling(user.org_id, true));
+      const why = state.plan !== "free" || state.status === "active" || state.status === "trialing"
+        ? "Your workspace is already on a plan."
+        : "The free trial has already been used for this workspace.";
+      return json({ error: why, code: "trial_not_available" }, 409);
+    }
+    return json(await billingPayload(user), 201);
+  }
+
+  if (req.method === "POST" && path === "/billing/checkout") {
+    const state = accessState(await getOrgBilling(user.org_id, true));
+    if (state.plan === "business" || (state.plan === "pro" && state.status === "active")) {
+      return json({ error: "Your workspace is already on a paid plan.", code: "already_paid" }, 409);
+    }
+    if (!paymentProvider()) {
+      return json({
+        error: "Online payments are not switched on yet. Please contact info@unimisk.com and we will activate your plan.",
+        code: "payments_not_configured",
+      }, 503);
+    }
+    return json({ error: "The configured payment provider is not supported by this server yet.", code: "provider_unsupported" }, 501);
+  }
+
+  // The person closed the payment window. Only a payment that is still pending can be cancelled.
+  const cancel = path.match(/^\/billing\/payments\/([0-9a-f-]{36})\/cancel$/i);
+  if (req.method === "POST" && cancel) {
+    const { data, error } = await supabase.from("payments")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", cancel[1]).eq("org_id", user.org_id).eq("status", "pending").select("id");
+    if (error) return json({ error: error.message }, 400);
+    if (!data?.length) return json({ error: "That payment can no longer be cancelled." }, 409);
+    return json(await billingPayload(user));
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
+async function handleBusinessInquiry(req: Request) {
+  let body: Record<string, unknown>;
+  try { body = (await parseBody(req)) as Record<string, unknown>; } catch { return json({ error: "Invalid request." }, 400); }
+  // Hidden field that people never see: only bots fill it. Pretend it worked.
+  if (typeof body.website === "string" && body.website.trim()) return json({ ok: true });
+
+  const checked = validateInquiry(body);
+  if (!checked.ok) return json({ error: "Please check the form.", fields: checked.errors }, 422);
+  const v = checked.value;
+
+  const since = new Date(Date.now() - 3_600_000).toISOString();
+  const { count: sameEmail } = await supabase.from("business_inquiries").select("id", { count: "exact", head: true })
+    .ilike("work_email", v.work_email).gte("created_at", since);
+  const { count: everyone } = await supabase.from("business_inquiries").select("id", { count: "exact", head: true }).gte("created_at", since);
+  if ((sameEmail ?? 0) >= 3 || (everyone ?? 0) >= 40) {
+    return json({ error: "Too many requests right now. Please try again later or email info@unimisk.com." }, 429);
+  }
+
+  const { error } = await supabase.from("business_inquiries").insert([{
+    name: v.name, work_email: v.work_email, company: v.company, job_title: v.job_title, team_size: v.team_size,
+    requirements: v.requirements, required_features: v.required_features, contact_method: v.contact_method,
+    phone: v.phone, budget: v.budget, message: v.message,
+  }]);
+  if (error) return json({ error: "We could not send your request. Please email info@unimisk.com." }, 500);
+  return json({ ok: true }, 201);
+}
+
 Deno.serve(async (req): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -7005,6 +7142,10 @@ Deno.serve(async (req): Promise<Response> => {
 
     // Outbound: send a signed message to the Axynt agent (authenticated user)
     if (req.method === "POST" && path === "/ai/axynt") return await handleAxyntSend(req);
+
+    if (req.method === "POST" && path === "/public/business-inquiry") return await handleBusinessInquiry(req);
+    const billingResp = await handleBilling(req, path);
+    if (billingResp) return billingResp;
 
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
