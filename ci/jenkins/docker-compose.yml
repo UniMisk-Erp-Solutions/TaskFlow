@@ -27,7 +27,8 @@ services:
         JENKINS_UC_DOWNLOAD: "${JENKINS_UC_DOWNLOAD:-}"
     container_name: taskflow-jenkins
     ports:
-      - "${JENKINS_BIND:-127.0.0.1}:8088:8080"   # JENKINS_BIND=<office LAN address of this server> lets developers open the dashboard (read-only login)
+      - "127.0.0.1:8088:8080"                                         # admin access: SSH tunnel to this loopback port, always
+      - "${JENKINS_LAN_BIND:-127.0.0.1}:${JENKINS_LAN_PORT:-8081}:8080"   # developer dashboard: set JENKINS_LAN_BIND to the office-LAN address (never 0.0.0.0)
     environment:
       JENKINS_ADMIN_PASSWORD: "${JENKINS_ADMIN_PASSWORD:?set JENKINS_ADMIN_PASSWORD}"
       JENKINS_URL: "${JENKINS_URL:?set JENKINS_URL}"

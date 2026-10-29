@@ -60,12 +60,13 @@ test("Jenkins compose: no docker.sock, not privileged, no host network/pid", () 
   assert.match(compose, /cap_drop:\s*\[ALL\]/);
 });
 
-test("Jenkins compose: hard resource limits, loopback-by-default port, own network + volume", () => {
+test("Jenkins compose: hard resource limits, loopback-only admin port, own network + volume", () => {
   assert.match(compose, /mem_limit:\s*4g/);
   assert.match(compose, /cpus:\s*2\.0/);
+  assert.match(compose, /"127\.0\.0\.1:8088:8080"/);
+  // the developer dashboard port is loopback unless the admin sets JENKINS_LAN_BIND to the office LAN address; never 0.0.0.0
+  assert.match(compose, /"\$\{JENKINS_LAN_BIND:-127\.0\.0\.1}:\$\{JENKINS_LAN_PORT:-8081}:8080"/);
   assert.match(compose, /pids_limit:\s*\d+/);
-  // loopback unless the admin sets JENKINS_BIND to the office LAN address (dashboard for developers); never 0.0.0.0
-  assert.match(compose, /"\$\{JENKINS_BIND:-127\.0\.0\.1}:8088:8080"/);
   assert.match(compose, /name:\s*taskflow_ci/);
   assert.match(compose, /name:\s*taskflow_jenkins_home/);
   assert.doesNotMatch(compose, /^\s*-\s*"?0\.0\.0\.0:/m);

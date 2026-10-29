@@ -500,11 +500,11 @@ The pipeline is used to check code and reduce errors. It never merges and never 
 
 Developers see their own pipeline in Jenkins without any admin rights.
 
-- **Address:** `JENKINS_URL` (for example `http://192.168.23.15:8088/`). The port is published on `JENKINS_BIND` (default `127.0.0.1`, i.e. SSH tunnel only); set it to the server's office-LAN address to open the dashboard to that network. Never `0.0.0.0`; there is no internet exposure.
+- **Address:** `JENKINS_URL` (for example `http://192.168.23.15:8088/`). Admin access stays on the loopback port `127.0.0.1:8088` (SSH tunnel). The developer dashboard is a second published port, `JENKINS_LAN_BIND:JENKINS_LAN_PORT` (default `127.0.0.1:8081`); set `JENKINS_LAN_BIND` to the server's office-LAN address (and `JENKINS_LAN_PORT=8088`) to open it to that network. Never `0.0.0.0`; there is no internet exposure.
 - **Login:** user `developer`, password in `secrets/developer-password` (`DEVELOPER_PASSWORD_PATH`), never in the repository. Permissions: Overall/Read, Job/Read, Job/Discover, View/Read only. It cannot build, configure, delete or see credentials. `admin` and `gate` are unchanged.
 - **GitHub link:** when `GATE_DASHBOARD_URL` (= `JENKINS_URL`) is not a loopback address, the `unimisk/verified` status gets a **Details** link to the exact Jenkins build. Statuses already published keep no link; new builds get one.
 - **Rotate the password:** write a new value to the secret file and recreate the `jenkins` container.
-- **Tests:** `config.test.mjs` (port is loopback unless `JENKINS_BIND` is set; secrets required) and `gate-service.test.mjs` (link only for a real dashboard address).
+- **Tests:** `config.test.mjs` (port is loopback unless `JENKINS_LAN_BIND` is set; secrets required) and `gate-service.test.mjs` (link only for a real dashboard address).
 
 ## Revision log
 
@@ -530,4 +530,4 @@ Developers see their own pipeline in Jenkins without any admin rights.
 | 2026-10-27 | Jenkins installed on `192.168.23.15` (isolated container, local-verification mode) and the pipeline run for real: all eight stages pass, attestation verified, expiry/change/failure scenarios proven; fixes found by the real run (mirrors, image-scan findings, JCasC settings, node mode, multibranch job, `.pub` key); GitHub App manifest added; GitHub App, branch protection and Vercel pending. |
 | 2026-10-27 | Jenkins activation prepared (read-only): preflight on `.15` recorded, JCasC fixed (key files were loaded as path text; repository scan credential was missing), credentials/GitHub App permissions, residual `npm audit` findings, Vite 6 whiteboard checks and the install/test runbook documented. Nothing installed. |
 | 2026-10-27 | Rebased onto `main@14d4126`; Trivy findings cleared with lockfile fixes, validated `overrides` and Vite 6; fixed two packaging bugs found by a fresh-checkout run; all eight stages and the gate scenarios pass. |
-| 2026-10-29 | Read-only `developer` login, optional LAN publishing of Jenkins (`JENKINS_BIND`), GitHub status Details link to the build page. Gate failure text now ignores passing tests whose title contains FAILURE. E2E smoke test updated for the 404 page. |
+| 2026-10-29 | Read-only `developer` login, optional LAN publishing of Jenkins (`JENKINS_LAN_BIND`), GitHub status Details link to the build page. Gate failure text now ignores passing tests whose title contains FAILURE. E2E smoke test updated for the 404 page. |
