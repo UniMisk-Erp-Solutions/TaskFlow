@@ -3527,7 +3527,7 @@ async function handleTasks(req: Request, path: string) {
     }
     const visibleTaskIds = visibleTasks.map((task) => task.id);
     if (!visibleTaskIds.length) return json({ sessions: [], people: user.role === "admin" ? [] : [{ id: user.id, full_name: "You" }] });
-    let timerQuery = supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at").eq("org_id", user.org_id).in("task_id", visibleTaskIds);
+    let timerQuery = supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at, adjusted_at, adjusted_by, original_ended_at, adjust_reason").eq("org_id", user.org_id).in("task_id", visibleTaskIds);
     if (user.role !== "admin") timerQuery = timerQuery.eq("user_id", user.id);
     const { data: sessionRows, error: sessionError } = await timerQuery.order("started_at", { ascending: false });
     if (sessionError) return json({ error: sessionError.message }, 400);
@@ -3545,6 +3545,47 @@ async function handleTasks(req: Request, path: string) {
       sessions: sessionRows || [],
       people: (profileRows || []).filter((person) => !person.org_id || person.org_id === user.org_id),
     });
+  }
+
+  // POST /tasks/:id/timer/adjust { ended_at, reason? } — fix a timer that was left running (or stopped late):
+  // sets when the caller's latest work session on this task really ended. The original end time is kept
+  // for admins. It can never be before the session start, in the future, or overlap a later session.
+  const timerAdjustMatch = path.match(/^\/tasks\/([^/]+)\/timer\/adjust$/);
+  if (req.method === "POST" && timerAdjustMatch) {
+    const taskId = timerAdjustMatch[1];
+    const deny = await assertTaskAccess(user, taskId);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const newEnd = Date.parse(String(body.ended_at ?? ""));
+    if (!Number.isFinite(newEnd)) return json({ error: "Choose a valid end time." }, 400);
+    if (newEnd > Date.now() + 60_000) return json({ error: "The end time cannot be in the future." }, 400);
+    const reason = String(body.reason ?? "").trim().slice(0, 300) || null;
+    let sessQuery = supabase.from("task_timer_sessions")
+      .select("id, org_id, task_id, user_id, started_at, ended_at, original_ended_at")
+      .eq("task_id", taskId).eq("user_id", user.id);
+    if (body.session_id) sessQuery = sessQuery.eq("id", String(body.session_id));
+    const { data: sessions, error: sessError } = await sessQuery.order("started_at", { ascending: false }).limit(1);
+    if (sessError) return json({ error: sessError.message }, 400);
+    const target = sessions?.[0];
+    if (!target) return json({ error: "You have no timer session on this task to adjust." }, 404);
+    if (newEnd < Date.parse(target.started_at)) return json({ error: "The end time cannot be before the timer started." }, 400);
+    const { data: later } = await supabase.from("task_timer_sessions").select("started_at")
+      .eq("task_id", taskId).eq("user_id", user.id).gt("started_at", target.started_at)
+      .order("started_at", { ascending: true }).limit(1);
+    if (later?.[0] && newEnd > Date.parse(later[0].started_at)) {
+      return json({ error: "That time overlaps your next timer session." }, 409);
+    }
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: updError } = await supabase.from("task_timer_sessions").update({
+      ended_at: new Date(newEnd).toISOString(),
+      adjusted_at: nowIso,
+      adjusted_by: user.id,
+      original_ended_at: target.original_ended_at ?? target.ended_at ?? null,
+      adjust_reason: reason,
+    }).eq("id", target.id)
+      .select("id, org_id, task_id, user_id, started_at, ended_at, adjusted_at, adjusted_by, original_ended_at, adjust_reason").single();
+    if (updError) return json({ error: updError.message }, 400);
+    return json(updated);
   }
 
   const timerActionMatch = path.match(/^\/tasks\/([^/]+)\/timer\/(start|pause)$/);
