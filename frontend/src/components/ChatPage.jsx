@@ -105,7 +105,23 @@ function chatFileUrl(path) {
 
 // The files are served from another address than the app, so the browser ignores <a download> and just opens them in a new tab.
 // Fetching the file and saving the bytes makes the Download button really download.
-async function downloadChatFile(url, name) {
+async function downloadChatFile(url, name, path) {
+  // Best way: ask the storage server for a link that always arrives as a download (Content-Disposition: attachment). It works for
+  // every file type (HTML, text, Office files...) and on every device, with no cross-site fetch needed.
+  if (path) {
+    try {
+      const { data } = await supabase.storage.from('chat-files').createSignedUrl(path, 300, { download: name || true });
+      if (data?.signedUrl) {
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return;
+      }
+    } catch { /* fall back to fetching the file below */ }
+  }
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('download failed');
@@ -116,7 +132,7 @@ async function downloadChatFile(url, name) {
 }
 
 /** Full-screen viewer for an image or a PDF: opens in the same tab and closes with the X, Esc, or a click outside it. */
-function ImageLightbox({ url, name, onClose, pdf = false }) {
+function ImageLightbox({ url, name, path, onClose, pdf = false }) {
   const closeRef = useRef(null);
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfFailed, setPdfFailed] = useState(false);
@@ -157,7 +173,7 @@ function ImageLightbox({ url, name, onClose, pdf = false }) {
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.9)', display: 'grid', placeItems: 'center', padding: '64px 16px 16px' }}
     >
       <button ref={closeRef} type="button" aria-label={pdf ? 'Close preview' : 'Close image'} title="Close (Esc)" onClick={onClose} style={{ ...round, right: 12 }}><X size={20} /></button>
-      <button type="button" aria-label={pdf ? 'Download file' : 'Download image'} title="Download" onClick={() => downloadChatFile(url, name)} style={{ ...round, right: 60 }}><Download size={18} /></button>
+      <button type="button" aria-label={pdf ? 'Download file' : 'Download image'} title="Download" onClick={() => downloadChatFile(url, name, path)} style={{ ...round, right: 60 }}><Download size={18} /></button>
       {/* Sized from the screen (not from the box around it, which has no fixed height): never bigger than ~90% of the width or
           ~75% of the height, never stretched beyond its real size. */}
       {pdf ? (
@@ -198,7 +214,7 @@ function Attachment({ msg }) {
         >
           <img draggable={false} src={url} alt={msg.attachment_name} style={{ maxWidth: 260, maxHeight: 260, borderRadius: 10, display: 'block' }} />
         </a>
-        {viewing && <ImageLightbox url={url} name={msg.attachment_name} onClose={() => setViewing(false)} />}
+        {viewing && <ImageLightbox url={url} name={msg.attachment_name} path={msg.attachment_path} onClose={() => setViewing(false)} />}
       </>
     );
   }
@@ -214,7 +230,7 @@ function Attachment({ msg }) {
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) return; // Ctrl/Cmd-click still opens a new tab
           e.preventDefault();
-          if (isPdf) setViewing(true); else downloadChatFile(url, name);
+          if (isPdf) setViewing(true); else downloadChatFile(url, name, msg.attachment_path);
         }}
         style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit', textDecoration: 'none', minWidth: 0 }}>
         <FileText size={20} />
@@ -224,12 +240,12 @@ function Attachment({ msg }) {
         </span>
       </a>
       {/* The arrow always downloads, for every file type. */}
-      <button type="button" aria-label={`Download ${name}`} title="Download" onClick={(e) => { e.stopPropagation(); downloadChatFile(url, name); }}
+      <button type="button" aria-label={`Download ${name}`} title="Download" onClick={(e) => { e.stopPropagation(); downloadChatFile(url, name, msg.attachment_path); }}
         style={{ background: 'none', border: 0, padding: 4, color: 'inherit', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
         <Download size={15} />
       </button>
     </div>
-    {viewing && <ImageLightbox pdf url={url} name={msg.attachment_name} onClose={() => setViewing(false)} />}
+    {viewing && <ImageLightbox pdf url={url} name={msg.attachment_name} path={msg.attachment_path} onClose={() => setViewing(false)} />}
     </>
   );
 }

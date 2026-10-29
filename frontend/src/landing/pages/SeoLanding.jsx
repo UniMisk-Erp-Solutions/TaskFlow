@@ -67,7 +67,7 @@ export function ClosingCta({ title = 'Try TaskFlow with your team' }) {
     <div style={{ marginTop: 64 }}>
       <CtaPanel title={title}>
         <Button size="lg" to="/login?mode=signup">Start free</Button>
-        <Button size="lg" to="/pricing" variant="outline" className="border-white/20 text-white hover:bg-white/10">View pricing</Button>
+        <Button size="lg" to="/pricing" variant="outline" style={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)" }}>View pricing</Button>
       </CtaPanel>
     </div>
   );

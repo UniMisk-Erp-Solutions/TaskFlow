@@ -32,6 +32,7 @@ const Security = lazy(() => import('./landing/pages/Security'));
 const Privacy = lazy(() => import('./landing/pages/Privacy'));
 const Terms = lazy(() => import('./landing/pages/Terms'));
 const Docs = lazy(() => import('./landing/pages/Docs'));
+const Faq = lazy(() => import('./landing/pages/Faq'));
 const SeoLanding = lazy(() => import('./landing/pages/SeoLanding'));
 const BlogIndex = lazy(() => import('./landing/pages/Blog').then((m) => ({ default: m.BlogIndex })));
 const BlogPost = lazy(() => import('./landing/pages/Blog'));
@@ -200,6 +201,7 @@ export default function App() {
             <Route path="/privacy"   element={<MarketingLayout seo="/privacy"><Privacy /></MarketingLayout>} />
             <Route path="/terms"     element={<MarketingLayout seo="/terms"><Terms /></MarketingLayout>} />
             <Route path="/docs"      element={<MarketingLayout seo="/docs"><Docs /></MarketingLayout>} />
+            <Route path="/faq"       element={<MarketingLayout seo="/faq"><Faq /></MarketingLayout>} />
             {LANDING_PAGES.map((page) => (
               <Route key={page.path} path={page.path} element={<MarketingLayout><SeoLanding path={page.path} /></MarketingLayout>} />
             ))}

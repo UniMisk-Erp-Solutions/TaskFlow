@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { BadgeCheck, Building2, CalendarDays, Crown, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BadgeCheck, Building2, Check, CalendarDays, Crown, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 import { useBilling } from '../BillingContext';
-import { planSummary } from '../lib/useWorkspacePlan';
+import { planSummary, usePlanWithFallback } from '../useWorkspacePlan';
+import { PLAN_DETAILS } from '../lib/planDetails';
 
 const fieldStyle = {
   width: '100%',
@@ -15,6 +17,40 @@ const fieldStyle = {
   font: 'inherit',
   outlineColor: 'var(--color-primary)',
 };
+
+/** The workspace's plan with its price and what it includes. Uses the server's billing status; if that is not available yet it reads the plan itself. */
+function PlanCard({ billing, orgId }) {
+  const key = usePlanWithFallback(billing, orgId);
+  const info = key ? PLAN_DETAILS[key] : null;
+  if (!info) return null;
+  const status = billing ? planSummary(billing) : info.name;
+  const warn = billing?.status === 'expired';
+  return (
+    <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, background: 'var(--tf-panel)', padding: 24, marginTop: 18 }} aria-labelledby="profile-plan-heading">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 17, borderBottom: '1px solid var(--tf-border)', marginBottom: 20 }}>
+        <Crown size={18} color="var(--color-primary)" />
+        <h3 id="profile-plan-heading" style={{ margin: 0, color: 'var(--tf-text)', fontSize: 16, fontWeight: 600 }}>Your plan</h3>
+        <Link to="/pricing" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }}>View all plans</Link>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 200 }}>
+          <div style={{ color: 'var(--tf-text)', fontSize: 22, fontWeight: 650 }}>{info.name}</div>
+          <div style={{ color: warn ? 'var(--status-danger)' : 'var(--tf-muted)', fontSize: 13, marginTop: 4 }}>{status}</div>
+          <div style={{ marginTop: 14, color: 'var(--tf-text)', fontSize: 30, fontWeight: 650, letterSpacing: '-0.02em' }}>{info.price}</div>
+          <div style={{ color: 'var(--tf-muted)', fontSize: 12 }}>{info.priceNote}</div>
+          <div style={{ color: 'var(--tf-muted)', fontSize: 13, marginTop: 12, maxWidth: 260, lineHeight: 1.5 }}>{info.pitch}</div>
+        </div>
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 10, flex: '1 1 260px' }}>
+          {info.features.map((feature) => (
+            <li key={feature} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, color: 'var(--tf-text)', fontSize: 14 }}>
+              <Check size={16} color="var(--status-success)" style={{ marginTop: 2, flexShrink: 0 }} /> {feature}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
 
 function Detail({ icon: Icon, label, value }) {
   return (
@@ -106,6 +142,7 @@ export default function ProfilePage() {
           <button type="submit" className="btn btn-primary tf-profile-save" disabled={saving || !fullName.trim()}>{saving ? 'Saving…' : 'Save changes'}</button>
         </form>
       </div>
+      <PlanCard billing={billing} orgId={profile?.org_id} />
       <style>{'@media (max-width: 760px) { .tf-profile-grid { grid-template-columns: 1fr !important; } }'}</style>
     </section>
   );

@@ -41,6 +41,15 @@ export const CORE_PAGES = [
     summary: 'Compare the Free, Pro and Business plans.',
   },
   {
+    path: '/faq',
+    title: 'FAQ: TaskFlow Plans, Features and Setup',
+    description: 'Answers to common questions about TaskFlow: plans and pricing, the 7-day Pro trial, roles, approvals, chat, files and getting started.',
+    changefreq: 'monthly',
+    priority: 0.7,
+    lastmod: '2026-10-29',
+    summary: 'Answers to common questions about TaskFlow.',
+  },
+  {
     path: '/docs',
     title: 'Documentation and Guides | TaskFlow',
     description: 'Guides for setting up TaskFlow: creating projects, assigning tasks, using the board and calendar, and approving work.',
