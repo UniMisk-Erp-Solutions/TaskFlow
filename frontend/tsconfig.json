@@ -20,7 +20,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["src", "vite.config.js"],
-  // Not used anywhere and they import modules this project does not have (@/hooks, @/types, sonner, date-fns, react-query).
-  "exclude": ["src/components/BookingCalendar.tsx", "src/components/use-bookings.ts", "src/components/AvailabilityPopover.tsx"]
+  "include": ["src", "vite.config.js"]
 }
