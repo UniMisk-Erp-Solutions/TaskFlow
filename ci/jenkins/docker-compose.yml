@@ -38,12 +38,14 @@ services:
       GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
       DEVELOPER_PASSWORD_FILE: /run/secrets/developer_password
       DEV_USERS_PASSWORD_FILE: /run/secrets/dev_users_password
+      UNIMISK_ADMIN_PASSWORD_FILE: /run/secrets/unimisk_admin_password
       GITHUB_READ_TOKEN_FILE: /run/secrets/github_read_token
       GITHUB_READ_USER: "${GITHUB_READ_USER:-unused}"
     secrets:
       - gate_jenkins_password
       - developer_password
       - dev_users_password
+      - unimisk_admin_password
       - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -143,6 +145,8 @@ networks:
     driver: bridge
 
 secrets:
+  unimisk_admin_password:
+    file: "${UNIMISK_ADMIN_PASSWORD_PATH:?path to the password file of the unimisk-erp-solutions admin login}"
   dev_users_password:
     file: "${DEV_USERS_PASSWORD_PATH:?path to the password file of the per-branch developer logins}"
   developer_password:

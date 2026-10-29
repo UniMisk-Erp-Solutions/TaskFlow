@@ -38,8 +38,8 @@ jenkins:
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "jacktechie"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
-        - id: "unimisk-erp-solutions"      # branch developer: sees only their own branches (roleBased below)
-          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "unimisk-erp-solutions"      # ADMIN (organisation account): its own password file, never the shared developer password
+          password: "${trim:${readFile:${UNIMISK_ADMIN_PASSWORD_FILE}}}"
         - id: "preet1249"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
@@ -56,6 +56,7 @@ jenkins:
             permissions: ["Overall/Administer"]
             entries:
               - user: "admin"
+              - user: "unimisk-erp-solutions"
           - name: "authenticated"
             description: "Every logged-in user may open the UI; what they see is decided by the item roles"
             permissions: ["Overall/Read", "View/Read"]

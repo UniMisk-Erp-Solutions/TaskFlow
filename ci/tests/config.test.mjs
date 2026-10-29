@@ -127,7 +127,7 @@ test("ISOLATION: the build agent has no secret but its own agent secret, no publ
 test("ISOLATION: the controller holds neither the signing key nor the webhook secret nor a GitHub write token", () => {
   const jenkins = service("jenkins");
   const secrets = listOf(jenkins, "secrets");
-  assert.deepEqual(secrets.sort(), ["dev_users_password", "developer_password", "gate_jenkins_password", "github_read_token"]);
+  assert.deepEqual(secrets.sort(), ["dev_users_password", "developer_password", "gate_jenkins_password", "github_read_token", "unimisk_admin_password"]);
   assert.deepEqual(listOf(jenkins, "networks").sort(), ["taskflow_agent", "taskflow_ci"]);
 });
 
@@ -293,6 +293,11 @@ test("ROLES: each branch developer sees only branches under their own name and c
   assert.equal(core.split("Overall/Administer").length - 1, 1);
   assert.equal(core.split("Job/Build").length - 1, 1);
   assert.doesNotMatch(core, /ChaosInTheWake/i, "no password literal in the repository");
+  // the organisation account is an admin, and because it is an admin it must NOT use the password every developer knows
+  const adminRole = core.split('          - name: "admin"')[1].split("          - name: ")[0];
+  assert.ok(adminRole.includes('- user: "unimisk-erp-solutions"'), "unimisk-erp-solutions is an admin");
+  const adminUser = core.split('- id: "unimisk-erp-solutions"')[1].split("- id: ")[0];
+  assert.ok(adminUser.includes("UNIMISK_ADMIN_PASSWORD_FILE") && !adminUser.includes("DEV_USERS_PASSWORD_FILE"), "admin account has its own password file");
   assert.match(read("ci", "jenkins", "plugins.txt"), /^role-strategy$/m);
   const github = read("ci", "jenkins", "casc", "github.yaml");
   assert.ok(github.includes("buildOriginBranchWithPR(true)"), "a branch with a PR is built as the branch, so the job name keeps the owner");
