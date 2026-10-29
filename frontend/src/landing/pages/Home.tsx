@@ -463,6 +463,9 @@ export default function Home() {
               </details>
             ))}
           </div>
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 28 }}>
+            <Button variant="outline" to="/faq" style={{ paddingLeft: 32, paddingRight: 32 }}>Show more questions</Button>
+          </div>
         </section>
       </Section>
 
@@ -499,7 +502,7 @@ export default function Home() {
               <Button size="lg" to="/login?mode=signup">Get started free</Button>
               <Button
                 size="lg" to="/contact" variant="outline"
-                className="border-white/20 text-white hover:bg-white/10"
+                style={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)" }}
               >
                 <MessageSquare style={{ marginRight: 8, width: 16, height: 16 }} /> Talk to sales
               </Button>

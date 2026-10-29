@@ -158,7 +158,7 @@ export default function Features() {
               size="lg"
               to="/pricing"
               variant="outline"
-              className="border-white/20 text-white hover:bg-white/10"
+              style={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)" }}
             >
               View pricing
             </Button>

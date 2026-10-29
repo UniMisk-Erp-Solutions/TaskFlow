@@ -246,21 +246,6 @@ export default function FileExplorer() {
   }, [menuOpen]);
   const draggedRef = useRef(null); // { kind, id, name } while an item is dragged inside the explorer
   const [dropTarget, setDropTarget] = useState(null); // folder id, '__root__' or null
-  const folderInputRef = useRef(null);
-  const [menuOpen, setMenuOpen] = useState(false); // the "+" menu: New folder / Upload files
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onPointerDown = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [menuOpen]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
