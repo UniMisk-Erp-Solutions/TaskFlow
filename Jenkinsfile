@@ -46,6 +46,17 @@ pipeline {
       }
     }
 
+    // Engineering quality (UniMisk standard): fast static gates that block only NEW or WORSENED problems against the
+    // admin-controlled baseline (ci/verify/quality). Each prints the exact rule, file, line and a suggested fix.
+    stage('Engineering quality') {
+      parallel {
+        stage('Repository policy') { steps { sh 'node ci/pipeline/run-stage.mjs repo-policy' } }
+        stage('Code standards')    { steps { sh 'node ci/pipeline/run-stage.mjs code-standards' } }
+        stage('Maintainability')   { steps { sh 'node ci/pipeline/run-stage.mjs maintainability' } }
+        stage('Architecture')      { steps { sh 'node ci/pipeline/run-stage.mjs architecture' } }
+      }
+    }
+
     stage('Build') {
       parallel {
         stage('Lint')       { steps { sh 'node ci/pipeline/run-stage.mjs lint' } }
@@ -74,7 +85,7 @@ pipeline {
   post {
     always {
       // The per-stage results (bound to this commit and tree) are the evidence the gate reads, even for a failed build.
-      archiveArtifacts artifacts: '.ci/results/*.json, .ci/toolkit.json, frontend/playwright-report/**, frontend/test-results/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: '.ci/results/*.json, .ci/toolkit.json, .ci/quality/*.json, frontend/playwright-report/**, frontend/test-results/**', allowEmptyArchive: true
     }
     cleanup { cleanWs(deleteDirs: true, notFailBuild: true) }
   }

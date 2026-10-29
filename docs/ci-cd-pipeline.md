@@ -1030,6 +1030,10 @@ Developers see their own pipeline in Jenkins without any admin rights.
 
 **Verified on the live server.** All seven logins return 200; a wrong password 401; anonymous 403; a developer gets 403 on the admin and credentials pages and on Build Now; `naveena246` sees only `naveena/features/responsive` and gets 404 on `jacktechie/...` and `main`; `jacktechie` sees only their ten branches.
 
+## Engineering quality gates
+
+Four static quality stages (repository policy, code standards, maintainability, architecture) enforce the UniMisk engineering standard on every branch, blocking only new or worsened problems against a baseline. Rules, thresholds, the TaskFlow architecture, what is universal and what each project must provide, and what is not implemented yet: see [engineering-quality.md](engineering-quality.md).
+
 ## Revision log
 
 | Date | Change |
@@ -1056,3 +1060,4 @@ Developers see their own pipeline in Jenkins without any admin rights.
 | 2026-10-27 | Rebased onto `main@14d4126`; Trivy findings cleared with lockfile fixes, validated `overrides` and Vite 6; fixed two packaging bugs found by a fresh-checkout run; all eight stages and the gate scenarios pass. |
 | 2026-10-29 | Read-only `developer` login, optional LAN publishing of Jenkins (`JENKINS_LAN_BIND`), GitHub status Details link to the build page. Gate failure text now ignores passing tests whose title contains FAILURE. E2E smoke test updated for the 404 page. |
 | 2026-10-29 | Per-developer visibility: Role Strategy plugin, seven branch-developer logins, branch-only builds (pull requests are built as the branch). Section "Per-developer visibility". |
+| 2026-10-29 | Engineering quality gates: four new required stages, quality engine in `ci/verify/quality`, TaskFlow policy and baseline. See `docs/engineering-quality.md`. |
