@@ -440,3 +440,34 @@ test("DASHBOARD LINK: the GitHub status links to the Jenkins build only when a r
     assert.equal(off.world.published.at(-1).targetUrl, undefined, url);
   }
 });
+
+test("GATE: a status published before the dashboard address existed gets its Details link added once; a loopback address adds nothing", async () => {
+  const h = harness({ dashboardUrl: "http://pipe.example.test:8088/" });
+  h.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  // the state a server had before the dashboard existed: verified and published without a link
+  h.state.data.statuses[SHA1] = { state: "success", description: `All ${REQUIRED_CHECKS.length} required checks passed (build #1)`, at: 1, job: "feature/x", build: 1 };
+  h.state.data.builds["feature/x#1"] = { sha: SHA1, verdict: "passed" };
+  await h.gate.tick();
+  const last = h.world.published.at(-1);
+  assert.deepEqual([last.sha, last.state, last.targetUrl], [SHA1, "success", "http://pipe.example.test:8088/job/f/job/x/1/"]);
+  const n = h.world.published.length;
+  await h.gate.tick(); await h.gate.tick();
+  assert.equal(h.world.published.length, n, "the link is added once, never again");
+
+  const off = harness({ dashboardUrl: "http://127.0.0.1:8088/" });
+  off.addBuild(build(1, SHA1), passAll(SHA1, "T1"));
+  off.state.data.statuses[SHA1] = { state: "success", description: "x", at: 1, job: "feature/x", build: 1 };
+  off.state.data.builds["feature/x#1"] = { sha: SHA1, verdict: "passed" };
+  await off.gate.tick(); await off.gate.tick();
+  assert.equal(off.world.published.length, 0, "no real dashboard address: nothing to add");
+});
+
+test("GATE: the link is added for failed and errored statuses too, so a developer can always open their build", async () => {
+  const h = harness({ dashboardUrl: "http://pipe.example.test:8088/" });
+  h.addBuild(build(2, SHA2, { result: "FAILURE" }));
+  h.state.data.statuses[SHA2] = { state: "failure", description: "unit-tests FAIL: x", at: 1, job: "feature/x", build: 2 };
+  h.state.data.builds["feature/x#2"] = { sha: SHA2, verdict: "failed" };
+  await h.gate.tick();
+  const last = h.world.published.at(-1);
+  assert.deepEqual([last.sha, last.state, last.description, last.targetUrl], [SHA2, "failure", "unit-tests FAIL: x", "http://pipe.example.test:8088/job/f/job/x/2/"]);
+});

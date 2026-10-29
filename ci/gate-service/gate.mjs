@@ -29,9 +29,11 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
   async function publishOnce(sha, st, description, extraIn = {}) {
     const { path: buildPath, ...extra } = extraIn;
     const cur = published()[sha];
-    if (cur && cur.state === st && (st === "success" || cur.description === description)) return "same";
-    try { await publish({ sha, state: st, description, targetUrl: linkFor(buildPath) }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
-    published()[sha] = { state: st, description, at: now(), ...extra };
+    const url = linkFor(buildPath);
+    // the same fact is not published twice, unless the earlier status has no Details link and one is available now
+    if (cur && cur.state === st && (st === "success" || cur.description === description) && (cur.linked || !url)) return "same";
+    try { await publish({ sha, state: st, description, targetUrl: url }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
+    published()[sha] = { state: st, description, at: now(), ...extra, linked: Boolean(url) };
     state.save();
     return "published";
   }
@@ -99,7 +101,18 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
         if (state.data.builds[key]) continue;
         if (await processBuild(b, mirrorReady)) handled += 1;
       }
-      return { builds: builds.length, handled };
+      // Statuses published before a dashboard address was configured have no Details link. Add it once, with the same state and text.
+      let linked = 0;
+      for (const b of builds) {
+        if (linked >= 25 || !b.sha || b.building) continue;
+        const cur = published()[b.sha];
+        if (!cur || cur.linked || cur.job !== b.job || cur.build !== b.number) continue;
+        const url = linkFor(b.path);
+        if (!url) continue;
+        try { await publish({ sha: b.sha, state: cur.state, description: cur.description, targetUrl: url }); cur.linked = true; state.save(); linked += 1; }
+        catch (e) { log(`[gate] adding the link failed for ${b.sha.slice(0, 7)}: ${e.message}`); }
+      }
+      return { builds: builds.length, handled, linked };
     },
   };
 }
