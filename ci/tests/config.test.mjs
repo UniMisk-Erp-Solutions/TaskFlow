@@ -278,7 +278,7 @@ test("ROLES: each branch developer sees only branches under their own name and c
   const items = core.slice(core.indexOf("        items:"), core.indexOf("  crumbIssuer:"));
   const blocks = items.split("          - name: ").slice(1);
   const role = (n) => blocks.find((b) => b.startsWith('"' + n + '"'));
-  const devs = ["naveena246", "salomi2810", "lakshyabyteo", "nikunjbyteo", "jacktechie", "unimisk-erp-solutions", "preet1249"];
+  const devs = ["naveena246", "salomi2810", "lakshyabyteo", "nikunjbyteo", "jacktechie", "unimisk-erp-solutions", "preet1249", "priyanshubyte"];
   for (const d of devs) {
     const b = role("branches-" + d);
     assert.ok(b, "a branch role for " + d);

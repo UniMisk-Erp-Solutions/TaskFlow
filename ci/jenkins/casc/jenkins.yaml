@@ -42,6 +42,8 @@ jenkins:
           password: "${trim:${readFile:${UNIMISK_ADMIN_PASSWORD_FILE}}}"
         - id: "preet1249"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        - id: "priyanshubyte"      # branch developer: sees only their own branches (roleBased below)
+          password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
           password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
   authorizationStrategy:
@@ -87,6 +89,7 @@ jenkins:
               - user: "jacktechie"
               - user: "unimisk-erp-solutions"
               - user: "preet1249"
+              - user: "priyanshubyte"
           - name: "branches-naveena246"
             description: "Branches of naveena246"
             pattern: "(?i)^taskflow/(naveena246|naveena)(%2F|/).*$"
@@ -129,6 +132,12 @@ jenkins:
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "preet1249"
+          - name: "branches-priyanshubyte"
+            description: "Branches of priyanshubyte"
+            pattern: "(?i)^taskflow/(priyanshubyte|priyanshu)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "priyanshubyte"
   crumbIssuer: "standard"
   remotingSecurity:
     enabled: true
