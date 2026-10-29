@@ -35,6 +35,7 @@ export function seoBuildPlugin() {
         });
       }
       fs.writeFileSync(path.join(outDir, 'sitemap.xml'), buildSitemapXml());
+      // eslint-disable-next-line no-console
       console.log(`[seo] wrote ${process.env.SEO_PRERENDER === '0' ? 1 : routes.length} page heads and sitemap.xml (${routes.length} URLs)`);
     },
   };

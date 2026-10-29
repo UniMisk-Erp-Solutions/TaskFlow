@@ -1,0 +1,18 @@
+# Pre-GitHub verification, loaded only when CASC_FILES lists this file AND docker-compose.local.yml is used.
+# A multibranch job over a repository mounted READ-ONLY at /srv/taskflow-repo: every branch of that clone becomes a
+# job that runs the real Jenkinsfile, exactly like the GitHub job will, so the whole pipeline (stages, attestation,
+# failure handling) can be proven on Jenkins before the GitHub App exists. It never pushes, merges or deploys.
+jobs:
+  - script: |
+      multibranchPipelineJob('taskflow-local') {
+        displayName('TaskFlow (local repository, pre-GitHub)')
+        description('Branches of the repository mounted read-only at /srv/taskflow-repo. Verification only: no push, merge or deploy.')
+        branchSources {
+          git {
+            id('taskflow-local')
+            remote('file:///srv/taskflow-repo')
+          }
+        }
+        factory { workflowBranchProjectFactory { scriptPath('Jenkinsfile') } }
+        orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+      }

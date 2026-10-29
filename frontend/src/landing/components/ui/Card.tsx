@@ -2,8 +2,9 @@ import * as React from "react";
 import { cn } from "@/src/lib/utils";
 import { motion, type HTMLMotionProps } from "motion/react";
 
-// HTMLMotionProps (not plain HTML attributes): the animation library redefines a few of the drag / animation event props.
-interface CardProps extends HTMLMotionProps<"div"> {
+// motion.div redefines these handlers with different signatures, so they cannot be spread onto it.
+type MotionConflicts = 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onAnimationStart';
+interface CardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, MotionConflicts> {
   children?: React.ReactNode;
   className?: string;
   hover?: boolean;

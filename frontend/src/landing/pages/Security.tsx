@@ -6,7 +6,9 @@ import {
   Card, Grid, CtaPanel, BRAND, tone, display,
 } from "../lib/ui";
 
-const EMERALD = "#10b981";
+// The accent colour of this page: a mid, darkish blue on the light theme and a light ice blue on the dark theme (set in <style> below).
+const ACCENT = "var(--sec-accent)";
+const tint = (percent: number) => `color-mix(in srgb, var(--sec-accent) ${percent}%, transparent)`;
 
 const pillars = [
   { icon: <Lock size={22} />, title: "Encryption", desc: "AES-256 at rest, TLS 1.3 in transit. Per-tenant keys in the database." },
@@ -34,6 +36,7 @@ const accessRows = [
 export default function Security() {
   return (
     <PageShell>
+      <style>{":root{--sec-accent:#2c4a8f}:root[data-theme='dark'],:root.dark{--sec-accent:#bfe6ff}"}</style>
       <Container>
         <PageHeader
           eyebrow="Security"
@@ -41,7 +44,7 @@ export default function Security() {
             <>
               Trust is our
               <br />
-              <span style={{ color: EMERALD }}>foundation.</span>
+              <span style={{ color: ACCENT }}>foundation.</span>
             </>
           }
           blurb="Enterprise task management involves sensitive data. Taskflow is built with a security-first architecture from day one."
@@ -57,9 +60,9 @@ export default function Security() {
             gap: 8,
             padding: "6px 14px",
             borderRadius: 999,
-            background: `${EMERALD}1A`,
-            color: EMERALD,
-            border: `1px solid ${EMERALD}33`,
+            background: tint(10),
+            color: ACCENT,
+            border: `1px solid ${tint(20)}`,
             fontSize: 12,
             fontWeight: 500,
             marginBottom: 64,
@@ -76,7 +79,7 @@ export default function Security() {
               <div
                 style={{
                   width: 44, height: 44, borderRadius: 12,
-                  background: `${EMERALD}1A`, color: EMERALD,
+                  background: tint(10), color: ACCENT,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   marginBottom: 16,
                 }}
@@ -150,7 +153,7 @@ export default function Security() {
                 <div
                   style={{
                     width: 36, height: 36, borderRadius: 10,
-                    background: `${EMERALD}14`, color: EMERALD,
+                    background: tint(8), color: ACCENT,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}

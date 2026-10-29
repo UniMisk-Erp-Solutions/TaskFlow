@@ -5,6 +5,7 @@ import { Menu, X, Sun, Moon, Layout, ArrowRight, ChevronDown } from "lucide-reac
 import { useTheme } from "@/src/lib/ThemeContext";
 import { Button } from "../ui/Button";
 import { tone, display, BRAND } from "../../lib/ui";
+import { useAuth } from "../../../AuthContext";
 
 const NAV_HEIGHT = 64;
 
@@ -44,6 +45,12 @@ export const Navbar = () => {
   const [scrolled, setScrolled] = React.useState(false);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  // Signed in: the public site shows a Dashboard link instead of Login / Start free.
+  const { user, profile } = useAuth() as { user?: unknown; profile?: unknown };
+  const signedIn = !!(user && profile);
+
+  // Close the Resources menu as soon as a page is chosen (and whenever the page changes).
+  React.useEffect(() => { setIsResourcesOpen(false); }, [location.pathname]);
 
   React.useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -218,6 +225,7 @@ export const Navbar = () => {
                         <Link
                           key={link.name}
                           to={link.href}
+                          onClick={() => setIsResourcesOpen(false)}
                           style={{
                             display: "block",
                             padding: "8px 12px",
@@ -299,7 +307,7 @@ export const Navbar = () => {
             }}
           >
             <Link
-              to="/login"
+              to={signedIn ? "/app" : "/login"}
               style={{
                 fontSize: 13,
                 fontWeight: 500,
@@ -311,9 +319,9 @@ export const Navbar = () => {
                 transition: "color 150ms",
               }}
             >
-              Login
+              {signedIn ? "Dashboard" : "Login"}
             </Link>
-            <Button size="sm" to="/login?mode=signup" className="px-7 min-w-[120px]">Start free</Button>
+            {!signedIn && <Button size="sm" to="/login?mode=signup" className="px-7 min-w-[120px]">Start free</Button>}
           </div>
 
           {/* Mobile burger */}
@@ -391,7 +399,7 @@ export const Navbar = () => {
               }}
             >
               <Link
-                to="/login"
+                to={signedIn ? "/app" : "/login"}
                 onClick={() => setIsOpen(false)}
                 style={{
                   fontSize: 15,
@@ -404,11 +412,13 @@ export const Navbar = () => {
                   color: tone.fg,
                 }}
               >
-                Login
+                {signedIn ? "Dashboard" : "Login"}
               </Link>
-              <Button size="lg" to="/login?mode=signup" onClick={() => setIsOpen(false)} className="w-full">
-                Get started <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
-              </Button>
+              {!signedIn && (
+                <Button size="lg" to="/login?mode=signup" onClick={() => setIsOpen(false)} className="w-full">
+                  Get started <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
+                </Button>
+              )}
             </div>
           </motion.div>
         )}

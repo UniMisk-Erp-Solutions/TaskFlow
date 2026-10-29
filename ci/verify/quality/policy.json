@@ -1,0 +1,159 @@
+{
+  "project": "TaskFlow",
+  "typescriptFrom": [
+    "frontend",
+    "backend"
+  ],
+  "sourceRoots": [
+    "frontend/src",
+    "backend/src",
+    "backend/server.js",
+    "supabase/functions"
+  ],
+  "extensions": [
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".mjs",
+    ".cjs"
+  ],
+  "exclude": [
+    "(^|/)public/",
+    "\\.min\\.js$",
+    "(^|/)generated/"
+  ],
+  "testPattern": [
+    "(^|/)(__tests__|test|tests|e2e)/",
+    "\\.(test|spec)\\.[cm]?[jt]sx?$"
+  ],
+  "consoleAllowed": [
+    "^backend/server\\.js$",
+    "^backend/src/config/"
+  ],
+  "packages": [
+    "frontend",
+    "backend"
+  ],
+  "protectedFiles": [
+    "frontend/tsconfig.json",
+    "frontend/vercel.json",
+    "render.yaml"
+  ],
+  "aliases": [
+    {
+      "prefix": "@/",
+      "to": "frontend/"
+    }
+  ],
+  "thresholds": {
+    "functionLines": {
+      "warn": 60,
+      "fail": 100
+    },
+    "cyclomatic": {
+      "warn": 10,
+      "fail": 15
+    },
+    "cognitive": {
+      "fail": 15
+    },
+    "nesting": {
+      "fail": 4
+    },
+    "params": {
+      "warn": 5
+    },
+    "fileLines": {
+      "warn": 400,
+      "fail": 700
+    },
+    "duplication": {
+      "window": 50,
+      "maxPercent": 3,
+      "tolerance": 0.25
+    }
+  },
+  "architecture": {
+    "rules": [
+      {
+        "id": "ARCH-001",
+        "title": "the frontend must not import backend or server implementation code",
+        "from": "^frontend/",
+        "to": "^(backend|supabase)/",
+        "suggestion": "call the API instead of importing server code"
+      },
+      {
+        "id": "ARCH-001",
+        "title": "the backend must not import frontend or edge-function code",
+        "from": "^backend/",
+        "to": "^(frontend|supabase)/",
+        "suggestion": "share data through the API contract, not by importing across applications"
+      },
+      {
+        "id": "ARCH-001",
+        "title": "edge functions must not import frontend or backend code (separate deployables)",
+        "from": "^supabase/functions/",
+        "to": "^(frontend|backend)/",
+        "suggestion": "duplicate nothing: share through the database or an API contract"
+      },
+      {
+        "id": "ARCH-003",
+        "title": "UI components must not use the database client directly; go through api.js or a data hook",
+        "from": "^frontend/src/(components|landing)/",
+        "to": "^frontend/src/supabaseClient\\.js$",
+        "suggestion": "move the query into api.js (or a use*.js hook) and call that from the component"
+      },
+      {
+        "id": "ARCH-003",
+        "title": "only supabaseClient.js may import the Supabase SDK in the frontend",
+        "from": "^frontend/src/(?!supabaseClient\\.js$)",
+        "to": "^pkg:@supabase/",
+        "suggestion": "import the shared client from supabaseClient.js"
+      },
+      {
+        "id": "ARCH-004",
+        "title": "route files must not reach the database; routes call controllers, controllers call services",
+        "from": "^backend/src/routes/",
+        "to": "^(backend/src/config/supabase|backend/src/supabase|pkg:@supabase/)",
+        "suggestion": "move the query into a controller/service"
+      },
+      {
+        "id": "ARCH-004",
+        "title": "lower backend layers must not import routes or controllers (wrong dependency direction)",
+        "from": "^backend/src/(services|middleware|utils|config)/",
+        "to": "^backend/src/(routes|controllers)/",
+        "suggestion": "invert the dependency: pass the data in, or move shared code down into a service/util"
+      },
+      {
+        "id": "ARCH-004",
+        "title": "controllers must not import routes",
+        "from": "^backend/src/controllers/",
+        "to": "^backend/src/routes/",
+        "suggestion": "routes depend on controllers, never the other way round"
+      },
+      {
+        "id": "ARCH-005",
+        "title": "shared utilities (lib/) must not depend on components, pages or app state",
+        "from": "^frontend/src/lib/",
+        "to": "^frontend/src/(components|landing|pwa)/|^frontend/src/[A-Za-z]+\\.jsx?$",
+        "suggestion": "keep lib/ free of UI and application imports; pass values in as arguments"
+      },
+      {
+        "id": "ARCH-006",
+        "title": "the marketing site (landing/) must not import application components or pages (shared services such as AuthContext, BillingContext and api.js are allowed: sign-up and pricing need them)",
+        "from": "^frontend/src/landing/",
+        "to": "^frontend/src/(components/|(AdminDashboard|EmployeeDashboard|Login|Onboarding|PendingApproval|MaintenanceGate|App|main)\\.jsx?$)",
+        "suggestion": "put shared pieces in lib/ or landing/components"
+      },
+      {
+        "id": "ARCH-007",
+        "title": "data hooks and API modules must not depend on UI components",
+        "from": "^frontend/src/(use[A-Z][A-Za-z]*|api|sessionAccess|supabaseClient)\\.js$",
+        "to": "^frontend/src/(components|landing)/",
+        "suggestion": "business/data logic must not import UI; invert the dependency"
+      }
+    ],
+    "modules": []
+  }
+}

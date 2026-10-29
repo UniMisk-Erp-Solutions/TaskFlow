@@ -28,7 +28,9 @@ import { useProjects } from './useProjects';
 import { useTaskTimers } from './useTaskTimers';
 import api from './api';
 import { preloadGoogleScript } from './lib/googleCalendar';
+import { localYmd } from './lib/localDate';
 import ProfilePage from './components/ProfilePage';
+import LeavePortal from './components/LeavePortal';
 import ChatPage from './components/ChatPage';
 import FileExplorer from './components/FileExplorer';
 import { lazy, Suspense } from 'react';
@@ -88,10 +90,22 @@ export default function AdminDashboard() {
   const { projects, archivedProjects, refetch: refetchProjects, createProject, updateProject, archiveProject, restoreProject, getProgress, loading: projectsLoading } = useProjects();
   const taskTimers = useTaskTimers();
   const refreshTimers = taskTimers.refetch;
+  const [refreshKey, setRefreshKey] = useState(0); // bumping it remounts the open tab so every tab reloads its own data
+  const [refreshing, setRefreshing] = useState(false);
+  async function refreshAll() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([refetch({ silent: true }), refetchMeetings(), refetchProjects({ silent: true }), refreshTimers?.()]);
+    } finally {
+      setRefreshKey((k) => k + 1);
+      setRefreshing(false);
+    }
+  }
 
   const routeSegment = pathname.split('/').filter(Boolean).at(-1);
   const page = routeSegment === 'calendar' ? 'calender' : routeSegment === 'reminders' ? 'email' : routeSegment;
-  const validPages = ['overview', 'tasks', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'files', 'whiteboard', 'notifications', 'email', 'profile'];
+  const validPages = ['overview', 'tasks', 'meetings', 'kanban', 'timer', 'calender', 'projects', 'users', 'chat', 'files', 'whiteboard', 'leave', 'notifications', 'email', 'profile'];
   const [showForm, setShowForm] = useState(false);
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [taskFormKey, setTaskFormKey] = useState(0);
@@ -106,6 +120,7 @@ export default function AdminDashboard() {
   const [sending,  setSending]  = useState(false);
   const [sendMsg,  setSendMsg]  = useState('');
   const [detailTask, setDetailTask] = useState(null);
+  const [detailEdit, setDetailEdit] = useState(false); // open the task window straight in edit mode
   const [detailMeeting, setDetailMeeting] = useState(null);
 
   const profileById = useMemo(() => {
@@ -209,10 +224,11 @@ export default function AdminDashboard() {
   const overviewTasks = filtered.filter((t) => t.status !== 'completed');
   const overviewMeetings = filteredMeetings.filter((m) => m.status !== 'completed');
 
-  const showTaskLists = filters.type !== 'meeting';
-  const showMeetingLists = filters.type !== 'task';
+  // Tasks and Meetings are separate tabs now, so each shows only its own list.
+  const showTaskLists = page !== 'meetings';
+  const showMeetingLists = page === 'meetings';
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localYmd();
   const overdue = tasks.filter((t) => t.due_date && t.due_date < today && t.status !== 'completed');
 
   // Review queue — anything an admin must act on.
@@ -282,6 +298,8 @@ export default function AdminDashboard() {
                 ? `Good ${hour()}, ${profile?.full_name?.split(' ')[0] || 'Admin'}`
                 : page === 'tasks'
                   ? 'All Tasks'
+                  : page === 'meetings'
+                    ? 'All Meetings'
                   : page === 'kanban'
                     ? 'Kanban Board'
                   : page === 'timer'
@@ -298,6 +316,8 @@ export default function AdminDashboard() {
                           ? 'Files'
                         : page === 'whiteboard'
                           ? 'Whiteboard'
+                        : page === 'leave'
+                          ? 'Leave Portal'
                         : page === 'notifications'
                           ? 'Notifications'
                             : page === 'profile'
@@ -348,42 +368,55 @@ export default function AdminDashboard() {
             {sendMsg && page === 'email' && (
               <span style={{ fontSize: 14, color: sendMsg.startsWith('Failed') ? 'var(--status-danger)' : 'var(--status-success)' }}>{sendMsg}</span>
             )}
-            {page !== 'notifications' && page !== 'users' && page !== 'profile' && (
-              <>
-                <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending} title="Send reminders" aria-label="Send reminders">
-                  {sending ? <span className="spinner" /> : <Send size={12} />}
-                  <span className="tf-btn-label">Send Reminders</span>
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  title="Bulk import tasks from a CSV"
-                  onClick={() => setImportKind('task')}
-                >
-                  <Upload size={13} /> <span className="tf-btn-label">Import tasks</span>
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  type="button"
-                  title="Bulk import meetings from a CSV"
-                  onClick={() => setImportKind('meeting')}
-                >
-                  <Upload size={13} /> <span className="tf-btn-label">Import meetings</span>
-                </button>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
-                  <Plus size={13} /> New Task
-                </button>
-                <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
-                  <Plus size={13} /> New Meeting
-                </button>
-              </>
-            )}
             <button className="btn btn-ghost btn-sm btn-icon tf-header-ai-button" type="button" onClick={() => setShowAI(true)} aria-label="Open AI Assistant" title="AI Assistant">
               <Sparkles size={20} strokeWidth={2.2} />
+            </button>
+            <button type="button" className={`btn btn-ghost btn-sm btn-icon${refreshing ? ' tf-refresh-spin' : ''}`} onClick={refreshAll} disabled={refreshing} aria-label="Refresh" title="Refresh this page">
+              <RefreshCw size={18} strokeWidth={2} />
             </button>
             <ThemeToggle size={16} />
           </div>
         </div>
+
+        {/* Same layout as the employee panel: icons beside the title, action buttons in their own row below. */}
+        {page !== 'notifications' && page !== 'users' && page !== 'profile' && page !== 'leave' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && (
+          <div className="tf-dashboard-actions tf-admin-actions">
+            <button className="btn btn-ghost btn-sm" onClick={handleSendReminders} disabled={sending} title="Send reminders" aria-label="Send reminders">
+              {sending ? <span className="spinner" /> : <Send size={13} />}
+              <span className="tf-btn-label">Send Reminders</span>
+            </button>
+            {page !== 'meetings' && (
+              <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              title="Bulk import tasks from a CSV"
+              onClick={() => setImportKind('task')}
+            >
+              <Upload size={13} /> <span className="tf-btn-label">Import tasks</span>
+            </button>
+            )}
+            {page !== 'tasks' && (
+              <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              title="Bulk import meetings from a CSV"
+              onClick={() => setImportKind('meeting')}
+            >
+              <Upload size={13} /> <span className="tf-btn-label">Import meetings</span>
+            </button>
+            )}
+            {page !== 'meetings' && (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
+              <Plus size={13} /> New Task
+            </button>
+            )}
+            {page !== 'tasks' && (
+              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
+              <Plus size={13} /> New Meeting
+            </button>
+            )}
+          </div>
+        )}
 
         <div className="admin-dashboard-content" style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '24px' }}>
 
@@ -459,10 +492,9 @@ export default function AdminDashboard() {
                     filters={filters}
                     onChange={setFilters}
                     onClear={() => setFilters(FILTERS_DEFAULT)}
-                    includeType
                     includeAssignee
                     assignees={allProfiles}
-                    searchPlaceholder="Search tasks and meetings"
+                    searchPlaceholder={page === 'meetings' ? 'Search meetings' : 'Search tasks'}
                   />
                 </div>
               </div>
@@ -549,7 +581,7 @@ export default function AdminDashboard() {
           )}
 
           {/* ── TASKS + MEETINGS ── */}
-          {page === 'tasks' && (
+          {(page === 'tasks' || page === 'meetings') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ border: '1px solid var(--tf-border)', borderRadius: 18, overflow: 'hidden', background: 'var(--tf-panel)' }}>
                 <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--tf-border)' }}>
@@ -580,6 +612,7 @@ export default function AdminDashboard() {
                       onUpdateStatus={updateStatus}
                       profileById={profileById}
                       onOpenTask={setDetailTask}
+                      onEditTask={(t) => { setDetailEdit(true); setDetailTask(t); }}
                       onApprove={handleApproveTaskInline}
                       onRequestChanges={handleRequestChangesTaskInline}
                       onReopen={handleReopenTaskInline}
@@ -681,7 +714,7 @@ export default function AdminDashboard() {
           {/* ── USER MANAGEMENT ── */}
           {page === 'users' && (
             <div style={{ maxWidth: 900 }}>
-              <UserManagement />
+              <UserManagement key={refreshKey} />
             </div>
           )}
 
@@ -695,14 +728,15 @@ export default function AdminDashboard() {
                 maxWidth: 720,
               }}
             >
-              <NotificationSettings />
+              <NotificationSettings key={refreshKey} />
             </div>
           )}
 
-          {page === 'profile' && <ProfilePage />}
-          {page === 'chat' && <ChatPage />}
-          {page === 'files' && <FileExplorer />}
-          {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage /></Suspense>}
+          {page === 'profile' && <ProfilePage key={refreshKey} />}
+          {page === 'leave' && <LeavePortal isAdmin key={refreshKey} />}
+          {page === 'chat' && <ChatPage key={refreshKey} />}
+          {page === 'files' && <FileExplorer key={refreshKey} />}
+          {page === 'whiteboard' && <Suspense fallback={<div className="spinner" style={{ width: 22, height: 22 }} />}><WhiteboardPage key={refreshKey} /></Suspense>}
 
           {/* ── REMINDERS ── */}
           {page === 'email' && (
@@ -764,7 +798,8 @@ export default function AdminDashboard() {
         getTaskHistory={getTaskHistory}
         onTasksChanged={() => refetch({ silent: true })}
         refreshSignal={tasks.length}
-        onClose={() => setDetailTask(null)}
+        initialEdit={detailEdit}
+        onClose={() => { setDetailTask(null); setDetailEdit(false); }}
         onNavigateTask={(t) => setDetailTask(t)}
         onAddSubtask={(parentId, ctx = {}) =>
           launchTaskForm({ parentTaskId: parentId, projectId: ctx.projectId || '' })

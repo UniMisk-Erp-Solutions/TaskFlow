@@ -92,8 +92,10 @@ export function AuthProvider({ children }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    // Supabase calls this while it still holds its session lock. Doing awaited work in here (profile fetches, other
+    // supabase calls) makes every other request wait on that lock until it is stolen, which fails the request with
+    // "AbortError: Lock broken by another request with the 'steal' option". So the real work runs a tick later, after the lock is free.
+    const handleAuthEvent = async (event, session) => {
         console.log('AuthContext - Auth state changed:', { event, hasSession: !!session });
 
         // Bootstrap is owned by getSession().then above; handling INITIAL_SESSION again runs
@@ -143,8 +145,10 @@ export function AuthProvider({ children }) {
         }
         setLoading(false);
         bootstrapInProgressRef.current = false;
-      }
-    );
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      window.setTimeout(() => { handleAuthEvent(event, session); }, 0);
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -272,7 +276,11 @@ export function AuthProvider({ children }) {
     hydratedUserIdRef.current = null;
     setApiAccessToken(null);
     window.cachedSession = null;
+    // Clear the signed-in state first, so the page shows "logged out" at once even if the sign-out call below is slow.
+    setUser(null);
+    setProfile(null);
     await supabase.auth.signOut({ scope: 'local' });
+    setUser(null);
     setProfile(null);
   }
 

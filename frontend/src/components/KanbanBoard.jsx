@@ -773,7 +773,17 @@ export default function KanbanBoard({
                     value={customEnd}
                     max={localInputValue(new Date())}
                     disabled={submittingReview}
-                    onChange={(event) => { setCustomEnd(event.target.value); setEndError(''); }}
+                    onChange={(event) => {
+                      // Browsers only grey out future days; a later time on today (or a typed value) still gets through. Never keep one.
+                      const picked = new Date(event.target.value).getTime();
+                      if (Number.isFinite(picked) && picked > Date.now()) {
+                        setCustomEnd(localInputValue(new Date()));
+                        setEndError('Future times are not allowed, so the end time was set to now.');
+                        return;
+                      }
+                      setCustomEnd(event.target.value);
+                      setEndError('');
+                    }}
                     aria-label="Task end date and time"
                   />
                   <small>Cannot be in the future. Running timers stop at this time.</small>

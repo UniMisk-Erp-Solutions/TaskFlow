@@ -1,0 +1,66 @@
+# GitHub integration, loaded ONLY when CASC_FILES lists this file (after the read-only token exists).
+# Jenkins gets READ access to the repository only (a fine-grained token with Contents + Pull requests + Metadata: read).
+# The token that can write commit statuses lives in the gate container, never here, and Jenkins never sees a signing key.
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "taskflow-github-read"
+              description: "Read-only token used to scan and fetch the private repository"
+              username: "${GITHUB_READ_USER}"
+              password: "${trim:${readFile:${GITHUB_READ_TOKEN_FILE}}}"
+
+jobs:
+  - script: |
+      multibranchPipelineJob('taskflow') {
+        displayName('TaskFlow')
+        branchSources {
+          github {
+            id('taskflow-github')
+            repoOwner('UniMisk-Erp-Solutions')
+            repository('TaskFlow')
+            scanCredentialsId('taskflow-github-read')
+            // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
+            buildOriginBranch(true)          // branches without a pull request
+            buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)
+            buildOriginPRHead(false)         // no separate PR job: the status is stored on the commit, so the pull request shows it exactly as before
+          }
+        }
+        // CENTRAL PIPELINE: branches need no Jenkinsfile. The one stored in Jenkins (config file below) is used for every
+        // branch that has none; the gate refuses to sign a branch whose own Jenkinsfile differs from the admin-approved pin.
+        configure { node ->
+          def f = node / 'factory'
+          f.@class = 'org.jenkinsci.plugins.pipeline.multibranch.defaults.PipelineBranchDefaultsProjectFactory'
+          f.children().clear()
+          f / 'scriptId'('taskflow-central-jenkinsfile')
+          f / 'useSandbox'(true)
+        }
+        orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+        // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
+      }
+
+  # Production health check (free monitoring): one read-only GET every 10 minutes, red build = site down.
+  # Only runs when MONITOR_URL is set; it holds no credentials and writes nothing.
+  - script: |
+      pipelineJob('taskflow-monitor') {
+        displayName('Production health check (read-only)')
+        triggers { cron('H/10 * * * *') }
+        definition {
+          cps {
+            sandbox(true)
+            script('''pipeline {
+              agent { label 'untrusted' }
+              options { timeout(time: 2, unit: 'MINUTES'); disableConcurrentBuilds(); buildDiscarder(logRotator(numToKeepStr: '50')) }
+              stages {
+                stage('Check') {
+                  steps {
+                    sh 'if [ -z "$MONITOR_URL" ]; then echo "MONITOR_URL not set: nothing to check"; exit 0; fi; curl -fsS --max-time 20 -o /dev/null "$MONITOR_URL" && echo healthy'
+                  }
+                }
+              }
+            }''')
+          }
+        }
+      }

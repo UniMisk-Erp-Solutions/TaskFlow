@@ -1,6 +1,8 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
+import { BillingProvider } from './BillingContext';
+import SubscriptionGate from './components/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import Seo, { NoIndex } from './seo/Seo';
 import { LANDING_PAGES, BLOG_POSTS } from './seo/seoPages.js';
@@ -12,6 +14,7 @@ const EmployeeDashboard = lazy(() => import('./EmployeeDashboard'));
 const Onboarding = lazy(() => import('./Onboarding'));
 const PendingApproval = lazy(() => import('./PendingApproval'));
 import PwaPrompt from './components/PwaPrompt';
+import PushPrompt from './components/PushPrompt';
 
 // Marketing (public) surfaces — ported from the standalone "quest" landing
 // page. They are Tailwind v4 + framer-motion and live entirely under
@@ -132,8 +135,10 @@ function RoleRouter() {
   if (gate) return gate;
 
   const userRole = profile?.role;
-  if (userRole === 'admin') return <Navigate to="/admin" replace />;
-  return <Navigate to="/dashboard" replace />;
+  const base = userRole === 'admin' ? '/admin' : userRole === 'manager' ? '/manager' : '/dashboard';
+  // Push notifications open /app?open=chat so each role lands on its own chat tab.
+  const open = new URLSearchParams(window.location.search).get('open');
+  return <Navigate to={open === 'chat' ? base + '/chat' : base} replace />;
 }
 
 function ProtectedAdmin({ children }) {
@@ -144,7 +149,17 @@ function ProtectedAdmin({ children }) {
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
 
   const userRole = profile?.role;
-  if (userRole !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (userRole !== 'admin') return <Navigate to={userRole === 'manager' ? '/manager' : '/dashboard'} replace />;
+  return children;
+}
+
+function ProtectedManager({ children }) {
+  const { user, profile, loading } = useAuth();
+  if (loading && !profile) return <FullLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!profile) return <ProfileLoadError />;
+  if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
+  if (profile.role !== 'manager') return <Navigate to="/app" replace />;
   return children;
 }
 
@@ -154,6 +169,7 @@ function ProtectedEmployee({ children }) {
   if (!user) return <Navigate to="/login" replace />;
   if (!profile) return <ProfileLoadError />;
   if (onboardingScreen(profile)) return <Navigate to="/app" replace />;
+  if (profile.role === 'manager') return <Navigate to="/manager" replace />;
   return children;
 }
 
@@ -170,6 +186,7 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
+          <BillingProvider>
           <Suspense fallback={<FullLoader />}>
           <Routes>
             {/* Marketing / public surfaces. */}
@@ -196,6 +213,8 @@ export default function App() {
             <Route path="/admin"     element={<Navigate to="/admin/overview" replace />} />
             <Route path="/admin/*"  element={<AppScreen><ProtectedAdmin><AdminDashboard /></ProtectedAdmin></AppScreen>} />
             <Route path="/dashboard" element={<Navigate to="/dashboard/tasks" replace />} />
+            <Route path="/manager" element={<Navigate to="/manager/tasks" replace />} />
+            <Route path="/manager/*" element={<AppScreen><ProtectedManager><EmployeeDashboard role="manager" /></ProtectedManager></AppScreen>} />
             <Route path="/dashboard/*" element={<AppScreen><ProtectedEmployee><EmployeeDashboard /></ProtectedEmployee></AppScreen>} />
 
             {/* Unknown URLs get a real "not found" page (noindex) instead of silently showing the home page. */}
@@ -203,6 +222,9 @@ export default function App() {
           </Routes>
           </Suspense>
           <PwaPrompt />
+          <PushPrompt />
+          <SubscriptionGate />
+          </BillingProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

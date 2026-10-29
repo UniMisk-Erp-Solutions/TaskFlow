@@ -26,6 +26,7 @@ export default function TaskForm({
   parentTaskId = '',
   parentOptions = [],
   initialAssigneeIds = [],
+  allowedAssigneeIds = null, // when set, only these people can be picked (a manager's team)
 }) {
   const [form, setForm] = useState({
     ...DEFAULT,
@@ -208,7 +209,7 @@ export default function TaskForm({
 
           <div className="form-group">
             <label className="form-label">Assign to</label>
-            <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} />
+            <MultiEmployeeSelect value={form.assignee_ids} onChange={(ids) => set('assignee_ids', ids)} onlyIds={allowedAssigneeIds} />
           </div>
 
           {/* Files: staged now, uploaded right after the task is created. */}

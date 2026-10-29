@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, Video, ClipboardCheck, ClipboardList } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { ThemeToggle } from '../ThemeContext';
 
 const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'meetings', icon: Video, label: 'Meetings' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
   { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
@@ -14,6 +14,7 @@ const ADMIN_NAV = [
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'files', icon: FolderOpen, label: 'Files' },
   { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
+  { id: 'leave', icon: CalendarOff, label: 'Leave' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'email', icon: Mail, label: 'Reminders' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
@@ -21,6 +22,7 @@ const ADMIN_NAV = [
 
 const EMPLOYEE_NAV = [
   { id: 'tasks', icon: CheckSquare, label: 'Tasks' },
+  { id: 'meetings', icon: Video, label: 'Meetings' },
   { id: 'kanban', icon: Columns, label: 'Kanban Board' },
   { id: 'timer', icon: Timer, label: 'Timer' },
   { id: 'calender', icon: CalendarDays, label: 'Calendar' },
@@ -28,14 +30,24 @@ const EMPLOYEE_NAV = [
   { id: 'chat', icon: MessageCircle, label: 'Chat' },
   { id: 'files', icon: FolderOpen, label: 'Files' },
   { id: 'whiteboard', icon: PenLine, label: 'Whiteboard' },
+  { id: 'leave', icon: CalendarOff, label: 'Leave' },
   { id: 'notifications', icon: Bell, label: 'Notifications' },
   { id: 'profile', icon: UserRound, label: 'Profile' },
 ];
 
+const MANAGER_NAV = [
+  { id: 'tasks', icon: CheckSquare, label: 'My Tasks' },
+  { id: 'reviews', icon: ClipboardCheck, label: 'Approvals' },
+  { id: 'assign', icon: ClipboardList, label: 'Team Tasks' },
+  { id: 'team', icon: UsersRound, label: 'Teams' },
+  { id: 'people', icon: UserPlus, label: 'Add User' },
+  ...EMPLOYEE_NAV.filter((n) => n.id !== 'tasks'),
+];
+
 export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
-  const isEmployee = role === 'employee';
-  const navItems = isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
+  const isEmployee = role === 'employee' || role === 'manager';
+  const navItems = role === 'manager' ? MANAGER_NAV : isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
   const activeButtonRef = useRef(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
@@ -140,7 +152,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
             textTransform: 'uppercase',
           }}
         >
-          {isEmployee ? 'Employee' : 'Admin'}
+          {role === 'manager' ? 'Manager' : isEmployee ? 'Employee' : 'Admin'}
         </span>
         <button
           type="button"
@@ -232,7 +244,6 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
             </div>
           </div>
           </button>
-          <ThemeToggle size={15} />
         </div>
         <button
           type="button"

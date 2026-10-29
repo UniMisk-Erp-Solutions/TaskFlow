@@ -1,13 +1,12 @@
 import { motion } from "motion/react";
-import { Send, MapPin, Mail, MessageSquare, Clock } from "lucide-react";
+import { Send, MapPin, Mail, Clock } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { PageShell, Container, Eyebrow, BRAND, tone, display } from "../lib/ui";
 
 const contacts = [
-  { icon: <Mail size={18} />, label: "Email us", value: "hello@taskflow.app", tint: BRAND },
-  { icon: <MessageSquare size={18} />, label: "Live support", value: "Mon–Fri · 9am – 6pm EST", tint: "#10b981" },
+  { icon: <Mail size={18} />, label: "Email us", value: "info@unimisk.com", tint: BRAND },
   { icon: <Clock size={18} />, label: "Response time", value: "Under 4 business hours", tint: "#f59e0b" },
-  { icon: <MapPin size={18} />, label: "Office", value: "123 Innovation Way, SF, CA 94105", tint: "#f43f5e" },
+  { icon: <MapPin size={18} />, label: "Office", value: "Ahmedabad, Gujarat, India", tint: "#f43f5e" },
 ];
 
 function Field({ label, placeholder, type = "text" }: { label: string; placeholder: string; type?: string }) {

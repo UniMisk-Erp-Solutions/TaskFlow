@@ -93,7 +93,13 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error),
+  (error) => {
+    // The server refuses protected requests once a Pro trial has ended unpaid; tell the app so it can show the payment popup.
+    if (error?.response?.status === 402 && error.response.data?.code === 'subscription_required') {
+      window.dispatchEvent(new Event('tf:subscription-required'));
+    }
+    return Promise.reject(error);
+  },
 );
 
 export default api;

@@ -269,30 +269,195 @@ Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGU
 
 ---
 
+**Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
+
+Records the root causes of the janky Kanban drag (browser text selection starting on pointer-down, and per-frame layout reads in the animation loop) and the fixes in KanbanBoard.jsx and index.css. It lets a developer see which per-frame costs were removed (cached preview size, single hit-test per frame, preview moved first) and how the body-level dragging class interacts with the existing pointer-drag runtime.
+
+
+---
+
+**Document:** [docs/live-refresh-and-realtime.md](docs/live-refresh-and-realtime.md)
+
+Describes the silent refetch behavior in useTasks/useProjects, the useLiveRefresh polling-and-focus fallback used by both dashboards, and the migration that adds task and meeting tables to the Supabase realtime publication. It explains why an admin previously had to refresh to see an Under review task and how updates now arrive within about five seconds even when websockets are unavailable.
+
+
+---
+
+**Document:** [docs/timer-analytics-filters-and-charts.md](docs/timer-analytics-filters-and-charts.md)
+
+Covers the redesigned TimerAnalytics component: the global period (all time, week, month) and person filters that clip sessions consistently across cards, charts and tables; the By task, Over time and By person charts; the Hours/Days toggle and whole-number duration formatting; and the expandable per-person cards with status ordering, status filter chips and expand/collapse-all. It explains what is computed from which data so numbers across the page stay consistent.
+
+
+---
+
+**Document:** [docs/timer-task-dates-and-session-history.md](docs/timer-task-dates-and-session-history.md)
+
+Documents how each Timer-page task row derives its start date (first session), end date (reported end time or last session end) and the stopwatch-style cumulative timer reading at each pause/resume, plus the expandable session list. It also explains why Time worked uses the same h:mm:ss format so the Ended timer and total match exactly for finished tasks.
+
+
+---
+
+**Document:** [docs/kanban-review-end-time.md](docs/kanban-review-end-time.md)
+
+Describes the extra control in the Admin review needed dialog that lets an employee record when work actually ended (never in the future), how the Express and Edge board endpoints validate and store it in tasks.work_ended_at, and how running timers are closed at that moment through the updated database trigger. It also records the migration and the deployment requirement.
+
+
+---
+
+**Document:** [docs/timer-demo-seed-data.md](docs/timer-demo-seed-data.md)
+
+Explains seed_timer_demo_data.sql: which tasks receive generated closed sessions, how values are made deterministic, how rows are tagged so they can be removed, and why the insert trigger is disabled temporarily inside a transaction.
+
+
+---
+
+**Document:** [docs/collapsible-sidebar.md](docs/collapsible-sidebar.md)
+
+Describes the shared Sidebar component's collapsed icon rail: toggle button, animated width, tooltips, Ctrl/Cmd+B shortcut, localStorage persistence, and how it coexists with the existing mobile breakpoint rules. It applies to both admin and employee portals.
+
+
+---
+
+**Document:** [docs/persistent-login-session.md](docs/persistent-login-session.md)
+
+Documents the explicit Supabase auth client options (persist session, auto refresh, localStorage), the [auth.sessions] time-box and inactivity settings added to config.toml, why a larger refresh-token reuse interval helps with multi-tab refresh races, and the practical reasons a user may still be signed out (InPrivate windows and hosted dashboard settings).
+
+
+---
+
+**Document:** [docs/draggable-ai-assistant-button.md](docs/draggable-ai-assistant-button.md)
+
+Explains the AiFab component: default bottom-right placement for all users, pointer dragging with a click threshold, viewport clamping, per-user localStorage persistence, keyboard movement, and the global page bottom padding that prevents the button from covering the last rows of content.
+
+
+---
+
+**Document:** [docs/kanban-individual-project-scope.md](docs/kanban-individual-project-scope.md)
+
+Describes the scope toggle in KanbanBoard: Project shows only tasks linked to a project the employee can see; Individual shows all assigned tasks with Project/Individual badges. It also explains how project visibility is synchronized with the Projects feature and how the choice is persisted.
+
+
+---
+
+**Document:** [docs/project-edit-delete-and-employee-scoping.md](docs/project-edit-delete-and-employee-scoping.md)
+
+Covers the admin edit/delete controls in ProjectsPanel, the PATCH and DELETE /projects/:id endpoints on the Edge Function and Express backend, what happens to a deleted project's tasks and meetings, and how GET /projects now returns only assigned projects for employees so the Projects page and Kanban Project view stay in sync.
+
+
+---
+
+**Document:** [docs/server-migrations-applied-2026-10-15.md](docs/server-migrations-applied-2026-10-15.md)
+
+An operations record of the access path used (SSH alias olympus, Coolify, the TaskFlow Supabase database container), the read-only checks performed, the single migration applied, and the pending Edge Function deployment. It documents the strict scope: only TaskFlow's database was touched.
+
+---
+
+**Update note (2026-10-15):** [docs/kanban-approved-task-countdown.md](docs/kanban-approved-task-countdown.md) now also covers the admin board: approved tasks clear after 60 seconds there too, with `updated_at` as the fallback anchor for older approvals; tasks always remain in the Tasks pages.
+
+**Update note (2026-10-15):** [docs/task-timer-tracking-and-analytics.md](docs/task-timer-tracking-and-analytics.md) is extended by [docs/timer-analytics-filters-and-charts.md](docs/timer-analytics-filters-and-charts.md) and [docs/timer-task-dates-and-session-history.md](docs/timer-task-dates-and-session-history.md), which replace the dotted graph with bar charts, filters, person cards and session history.
+
+---
+
+**Document:** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md)
+
+Explains the new Files feature end to end: the dedicated private taskflow-files storage bucket and its org/owner object layout, the drive_folders and drive_files tables with row level security, the visibility rules (private is owner-only, public is organization-wide, folder privacy gating its contents), the /drive Edge API endpoints and signed-URL downloads, the FileExplorer React page shared by both portals, and the migration/deployment state. It also records the honest storage note that Supabase Storage maps logical buckets onto the configured S3 backend, and that the Express backend does not yet implement these routes.
+
+---
+
+**Update note (2026-10-15):** [docs/server-migrations-applied-2026-10-15.md](docs/server-migrations-applied-2026-10-15.md) now also records the Edge Function deployment to the TaskFlow Supabase stack, the backup file name used, and the rollback step.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents that new items are public by default and that the Edit dialog changes name and visibility together.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents the removal of the 50 MB cap and the prepare/upload/complete direct-to-storage flow, including the remaining server-wide 500 MB storage limit.
+
+---
+
+**Document:** [docs/pagination-35-records.md](docs/pagination-35-records.md)
+
+Describes the reusable usePagination hook and Pagination control (5 records per page), which lists use it (tasks, meetings, overview/project table, Files, Timer person rows), why the Kanban board is excluded, and how page state resets on sort/filter/search changes and clamps after deletes. It also records that the old 40-row cap in the unified overview table was replaced by real paging.
+
+---
+
+**Update note (2026-10-15):** [docs/file-explorer-multi-tenant-storage.md](docs/file-explorer-multi-tenant-storage.md) now documents the admin-only file Properties dialog (created/modified/accessed, owner, size, path), the Export details CSV, and the access-tracking columns that back the Accessed timestamp.
+
+---
+
+**Document:** [docs/file-activity-log.md](docs/file-activity-log.md)
+
+Explains the Files audit trail: the events recorded and their details, the drive_activity table and its public_at_event flag, and the visibility rules (owner sees all of their own history; administrators see only events that were public at the time for items that are public now or were public when deleted; nobody else sees other people's activity). It also covers the Activity log tab, per-item History action, and how the feature relates to the admin Properties/Export tools and the private/public model.
+
+---
+
+**Document:** [docs/mobile-android-app.md](docs/mobile-android-app.md)
+
+Describes the Flutter mobile client in the mobile/ folder: the technology stack (Flutter, supabase_flutter, dio, go_router, provider), how it reuses the existing Supabase backend and Edge API without changes, the screens mapped to each web feature (tasks, board, timers, files with private/public and audit log, chat, projects, calendar, team management), build-time configuration through env.json, the locally installed toolchain and the APK build command, and the remaining gaps (whiteboard editing, native push, Google sign-in, release signing).
+
+---
+
+**Document:** [docs/production-data-reset-2026-10-16.md](docs/production-data-reset-2026-10-16.md)
+
+Explains which data was kept (users, organizations, settings, notification preferences) and removed (all work, chat, whiteboard, file and log data plus stored files) before production launch, how it was done safely with backups and an abort-on-change transaction, and how to roll back.
+
+---
+
+**Update note (2026-10-16):** [docs/mobile-android-app.md](docs/mobile-android-app.md) now also covers the mobile performance design (isolated tickers, change-detecting refresh, optimistic controls, skeleton loaders), the 14-test suite, the launcher icon, and release signing with a private keystore.
+
+---
+
+**Document:** [docs/files-preview-pagination-edit-subtasks.md](docs/files-preview-pagination-edit-subtasks.md)
+
+Root-cause analysis and fixes for four reported problems: files not downloading/previewing (pop-up blocking and internal storage URLs, fixed with an authenticated streaming endpoint, a blob download helper and an in-app preview modal used by Files, task attachments and meeting files), pagination restored to 40 records per page (also on the Users table, with scroll-to-list), the task edit screen that blinked and closed (an unstable callback re-running the load effect in the task and meeting detail modals), and subtask adding (always-visible subtasks panel with quick add for admins and assignees, refresh after creation, mobile parity). It also records the Vitest regression tests and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/kanban-rules-subtasks-sessions.md](docs/kanban-rules-subtasks-sessions.md)
+
+Five fixes from 16/10/2026: employees cannot move an In Progress task back to To Do/Backlog (web, Edge API, Express and Flutter), admin Kanban cards now show the combined tracked time and who is running instead of 0, a "Subtask of" parent picker on the New Task form with a Subtask badge across tables, cards and the detail modal, multiple simultaneous logins per user (sign-out now uses local scope instead of global, which revoked every session), and https storage URLs behind Cloudflare so file downloads work. Includes Vitest coverage and the Edge Function redeploy.
+
+---
+
+**Document:** [docs/local-ai-two-core.md](docs/local-ai-two-core.md)
+
+Adds services/taskflow-ai: a Docker Compose stack (llama.cpp with Qwen3-0.6B GGUF plus a FastAPI planner using multilingual-e5-small ONNX) pinned to one shared two-logical-CPU cpuset, private network, hardened containers, model fetch script with checksum lock. The Edge Function assistant now prefers the local model when LOCAL_AI_URL is set, answers greetings via the local router without the LLM, and falls back to OpenRouter. Records the audit, setup commands, post-deploy checks and the fact that nothing has been deployed or benchmarked yet.
+
+---
+
 **Document:** [docs/pwa-installable-app.md](docs/pwa-installable-app.md)
 
 Explains how TaskFlow is installable on Android, iOS and desktop: the web manifest and generated icons (including maskable and Apple icons), the single service worker shared with web push, what is and is not cached (API and storage traffic never), the offline page, the install banner with iOS Add-to-Home-Screen steps, the update prompt, hosting cache headers, testing, limits and rollback.
 
 ---
 
+**Document:** [docs/github-integration.md](docs/github-integration.md)
+
+Describes the GitHub App integration in the Supabase Edge API: per-user GitHub connection (identity only, no stored tokens), admin installation linked to the organization, the HMAC-verified webhook, task matching by the TF-xxxxxxxx reference in branch names, commits and pull requests, by explicitly linked branches/PRs, or by an optional per-task repository, installation by any connected user, a polling fallback that uses each user's encrypted GitHub token when the app is not installed on the repository, and the assignee-only authorization rules. It explains what counts as qualifying activity, the atomic In Progress to Done (pending admin approval) transition with duplicate-delivery and replay protection, admin push notification and the existing approve / request-changes flow, the task detail GitHub section, API routes, the migration, GitHub App settings and secrets, `--no-verify-jwt` deployment, the local webhook simulator, automated tests, troubleshooting and limitations.
+
+---
+
 **Document:** [docs/files-drag-drop-move.md](docs/files-drag-drop-move.md)
 
-Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged), a folder_id move option on the drive PATCH endpoints with ownership and cycle checks, a Moved activity entry, tests and the Edge Function redeploy.
+Adds drag-and-drop moving in the Files page (folder rows, breadcrumbs and the Back row are drop targets; only owned items are draggable; external file uploads by drag are unchanged) and a folder_id move option on the drive PATCH endpoints with ownership and cycle checks.
 
 ---
 
 **Document:** [docs/ai-chat-esc-close.md](docs/ai-chat-esc-close.md)
 
-The AI Assistant panel now also closes when Esc is pressed (document keydown listener added on open and removed on unmount, ignoring already-handled keys), with a unit test.
+Pressing Esc closes the AI assistant panel, the same as its X button; the listener is removed when the panel unmounts.
 
 ---
 
 **Document:** [docs/pwa-layout-fixes.md](docs/pwa-layout-fixes.md)
 
-Stacks the profile and theme buttons vertically in the 68px sidebar rail used on narrow screens and in the installed PWA (they previously overlapped), removes a dead CSS rule, and adds standalone-mode safe-area and 100dvh handling for the sidebar.
+Stops the profile and theme buttons overlapping in the narrow sidebar rail and keeps the sidebar clear of notches and the home indicator when installed as an app.
 
----
+## CI/CD Pipeline
 
-**Document:** [docs/github-integration.md](docs/github-integration.md)
+**Document:** [docs/ci-cd-pipeline.md](docs/ci-cd-pipeline.md)
 
-Describes the GitHub App integration in the Supabase Edge API: per-user GitHub connection (identity only, no stored tokens), admin installation linked to the organization, the HMAC-verified webhook, task matching by the TF-xxxxxxxx reference in branch names, commits and pull requests, by explicitly linked branches/PRs, or by an optional per-task repository, installation by any connected user, a polling fallback that uses each user's encrypted GitHub token when the app is not installed on the repository, and the assignee-only authorization rules. It explains what counts as qualifying activity, the atomic In Progress to Done (pending admin approval) transition with duplicate-delivery and replay protection, admin push notification and the existing approve / request-changes flow, the task detail GitHub section, API routes, the migration, GitHub App settings and secrets, `--no-verify-jwt` deployment, the local webhook simulator, automated tests, troubleshooting and limitations.
+This guide describes the developer pipeline in `Jenkinsfile` and `ci/`: eight required stages (ESLint, TypeScript check, Vite build, Vitest, backend and pipeline tests, isolated Playwright, Trivy dependency scan, Trivy and pattern secret scan), the signed pre-PR attestation that binds a pass to the exact commit and Git tree hash and is invalidated by any code change, expiry or a wrong signing key, and the prepared GitHub branch protection that requires the `unimisk/verified` check from the Jenkins GitHub App plus an admin review before a manual merge.
+
+It documents how Vercel production deploys only after that merge, how Preview and Production are kept separate, how the Playwright suite is jailed to a synthetic API and loopback, how Jenkins is defined as code (isolated, resource-limited, not installed), the dependency changes made to clear Trivy findings (lockfile fixes, `overrides` for `nanoid` and `lodash-es`, Vite 6) and how they were validated, the findings recorded along the way, the actual PASS/FAIL/BLOCKED results, the read-only preflight of the target server, the credentials, GitHub App permissions and signing keys Jenkins needs, a record of the Jenkins installation on the target server (isolation as applied, problems found by running it for real, real build and attestation results, failure-blocking scenarios), the manual GitHub App authorization step, and the steps still pending. The pipeline adds no feature, API route, migration or screen to TaskFlow.

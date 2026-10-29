@@ -1,0 +1,2 @@
+# Reviewed, time-boxed exceptions for Trivy. EMPTY ON PURPOSE: every HIGH/CRITICAL finding fails the build.
+# Add one CVE per line WITH a justification comment and an expiry date, only with admin approval.

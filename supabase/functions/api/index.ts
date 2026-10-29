@@ -4,6 +4,7 @@ import {
   safeEqual, signState, taskRefOf, verifyGithubSignature, verifyState,
   type GhFetch, type GithubHooks,
 } from "./github.ts";
+import { accessState, TRIAL_DAYS, validateInquiry, type OrgBilling } from "./billing.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inlined push module. Nothing here loads Node-only npm modules at module
@@ -11,7 +12,7 @@ import {
 // This keeps the function bootable on every Supabase Edge runtime — auth and
 // CRUD routes never touch the push code path on boot.
 // ─────────────────────────────────────────────────────────────────────────────
-type PushCategory = "task_assigned" | "meeting_assigned" | "task_update" | "meeting_update";
+type PushCategory = "task_assigned" | "meeting_assigned" | "task_update" | "meeting_update" | "chat_message";
 
 type WebPushLib = {
   setVapidDetails: (subject: string, pub: string, priv: string) => void;
@@ -49,15 +50,24 @@ async function getWebPush(): Promise<WebPushLib | null> {
 }
 
 let vapidReady = false;
+// VAPID keys come from the environment, or from public.app_settings (vapid_public_key / vapid_private_key / vapid_subject)
+// so they can be set with SQL without rebuilding the function container.
+async function vapidKeys(): Promise<{ pub: string; priv: string; subject: string }> {
+  return {
+    pub: Deno.env.get("VAPID_PUBLIC_KEY") || (await getAppSetting("vapid_public_key")),
+    priv: Deno.env.get("VAPID_PRIVATE_KEY") || (await getAppSetting("vapid_private_key")),
+    subject: Deno.env.get("VAPID_SUBJECT") || (await getAppSetting("vapid_subject")) || "mailto:noreply@localhost",
+  };
+}
+
 async function ensurePushLib(): Promise<WebPushLib | null> {
-  const pub = Deno.env.get("VAPID_PUBLIC_KEY") ?? "";
-  const priv = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
+  const { pub, priv, subject } = await vapidKeys();
   if (!pub || !priv) return null;
   const lib = await getWebPush();
   if (!lib) return null;
   if (!vapidReady) {
     try {
-      lib.setVapidDetails(Deno.env.get("VAPID_SUBJECT") ?? "mailto:noreply@localhost", pub, priv);
+      lib.setVapidDetails(subject, pub, priv);
       vapidReady = true;
     } catch (err) {
       console.warn("[push] setVapidDetails failed:", (err as Error)?.message);
@@ -73,6 +83,7 @@ function pushAllows(prefs: Record<string, unknown> | null, category: PushCategor
   if (category === "meeting_assigned") return !!prefs.notify_meeting_assigned;
   if (category === "task_update") return !!prefs.notify_task_updates;
   if (category === "meeting_update") return !!prefs.notify_meeting_updates;
+  if (category === "chat_message") return true; // chat follows the master push switch
   return false;
 }
 
@@ -197,7 +208,7 @@ async function handleNotificationRoutes(
   if (!path.startsWith("/notifications/")) return null;
 
   if (req.method === "GET" && path === "/notifications/vapid-public-key") {
-    const pub = Deno.env.get("VAPID_PUBLIC_KEY");
+    const { pub } = await vapidKeys();
     if (!pub) return jsonPush({ error: "Push notifications are not configured (missing VAPID keys)." }, 503);
     return jsonPush({ publicKey: pub });
   }
@@ -263,6 +274,37 @@ async function handleNotificationRoutes(
       .select()
       .single();
     return jsonPush({ ok: true, preferences: data }, 201);
+  }
+
+  // Chat messages are inserted straight into Postgres by the browser, so the sender's client calls this
+  // right after sending to push the message to everyone else in the conversation.
+  if (req.method === "POST" && path === "/notifications/chat-message") {
+    const body = (await parseBody(req)) as { message_id?: string };
+    if (!body.message_id) return jsonPush({ error: "message_id is required" }, 400);
+    const { data: msg } = await supabase.from("chat_messages")
+      .select("id, conversation_id, org_id, sender_id, body, attachment_name, kind, created_at")
+      .eq("id", body.message_id).maybeSingle();
+    if (!msg || msg.sender_id !== userId) return jsonPush({ error: "Message not found" }, 404);
+    if (msg.kind === "system" || Date.now() - new Date(msg.created_at).getTime() > 5 * 60_000) return jsonPush({ ok: true, sent: 0 });
+    const { data: conv } = await supabase.from("chat_conversations").select("id, type, name, org_id").eq("id", msg.conversation_id).maybeSingle();
+    if (!conv) return jsonPush({ error: "Conversation not found" }, 404);
+    let recipients: string[];
+    if (conv.type === "group") {
+      const { data: people } = await supabase.from("profiles").select("id").eq("org_id", conv.org_id);
+      recipients = (people ?? []).map((p: { id: string }) => p.id);
+    } else {
+      const { data: parts } = await supabase.from("chat_participants").select("user_id").eq("conversation_id", conv.id);
+      recipients = (parts ?? []).map((p: { user_id: string }) => p.user_id);
+    }
+    const senderName = await getActorDisplayName(null, userId);
+    const text = String(msg.body || "").trim() || (msg.attachment_name ? "Sent " + msg.attachment_name : "Sent an attachment");
+    const preview = text.length > 140 ? text.slice(0, 137) + "..." : text;
+    const title = conv.type === "direct" ? senderName : (conv.type === "group" ? "General" : String(conv.name || "Group")) + " · " + senderName;
+    scheduleNotify(() => notifyUsers({
+      userIds: recipients, excludeUserId: userId, category: "chat_message", title, body: preview,
+      data: { url: "/app?open=chat" },
+    }));
+    return jsonPush({ ok: true });
   }
 
   if (req.method === "POST" && path === "/notifications/unsubscribe") {
@@ -1319,7 +1361,7 @@ async function processWhatsAppMessage(body: any): Promise<void> {
 type AppUser = {
   id: string;
   email?: string;
-  role: "admin" | "employee";
+  role: "admin" | "manager" | "employee";
   org_id: string | null;
 };
 
@@ -1424,11 +1466,49 @@ async function requireAuth(req: Request): Promise<{ error: Response } | { user: 
   const user = await getAuthUser(req);
   if (!user) return { error: json({ error: "Unauthorized" }, 401) };
   const hydrated = await hydrateEmployeeOrg(user);
+  // Billing lock: a workspace whose Pro trial ended (or whose payment lapsed) cannot use protected features until it pays.
+  // Sign-in, profile, billing and notification routes stay open so people can still pay or sign out.
+  if (hydrated.org_id && !LOCK_EXEMPT.some((p) => stripApiPrefix(new URL(req.url).pathname).startsWith(p))) {
+    const billing = await getOrgBilling(hydrated.org_id);
+    if (accessState(billing).locked) {
+      return {
+        error: json({
+          error: "Your Pro trial has ended. Your workspace admin needs to subscribe to keep using TaskFlow.",
+          code: "subscription_required",
+        }, 402),
+      };
+    }
+  }
   return { user: hydrated };
+}
+
+const LOCK_EXEMPT = ["/auth/", "/billing/", "/notifications/"];
+
+const orgBillingCache = new Map<string, { at: number; row: OrgBilling | null }>();
+const ORG_BILLING_TTL_MS = 10_000;
+async function getOrgBilling(orgId: string, fresh = false): Promise<OrgBilling | null> {
+  const hit = orgBillingCache.get(orgId);
+  if (!fresh && hit && Date.now() - hit.at < ORG_BILLING_TTL_MS) return hit.row;
+  const { data } = await supabase.from("organizations")
+    .select("plan, plan_status, trial_started_at, trial_ends_at, trial_used, paid_until").eq("id", orgId).maybeSingle();
+  const row = (data as OrgBilling | null) ?? null;
+  orgBillingCache.set(orgId, { at: Date.now(), row });
+  return row;
 }
 
 function requireAdmin(user: AppUser) {
   if (user.role !== "admin") return json({ error: "Admin access required" }, 403);
+  return null;
+}
+
+/** Admins review everything; managers review their teams' tasks (first step). Employees cannot review. */
+function requireReviewer(user: AppUser) {
+  if (user.role !== "admin" && user.role !== "manager") return json({ error: "Admin access required" }, 403);
+  return null;
+}
+
+function requireManager(user: AppUser) {
+  if (user.role !== "admin" && user.role !== "manager") return json({ error: "Manager access required" }, 403);
   return null;
 }
 
@@ -1453,6 +1533,48 @@ async function orgAdminIds(orgId: string | null): Promise<string[]> {
     return [];
   }
   return (data ?? []).map((row: { id: string }) => row.id);
+}
+
+// ── Teams & manager review ──
+// A manager owns teams (public.teams / team_members). Tasks submitted by a team member go to the manager first, and only
+// reach the admin once the manager approves. A submitter with no manager skips straight to the admin.
+
+/** Ids of everyone in the teams this manager runs (not including the manager). */
+async function managedMemberIds(managerId: string, orgId: string | null): Promise<string[]> {
+  if (!orgId) return [];
+  const { data: teams } = await supabase.from("teams").select("id").eq("manager_id", managerId).eq("org_id", orgId);
+  const teamIds = (teams ?? []).map((t: { id: string }) => t.id);
+  if (!teamIds.length) return [];
+  const { data: members } = await supabase.from("team_members").select("user_id").in("team_id", teamIds);
+  return [...new Set((members ?? []).map((m: { user_id: string }) => m.user_id))];
+}
+
+/** Managers (other than the submitter) whose team the user belongs to. */
+async function managerIdsOf(userId: string, orgId: string | null): Promise<string[]> {
+  if (!orgId) return [];
+  const { data: mine } = await supabase.from("team_members").select("team_id").eq("user_id", userId);
+  const teamIds = (mine ?? []).map((m: { team_id: string }) => m.team_id);
+  if (!teamIds.length) return [];
+  const { data: teams } = await supabase.from("teams").select("manager_id").in("id", teamIds).eq("org_id", orgId);
+  return [...new Set((teams ?? []).map((t: { manager_id: string }) => t.manager_id))].filter((id) => id !== userId);
+}
+
+/** Where a task submitted by `user` goes first: their manager, or straight to the admin. */
+async function reviewRouteFor(user: AppUser): Promise<{ stage: "manager" | "admin"; reviewerIds: string[] }> {
+  if (user.role === "employee") {
+    const managers = await managerIdsOf(user.id, user.org_id);
+    if (managers.length) return { stage: "manager", reviewerIds: managers };
+  }
+  return { stage: "admin", reviewerIds: await orgAdminIds(user.org_id) };
+}
+
+/** True when the manager runs a team that includes at least one assignee of the task row. */
+async function managerOverseesTask(user: AppUser, taskId: string, row?: { assignee_id: string | null }): Promise<boolean> {
+  const members = new Set(await managedMemberIds(user.id, user.org_id));
+  if (!members.size) return false;
+  const { data: inj } = await supabase.from("task_assignees").select("profile_id").eq("task_id", taskId);
+  const ids = [...(inj ?? []).map((r: { profile_id: string }) => r.profile_id), ...(row?.assignee_id ? [row.assignee_id] : [])];
+  return ids.some((id) => members.has(id));
 }
 
 function meetingAssigneeIds(m: any): string[] {
@@ -3257,7 +3379,20 @@ async function assertTaskAccess(user: AppUser, taskId: string): Promise<Response
   const { data: row } = await tq.maybeSingle();
   if (!row) return json({ error: "Task not found or access denied" }, 404);
   const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", taskId).eq("profile_id", user.id).maybeSingle();
-  if (row.assignee_id !== user.id && !inj) return json({ error: "Task not found or access denied" }, 403);
+  if (row.assignee_id !== user.id && !inj) {
+    // A manager may also open the tasks of the people in their teams (to review and follow them).
+    if (user.role === "manager" && await managerOverseesTask(user, taskId, row)) return null;
+    return json({ error: "Task not found or access denied" }, 403);
+  }
+  return null;
+}
+
+/** For actions only the person doing the work may take (board moves, submitting): managers are not exempt. */
+async function assertTaskAssignee(user: AppUser, taskId: string): Promise<Response | null> {
+  if (user.role !== "manager") return null;
+  const { data: row } = await supabase.from("tasks").select("assignee_id").eq("id", taskId).maybeSingle();
+  const { data: inj } = await supabase.from("task_assignees").select("task_id").eq("task_id", taskId).eq("profile_id", user.id).maybeSingle();
+  if (!row || (row.assignee_id !== user.id && !inj)) return json({ error: "Only the person assigned to this task can do that." }, 403);
   return null;
 }
 
@@ -3409,7 +3544,19 @@ async function handleTasks(req: Request, path: string) {
     if (user.org_id) legQ = legQ.eq("org_id", user.org_id);
     const { data: leg } = await legQ;
     const fromLeg = (leg ?? []).map((r: { id: string }) => r.id);
-    const allIds = [...new Set([...fromJ, ...fromLeg])];
+    let fromTeam: string[] = [];
+    if (user.role === "manager") {
+      // A manager also sees the tasks of the people in their teams.
+      const members = await managedMemberIds(user.id, user.org_id);
+      if (members.length) {
+        const { data: tj } = await supabase.from("task_assignees").select("task_id").in("profile_id", members);
+        let tlQ = supabase.from("tasks").select("id").in("assignee_id", members);
+        if (user.org_id) tlQ = tlQ.eq("org_id", user.org_id);
+        const { data: tl } = await tlQ;
+        fromTeam = [...(tj ?? []).map((r: { task_id: string }) => r.task_id), ...(tl ?? []).map((r: { id: string }) => r.id)];
+      }
+    }
+    const allIds = [...new Set([...fromJ, ...fromLeg, ...fromTeam])];
     if (!allIds.length) return json([]);
     const { rows, error: chunkErr } = await fetchTasksByIdsChunked(allIds);
     if (chunkErr) return json({ error: chunkErr.message }, 400);
@@ -3440,7 +3587,7 @@ async function handleTasks(req: Request, path: string) {
     }
     const visibleTaskIds = visibleTasks.map((task) => task.id);
     if (!visibleTaskIds.length) return json({ sessions: [], people: user.role === "admin" ? [] : [{ id: user.id, full_name: "You" }] });
-    let timerQuery = supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at").eq("org_id", user.org_id).in("task_id", visibleTaskIds);
+    let timerQuery = supabase.from("task_timer_sessions").select("id, org_id, task_id, user_id, started_at, ended_at, adjusted_at, adjusted_by, original_ended_at, adjust_reason").eq("org_id", user.org_id).in("task_id", visibleTaskIds);
     if (user.role !== "admin") timerQuery = timerQuery.eq("user_id", user.id);
     const { data: sessionRows, error: sessionError } = await timerQuery.order("started_at", { ascending: false });
     if (sessionError) return json({ error: sessionError.message }, 400);
@@ -3458,6 +3605,47 @@ async function handleTasks(req: Request, path: string) {
       sessions: sessionRows || [],
       people: (profileRows || []).filter((person) => !person.org_id || person.org_id === user.org_id),
     });
+  }
+
+  // POST /tasks/:id/timer/adjust { ended_at, reason? } — fix a timer that was left running (or stopped late):
+  // sets when the caller's latest work session on this task really ended. The original end time is kept
+  // for admins. It can never be before the session start, in the future, or overlap a later session.
+  const timerAdjustMatch = path.match(/^\/tasks\/([^/]+)\/timer\/adjust$/);
+  if (req.method === "POST" && timerAdjustMatch) {
+    const taskId = timerAdjustMatch[1];
+    const deny = await assertTaskAccess(user, taskId);
+    if (deny) return deny;
+    const body = await parseBody(req) as Record<string, unknown>;
+    const newEnd = Date.parse(String(body.ended_at ?? ""));
+    if (!Number.isFinite(newEnd)) return json({ error: "Choose a valid end time." }, 400);
+    if (newEnd > Date.now() + 60_000) return json({ error: "The end time cannot be in the future." }, 400);
+    const reason = String(body.reason ?? "").trim().slice(0, 300) || null;
+    let sessQuery = supabase.from("task_timer_sessions")
+      .select("id, org_id, task_id, user_id, started_at, ended_at, original_ended_at")
+      .eq("task_id", taskId).eq("user_id", user.id);
+    if (body.session_id) sessQuery = sessQuery.eq("id", String(body.session_id));
+    const { data: sessions, error: sessError } = await sessQuery.order("started_at", { ascending: false }).limit(1);
+    if (sessError) return json({ error: sessError.message }, 400);
+    const target = sessions?.[0];
+    if (!target) return json({ error: "You have no timer session on this task to adjust." }, 404);
+    if (newEnd < Date.parse(target.started_at)) return json({ error: "The end time cannot be before the timer started." }, 400);
+    const { data: later } = await supabase.from("task_timer_sessions").select("started_at")
+      .eq("task_id", taskId).eq("user_id", user.id).gt("started_at", target.started_at)
+      .order("started_at", { ascending: true }).limit(1);
+    if (later?.[0] && newEnd > Date.parse(later[0].started_at)) {
+      return json({ error: "That time overlaps your next timer session." }, 409);
+    }
+    const nowIso = new Date().toISOString();
+    const { data: updated, error: updError } = await supabase.from("task_timer_sessions").update({
+      ended_at: new Date(newEnd).toISOString(),
+      adjusted_at: nowIso,
+      adjusted_by: user.id,
+      original_ended_at: target.original_ended_at ?? target.ended_at ?? null,
+      adjust_reason: reason,
+    }).eq("id", target.id)
+      .select("id, org_id, task_id, user_id, started_at, ended_at, adjusted_at, adjusted_by, original_ended_at, adjust_reason").single();
+    if (updError) return json({ error: updError.message }, 400);
+    return json(updated);
   }
 
   const timerActionMatch = path.match(/^\/tasks\/([^/]+)\/timer\/(start|pause)$/);
@@ -3524,6 +3712,8 @@ async function handleTasks(req: Request, path: string) {
 
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
+    const notAssignee = await assertTaskAssignee(user, id);
+    if (notAssignee) return notAssignee;
     let taskQuery = supabase.from("tasks").select("*, task_assignees(profile_id)").eq("id", id);
     if (user.org_id) taskQuery = taskQuery.eq("org_id", user.org_id);
     const { data: current, error: currentError } = await taskQuery.maybeSingle();
@@ -3586,8 +3776,15 @@ async function handleTasks(req: Request, path: string) {
     } else if (nextStatus !== "completed") {
       patch.kanban_approved_at = null;
     }
+    let boardRoute: { stage: "manager" | "admin"; reviewerIds: string[] } | null = null;
     if (nextStatus === "submitted" && previousStatus !== "submitted") {
       patch.submission_notes = "Submitted from Kanban board";
+      boardRoute = await reviewRouteFor(user);
+      patch.review_stage = boardRoute.stage;
+      patch.manager_approved_by = null;
+      patch.manager_approved_at = null;
+    } else if (previousStatus === "submitted" && nextStatus !== "submitted") {
+      patch.review_stage = null;
     }
     if (nextStatus === "completed" && previousStatus === "submitted") {
       patch.approval_notes = current.approval_notes || "Approved from Kanban board";
@@ -3620,7 +3817,7 @@ async function handleTasks(req: Request, path: string) {
       }, action === "submitted" ? "Submitted from Kanban board" : action === "approved" ? "Approved from Kanban board" : null));
       scheduleNotify(async () => {
         const who = await getActorDisplayName(supabase, user.id);
-        const admins = nextStatus === "submitted" ? await orgAdminIds(user.org_id) : [];
+        const admins = nextStatus === "submitted" ? (boardRoute?.reviewerIds ?? await orgAdminIds(user.org_id)) : [];
         await notifyUsersEdge(supabase, {
           userIds: [...(out.assignee_ids || []), ...admins],
           excludeUserId: user.id,
@@ -3664,6 +3861,13 @@ async function handleTasks(req: Request, path: string) {
     const { title, description, priority, due_date, due_time, project_id } = body as any;
     const assignee_ids = normalizeAssigneeIds(body);
     if (!title?.trim()) return json({ error: "Title is required" }, 400);
+    if (user.role === "manager" && assignee_ids.length) {
+      // Managers assign work to the people in their own teams (or to themselves).
+      const allowed = new Set([user.id, ...(await managedMemberIds(user.id, user.org_id))]);
+      if (assignee_ids.some((id) => !allowed.has(id))) {
+        return json({ error: "You can only assign tasks to people in your teams (or yourself)." }, 403);
+      }
+    }
     // Optional GitHub repository (and branch) this task's work lives in.
     const ghRepo = normalizeRepo((body as any).github_repo);
     if ("error" in ghRepo) return json({ error: ghRepo.error }, 400);
@@ -3890,6 +4094,7 @@ async function handleTasks(req: Request, path: string) {
     } else if (status !== "completed") {
       statusUpdate.kanban_approved_at = null;
     }
+    if (beforeRow?.status === "submitted" && status !== "submitted") statusUpdate.review_stage = null;
     let uq = supabase
       .from("tasks")
       .update(statusUpdate)
@@ -3930,11 +4135,26 @@ async function handleTasks(req: Request, path: string) {
   const patchTaskDetail = path.match(/^\/tasks\/([^/]+)$/);
   if (req.method === "PATCH" && patchTaskDetail) {
     const id = patchTaskDetail[1];
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    // Admins edit any task. Managers edit the tasks they can open (their own and their teams'), and may only put people from
+    // their teams (or themselves, or people already on the task) on it.
+    const roleErr = requireManager(user);
+    if (roleErr) return roleErr;
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
+    if (user.role === "manager" && (body.assignee_ids !== undefined || body.assigneeIds !== undefined)) {
+      const { data: curLinks } = await supabase.from("task_assignees").select("profile_id").eq("task_id", id);
+      const { data: curRow } = await supabase.from("tasks").select("assignee_id").eq("id", id).maybeSingle();
+      const allowed = new Set([
+        user.id,
+        ...(await managedMemberIds(user.id, user.org_id)),
+        ...(curLinks ?? []).map((r: { profile_id: string }) => r.profile_id),
+        ...(curRow?.assignee_id ? [curRow.assignee_id] : []),
+      ]);
+      if (normalizeAssigneeIds(body).some((x) => !allowed.has(x))) {
+        return json({ error: "You can only assign tasks to people in your teams (or yourself)." }, 403);
+      }
+    }
     const {
       title,
       description,
@@ -4072,14 +4292,20 @@ async function handleTasks(req: Request, path: string) {
     const id = submitMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
+    const notAssignee = await assertTaskAssignee(user, id);
+    if (notAssignee) return notAssignee;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
+    const route = await reviewRouteFor(user);
     let uq = supabase
       .from("tasks")
       .update({
         status: "submitted",
         kanban_column: "done",
         submission_notes: note || null,
+        review_stage: route.stage,
+        manager_approved_by: null,
+        manager_approved_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);
@@ -4097,9 +4323,8 @@ async function handleTasks(req: Request, path: string) {
     );
     scheduleNotify(async () => {
       const who = await getActorDisplayName(supabase, user.id);
-      const admins = await orgAdminIds(user.org_id);
       await notifyUsersEdge(supabase, {
-        userIds: [...(out.assignee_ids || []), ...admins],
+        userIds: [...(out.assignee_ids || []), ...route.reviewerIds],
         excludeUserId: user.id,
         category: "task_update",
         title: "Task ready for review",
@@ -4113,18 +4338,51 @@ async function handleTasks(req: Request, path: string) {
   // POST /tasks/:id/approve — admin approves the submission → completed.
   const approveMatchT = path.match(/^\/tasks\/([^/]+)\/approve$/);
   if (req.method === "POST" && approveMatchT) {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    const reviewErr = requireReviewer(user);
+    if (reviewErr) return reviewErr;
     const id = approveMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
+
+    if (user.role === "manager") {
+      // First review step: the manager signs off, then the task waits for an admin. It is NOT completed here.
+      const { data: cur } = await supabase.from("tasks").select("status, review_stage, assignee_id").eq("id", id).eq("org_id", user.org_id).maybeSingle();
+      if (!cur) return json({ error: "Task not found" }, 404);
+      if (cur.status !== "submitted" || cur.review_stage !== "manager") {
+        return json({ error: "This task is not waiting for manager approval." }, 409);
+      }
+      if (!(await managerOverseesTask(user, id, cur))) return json({ error: "This task is not in one of your teams." }, 403);
+      const now = new Date().toISOString();
+      const { data: moved, error: mErr } = await supabase.from("tasks")
+        .update({ review_stage: "admin", manager_approved_by: user.id, manager_approved_at: now, approval_notes: note || null, updated_at: now })
+        .eq("id", id).eq("org_id", user.org_id).select("*").maybeSingle();
+      if (mErr) return json({ error: mErr.message }, 400);
+      if (!moved) return json({ error: "Task not found" }, 404);
+      const mOut = (await shapeTasksWithJoins([moved]))[0];
+      scheduleAudit(() => logTaskHistory(id, user.id, user.org_id, "manager_approved", { review_stage: { from: "manager", to: "admin" } }, note || null));
+      scheduleNotify(async () => {
+        const who = await getActorDisplayName(supabase, user.id);
+        const admins = await orgAdminIds(user.org_id);
+        await notifyUsersEdge(supabase, {
+          userIds: [...admins, ...(mOut.assignee_ids || [])],
+          excludeUserId: user.id,
+          category: "task_update",
+          title: "Task ready for admin approval",
+          body: `${who} approved "${mOut.title}". It now needs admin approval.`,
+          data: { type: "task", taskId: id, url: "/" },
+        });
+      });
+      return json(mOut);
+    }
+
     let uq = supabase
       .from("tasks")
       .update({
         status: "completed",
         kanban_column: "done",
+        review_stage: null,
         kanban_approved_at: new Date().toISOString(),
         approval_notes: note || null,
         updated_at: new Date().toISOString(),
@@ -4156,19 +4414,25 @@ async function handleTasks(req: Request, path: string) {
   // POST /tasks/:id/request-changes — admin sends task back for rework.
   const requestChangesMatchT = path.match(/^\/tasks\/([^/]+)\/request-changes$/);
   if (req.method === "POST" && requestChangesMatchT) {
-    const adminErr = requireAdmin(user);
-    if (adminErr) return adminErr;
+    const reviewErr = requireReviewer(user);
+    if (reviewErr) return reviewErr;
     const id = requestChangesMatchT[1];
     const deny = await assertTaskAccess(user, id);
     if (deny) return deny;
     const body = await parseBody(req) as Record<string, unknown>;
     const note = typeof body.note === "string" ? String(body.note).trim() : "";
     if (!note) return json({ error: "Please describe the changes requested" }, 400);
-    let beforeQuery = supabase.from("tasks").select("status").eq("id", id);
+    let beforeQuery = supabase.from("tasks").select("status, review_stage, assignee_id").eq("id", id);
     if (user.org_id) beforeQuery = beforeQuery.eq("org_id", user.org_id);
     const { data: before, error: beforeError } = await beforeQuery.maybeSingle();
     if (beforeError) return json({ error: beforeError.message }, 400);
     if (!before) return json({ error: "Task not found" }, 404);
+    if (user.role === "manager") {
+      if (before.status !== "submitted" || before.review_stage !== "manager") {
+        return json({ error: "This task is not waiting for manager approval." }, 409);
+      }
+      if (!(await managerOverseesTask(user, id, before))) return json({ error: "This task is not in one of your teams." }, 403);
+    }
     const reviewRejected = before.status === "submitted";
     const nextStatus = reviewRejected ? "rejected" : "changes_requested";
     const nextColumn = reviewRejected ? "in_progress" : "backlog";
@@ -4178,6 +4442,7 @@ async function handleTasks(req: Request, path: string) {
         status: nextStatus,
         kanban_column: nextColumn,
         kanban_approved_at: null,
+        review_stage: null,
         approval_notes: note,
         updated_at: new Date().toISOString(),
       })
@@ -5009,6 +5274,21 @@ async function driveOwnerEmails(ids: string[]): Promise<Record<string, string>> 
   return out;
 }
 
+// Most files one prepare-batch / complete-batch request may carry.
+const DRIVE_BATCH_MAX = 100;
+
+/** Runs `worker` over `items`, at most `limit` at a time (workers record their own results and errors). */
+async function drivePool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      await worker(items[index], index);
+    }
+  }));
+}
+
 async function handleDrive(req: Request, path: string) {
   if (!path.startsWith("/drive")) return null;
   const auth = await requireAuth(req);
@@ -5045,11 +5325,19 @@ async function handleDrive(req: Request, path: string) {
       const names = await driveOwnerNames(lookupIds);
       const emails = isAdminViewer ? await driveOwnerEmails(lookupIds) : {};
       const folderPath = crumbs.map((c) => c.name).join(" / ");
+      // A folder's size is everything inside it (subfolders included). Optional: older databases without the function just show no size.
+      const folderTotals = new Map<string, { total_bytes: number; file_count: number }>();
+      if (folders.length) {
+        const { data: totals, error: totalsErr } = await supabase.rpc("drive_folder_sizes", { p_org: user.org_id, p_viewer: user.id });
+        if (totalsErr) console.warn("[drive] folder sizes unavailable:", totalsErr.message);
+        for (const row of (totals ?? []) as any[]) folderTotals.set(row.folder_id, { total_bytes: Number(row.total_bytes) || 0, file_count: Number(row.file_count) || 0 });
+      }
       return json({
         folder_id: folderId,
         breadcrumbs: crumbs,
         folders: folders.sort((a, b) => a.name.localeCompare(b.name)).map((f) => ({
           kind: "folder", id: f.id, name: f.name, visibility: f.visibility, owner_id: f.owner_id,
+          ...(folderTotals.has(f.id) ? { size_bytes: folderTotals.get(f.id)!.total_bytes, file_count: folderTotals.get(f.id)!.file_count } : {}),
           owner_name: names[f.owner_id] || "Member", created_at: f.created_at, is_owner: f.owner_id === user.id,
           // Properties are only returned to administrators.
           ...(isAdminViewer ? { details: {
@@ -5183,6 +5471,84 @@ async function handleDrive(req: Request, path: string) {
       const { data, error } = await supabase.storage.from(DRIVE_BUCKET).createSignedUploadUrl(objectPath);
       if (error) return json({ error: error.message }, 400);
       return json({ file_id: fileId, bucket: DRIVE_BUCKET, path: objectPath, token: data.token });
+    }
+
+    // POST /drive/files/prepare-batch  { files: [{ name, folder_id? }] }
+    //   -> { results: [{ file_id, bucket, path, token } | { error }] }   (same order as the request)
+    // POST /drive/files/complete-batch { files: [{ file_id, name, folder_id?, content_type? }], visibility? }
+    //   -> { results: [{ id } | { error }] }
+    // Same job as prepare / complete, but for up to DRIVE_BATCH_MAX files per request. Uploading a big folder otherwise costs three
+    // requests per file, each re-reading the folder tree; batching it makes that one request per ~40 files.
+    if (req.method === "POST" && path === "/drive/files/prepare-batch") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const items = (Array.isArray(body.files) ? body.files : []).slice(0, DRIVE_BATCH_MAX) as any[];
+      if (!items.length) return json({ error: "No files to prepare." }, 400);
+      const { byId, visible } = await driveLoadFolders(user);
+      const results: unknown[] = new Array(items.length);
+      await drivePool(items, 8, async (it, i) => {
+        const displayName = driveCleanName(it?.name, 255);
+        if (!displayName) { results[i] = { error: "File name is required." }; return; }
+        const folderId = it?.folder_id ? String(it.folder_id) : null;
+        if (folderId && (!byId.has(folderId) || !visible(folderId))) { results[i] = { error: "Folder not found" }; return; }
+        const fileId = crypto.randomUUID();
+        const objectPath = `${user.org_id}/${user.id}/${fileId}-${displayName.replace(/[^\w.\-() ]+/g, "_")}`;
+        const { data, error } = await supabase.storage.from(DRIVE_BUCKET).createSignedUploadUrl(objectPath);
+        results[i] = error ? { error: error.message } : { file_id: fileId, bucket: DRIVE_BUCKET, path: objectPath, token: data.token };
+      });
+      return json({ results });
+    }
+
+    if (req.method === "POST" && path === "/drive/files/complete-batch") {
+      const body = await parseBody(req) as Record<string, unknown>;
+      const items = (Array.isArray(body.files) ? body.files : []).slice(0, DRIVE_BATCH_MAX) as any[];
+      if (!items.length) return json({ error: "No files to complete." }, 400);
+      const visibility = driveVisibility(body.visibility);
+      const { byId, visible } = await driveLoadFolders(user);
+      const results: any[] = new Array(items.length);
+      const rows: any[] = [];
+      const rowIndex: number[] = [];
+      await drivePool(items, 8, async (it, i) => {
+        const displayName = driveCleanName(it?.name, 255);
+        const fileId = String(it?.file_id || "");
+        if (!displayName || !/^[0-9a-f-]{36}$/i.test(fileId)) { results[i] = { error: "Invalid upload." }; return; }
+        const folderId = it?.folder_id ? String(it.folder_id) : null;
+        if (folderId && (!byId.has(folderId) || !visible(folderId))) { results[i] = { error: "Folder not found" }; return; }
+        // The path is rebuilt from the caller's own org/user ids, so nobody can register someone else's object.
+        const safe = displayName.replace(/[^\w.\-() ]+/g, "_");
+        const { data: found } = await supabase.storage.from(DRIVE_BUCKET)
+          .list(`${user.org_id}/${user.id}`, { search: `${fileId}-`, limit: 5 });
+        const stored = (found ?? []).find((entry: any) => entry.name === `${fileId}-${safe}`);
+        if (!stored) { results[i] = { error: "The upload did not reach storage." }; return; }
+        const size = Number((stored as any).metadata?.size ?? (stored as any).metadata?.contentLength ?? 0);
+        rows.push({
+          id: fileId, org_id: user.org_id, folder_id: folderId, owner_id: user.id, name: displayName,
+          bucket: DRIVE_BUCKET, path: `${user.org_id}/${user.id}/${fileId}-${safe}`,
+          content_type: it?.content_type ? String(it.content_type).slice(0, 200) : null, size_bytes: size, visibility,
+        });
+        rowIndex.push(i);
+      });
+      if (rows.length) {
+        const { data: inserted, error } = await supabase.from("drive_files").insert(rows)
+          .select("id, folder_id, name, content_type, size_bytes, visibility, owner_id");
+        if (error) {
+          await supabase.storage.from(DRIVE_BUCKET).remove(rows.map((r) => r.path));
+          rowIndex.forEach((i) => { results[i] = { error: error.message }; });
+        } else {
+          rows.forEach((r, k) => { results[rowIndex[k]] = { id: r.id }; });
+          try {
+            const { data: actor } = await supabase.from("profiles").select("full_name, email").eq("id", user.id).maybeSingle();
+            const actorName = actor?.full_name || actor?.email || "Member";
+            await supabase.from("drive_activity").insert((inserted ?? []).map((d: any) => ({
+              org_id: user.org_id, actor_id: user.id, actor_name: actorName, item_kind: "file", item_id: d.id, item_name: d.name,
+              item_owner_id: user.id, action: "uploaded", public_at_event: d.visibility === "public",
+              details: { size_bytes: d.size_bytes, content_type: d.content_type, visibility: d.visibility, folder_id: d.folder_id },
+            })));
+          } catch (e) {
+            console.error("[drive] batch activity log failed:", (e as Error).message);
+          }
+        }
+      }
+      return json({ results });
     }
 
     // POST /drive/files/complete  { file_id, name, folder_id?, visibility?, content_type? }
@@ -5425,6 +5791,143 @@ async function handleDrive(req: Request, path: string) {
   }
 }
 
+// ── Leave portal ──
+// Employees request leave; an admin of the same organisation approves or rejects it. Every route is org-scoped, an
+// employee only ever sees and changes their own requests, and only an admin can change a request's status.
+const LEAVE_TYPES = ["sick", "exam", "emergency", "trip", "half day", "late coming"];
+// These two only make sense within a single day.
+const SINGLE_DAY_LEAVE_TYPES = ["half day", "late coming"];
+const LEAVE_MAX_DAYS = 366;
+
+function leaveIsoDate(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(s + "T00:00:00Z");
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+function leaveDayCount(start: string, end: string): number {
+  return Math.round((Date.parse(end + "T00:00:00Z") - Date.parse(start + "T00:00:00Z")) / 86400000) + 1;
+}
+// Validate the user-supplied part of a request. Returns the columns to store, or an error message.
+function leaveParseInput(body: any): { error: string } | { fields: { leave_type: string; is_custom: boolean; duration: string; start_date: string; end_date: string; reason: string | null } } {
+  const rawType = String(body?.leave_type ?? "").trim();
+  let leave_type: string; let is_custom = false;
+  if (LEAVE_TYPES.includes(rawType.toLowerCase())) leave_type = rawType.toLowerCase();
+  else if (rawType.toLowerCase() === "custom") {
+    const custom = String(body?.custom_type ?? "").replace(/\s+/g, " ").trim();
+    if (custom.length < 2 || custom.length > 60) return { error: "Enter a custom leave type (2–60 characters)." };
+    leave_type = custom; is_custom = true;
+  } else return { error: "Choose a leave type: sick, exam, emergency, trip or custom." };
+  const duration = String(body?.duration ?? "").toLowerCase();
+  if (duration !== "single" && duration !== "multi") return { error: "Choose one day or multiple days." };
+  if (duration === "multi" && SINGLE_DAY_LEAVE_TYPES.includes(leave_type)) return { error: "Half day and late coming are for a single day." };
+  const start_date = leaveIsoDate(body?.start_date);
+  if (!start_date) return { error: "Enter a valid From date." };
+  const end_date = duration === "single" ? start_date : leaveIsoDate(body?.end_date);
+  if (!end_date) return { error: "Enter a valid To date." };
+  if (end_date < start_date) return { error: "The To date can't be before the From date." };
+  if (leaveDayCount(start_date, end_date) > LEAVE_MAX_DAYS) return { error: `Leave can't be longer than ${LEAVE_MAX_DAYS} days.` };
+  const reason = String(body?.reason ?? "").trim().slice(0, 1000) || null;
+  return { fields: { leave_type, is_custom, duration, start_date, end_date, reason } };
+}
+async function leaveNames(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const map = new Map<string, string>();
+  if (!unique.length) return map;
+  const { data } = await supabase.from("profiles").select("id, full_name, email").in("id", unique);
+  for (const p of (data || []) as any[]) map.set(p.id, p.full_name || p.email || "Unknown");
+  return map;
+}
+function leaveShape(r: any, names: Map<string, string>) {
+  return {
+    id: r.id, user_id: r.user_id, employee_name: names.get(r.user_id) || "Unknown",
+    leave_type: r.leave_type, is_custom: !!r.is_custom, duration: r.duration,
+    start_date: r.start_date, end_date: r.end_date, days: leaveDayCount(r.start_date, r.end_date),
+    reason: r.reason, status: r.status,
+    reviewed_by_name: r.reviewed_by ? (names.get(r.reviewed_by) || null) : null,
+    reviewed_at: r.reviewed_at, review_note: r.review_note, created_at: r.created_at,
+  };
+}
+
+async function handleLeaves(req: Request, path: string) {
+  if (path !== "/leaves" && !path.startsWith("/leaves/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+  const isAdmin = user.role === "admin";
+
+  if (path === "/leaves" && req.method === "GET") {
+    let q = supabase.from("leave_requests").select("*").eq("org_id", user.org_id)
+      .order("start_date", { ascending: false }).order("created_at", { ascending: false }).limit(500);
+    if (user.role === "manager") {
+      // A manager sees their own leave plus the leave of the people in their teams (read-only: only an admin decides).
+      q = q.in("user_id", [user.id, ...(await managedMemberIds(user.id, user.org_id))]);
+    } else if (!isAdmin) q = q.eq("user_id", user.id);
+    const { data, error } = await q;
+    if (error) return json({ error: error.message }, 400);
+    const rows = (data || []) as any[];
+    const names = await leaveNames(rows.flatMap((r) => [r.user_id, r.reviewed_by]));
+    return json(rows.map((r) => leaveShape(r, names)));
+  }
+
+  if (path === "/leaves" && req.method === "POST") {
+    const parsed = leaveParseInput(await parseBody(req));
+    if ("error" in parsed) return json({ error: parsed.error }, 400);
+    const f = parsed.fields;
+    const { data: clash } = await supabase.from("leave_requests").select("id").eq("user_id", user.id)
+      .in("status", ["pending", "approved"]).lte("start_date", f.end_date).gte("end_date", f.start_date).limit(1);
+    if (clash && clash.length) return json({ error: "You already have a pending or approved leave request on those dates." }, 409);
+    const { data, error } = await supabase.from("leave_requests")
+      .insert([{ org_id: user.org_id, user_id: user.id, ...f, status: "pending" }]).select("*").single();
+    if (error) return json({ error: error.message }, 400);
+    return json(leaveShape(data, await leaveNames([user.id])), 201);
+  }
+
+  const m = path.match(/^\/leaves\/([0-9a-f-]{36})$/i);
+  if (!m) return json({ error: "Not found" }, 404);
+  const { data: row, error: rowErr } = await supabase.from("leave_requests").select("*").eq("id", m[1]).eq("org_id", user.org_id).maybeSingle();
+  if (rowErr) return json({ error: rowErr.message }, 400);
+  if (!row) return json({ error: "Leave request not found" }, 404);
+  const isOwner = row.user_id === user.id;
+
+  if (req.method === "DELETE") {
+    if (!isAdmin && !(isOwner && row.status === "pending")) return json({ error: "You can only cancel your own pending requests." }, 403);
+    const { error } = await supabase.from("leave_requests").delete().eq("id", row.id);
+    return error ? json({ error: error.message }, 400) : json({ ok: true });
+  }
+
+  if (req.method === "PATCH") {
+    const body: any = await parseBody(req);
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (body.status !== undefined) {
+      if (!isAdmin) return json({ error: "Only an admin can approve or reject leave." }, 403);
+      const status = String(body.status).toLowerCase();
+      if (!["pending", "approved", "rejected"].includes(status)) return json({ error: "Status must be pending, approved or rejected." }, 400);
+      update.status = status;
+      update.reviewed_by = status === "pending" ? null : user.id;
+      update.reviewed_at = status === "pending" ? null : new Date().toISOString();
+      update.review_note = String(body.review_note ?? "").trim().slice(0, 500) || null;
+    } else {
+      if (!isOwner) return json({ error: "You can only edit your own requests." }, 403);
+      if (row.status !== "pending") return json({ error: "Only pending requests can be edited." }, 409);
+      const current = row.is_custom ? { ...row, leave_type: "custom", custom_type: row.leave_type } : row;
+      const parsed = leaveParseInput({ ...current, ...body });
+      if ("error" in parsed) return json({ error: parsed.error }, 400);
+      const f = parsed.fields;
+      const { data: clash } = await supabase.from("leave_requests").select("id").eq("user_id", user.id).neq("id", row.id)
+        .in("status", ["pending", "approved"]).lte("start_date", f.end_date).gte("end_date", f.start_date).limit(1);
+      if (clash && clash.length) return json({ error: "You already have a pending or approved leave request on those dates." }, 409);
+      Object.assign(update, f);
+    }
+    const { data, error } = await supabase.from("leave_requests").update(update).eq("id", row.id).select("*").single();
+    if (error) return json({ error: error.message }, 400);
+    return json(leaveShape(data, await leaveNames([data.user_id, data.reviewed_by])));
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
 async function handleProjects(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -5552,6 +6055,137 @@ async function handleProjects(req: Request, path: string) {
   return null;
 }
 
+// ── Manager panel: teams and adding people ──
+// Managers run teams of employees, add new employees and assign them work. Admins can read every team.
+async function managerTeamsShape(teams: any[]): Promise<any[]> {
+  if (!teams.length) return [];
+  const { data: links } = await supabase.from("team_members").select("team_id, user_id").in("team_id", teams.map((t) => t.id));
+  const ids = [...new Set([...(links ?? []).map((l: any) => l.user_id), ...teams.map((t) => t.manager_id)])];
+  const { data: profs } = ids.length ? await supabase.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] as any[] };
+  const byId = new Map((profs ?? []).map((p: any) => [p.id, p]));
+  return teams.map((t) => ({
+    id: t.id, name: t.name, manager_id: t.manager_id,
+    manager_name: byId.get(t.manager_id)?.full_name || byId.get(t.manager_id)?.email || "",
+    created_at: t.created_at,
+    members: (links ?? []).filter((l: any) => l.team_id === t.id).map((l: any) => ({
+      id: l.user_id, full_name: byId.get(l.user_id)?.full_name || "", email: byId.get(l.user_id)?.email || "",
+    })),
+  }));
+}
+
+/** Keeps only ids that are plain employees of this organisation (never managers/admins, never the caller). */
+async function validTeamMemberIds(orgId: string, ids: unknown, selfId: string): Promise<string[]> {
+  const wanted = [...new Set((Array.isArray(ids) ? ids : []).map(String))].filter((id) => id && id !== selfId);
+  if (!wanted.length) return [];
+  const { data } = await supabase.from("profiles").select("id").eq("org_id", orgId).eq("role", "employee").in("id", wanted);
+  return (data ?? []).map((r: { id: string }) => r.id);
+}
+
+async function handleManager(req: Request, path: string) {
+  if (path !== "/manager" && !path.startsWith("/manager/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+  const roleErr = requireManager(user);
+  if (roleErr) return roleErr;
+  if (!user.org_id) return json({ error: "Your profile has no organization." }, 400);
+  const isManager = user.role === "manager";
+  const writeErr = () => json({ error: "Only managers can change teams." }, 403);
+
+  // People a manager can put on a team: the organisation's employees.
+  if (req.method === "GET" && path === "/manager/people") {
+    const { data, error } = await supabase.from("profiles").select("id, full_name, email, phone")
+      .eq("org_id", user.org_id).eq("role", "employee").order("full_name", { ascending: true });
+    if (error) return json({ error: error.message }, 400);
+    return json(data ?? []);
+  }
+
+  if (req.method === "GET" && path === "/manager/teams") {
+    let q = supabase.from("teams").select("*").eq("org_id", user.org_id).order("created_at", { ascending: true });
+    if (isManager) q = q.eq("manager_id", user.id);
+    const { data, error } = await q;
+    if (error) return json({ error: error.message }, 400);
+    return json(await managerTeamsShape(data ?? []));
+  }
+
+  if (req.method === "POST" && path === "/manager/teams") {
+    if (!isManager) return writeErr();
+    const body = await parseBody(req) as Record<string, unknown>;
+    const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+    if (name.length < 1 || name.length > 80) return json({ error: "Enter a team name (1–80 characters)." }, 400);
+    const { data: team, error } = await supabase.from("teams")
+      .insert([{ org_id: user.org_id, manager_id: user.id, name }]).select("*").single();
+    if (error) return json({ error: error.code === "23505" ? "You already have a team with that name." : error.message }, error.code === "23505" ? 409 : 400);
+    const members = await validTeamMemberIds(user.org_id, body.member_ids, user.id);
+    if (members.length) await supabase.from("team_members").insert(members.map((user_id) => ({ team_id: team.id, user_id })));
+    return json((await managerTeamsShape([team]))[0], 201);
+  }
+
+  const teamMatch = path.match(/^\/manager\/teams\/([0-9a-f-]{36})$/i);
+  if (teamMatch && (req.method === "PATCH" || req.method === "DELETE")) {
+    if (!isManager) return writeErr();
+    const { data: team } = await supabase.from("teams").select("*").eq("id", teamMatch[1]).eq("org_id", user.org_id).eq("manager_id", user.id).maybeSingle();
+    if (!team) return json({ error: "Team not found." }, 404);
+    if (req.method === "DELETE") {
+      const { error } = await supabase.from("teams").delete().eq("id", team.id);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+    const body = await parseBody(req) as Record<string, unknown>;
+    if (body.name !== undefined) {
+      const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+      if (name.length < 1 || name.length > 80) return json({ error: "Enter a team name (1–80 characters)." }, 400);
+      const { error } = await supabase.from("teams").update({ name }).eq("id", team.id);
+      if (error) return json({ error: error.code === "23505" ? "You already have a team with that name." : error.message }, error.code === "23505" ? 409 : 400);
+    }
+    if (body.member_ids !== undefined) {
+      const members = await validTeamMemberIds(user.org_id, body.member_ids, user.id);
+      await supabase.from("team_members").delete().eq("team_id", team.id);
+      if (members.length) await supabase.from("team_members").insert(members.map((user_id) => ({ team_id: team.id, user_id })));
+    }
+    const { data: fresh } = await supabase.from("teams").select("*").eq("id", team.id).single();
+    return json((await managerTeamsShape([fresh]))[0]);
+  }
+
+  // Add a new employee to the workspace (managers can only create employees), optionally straight into one of their teams.
+  if (req.method === "POST" && path === "/manager/users") {
+    if (!isManager) return writeErr();
+    const body = await parseBody(req) as Record<string, unknown>;
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const password = String(body.password ?? "");
+    const fullName = String(body.fullName ?? "").trim();
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    if (!email || !password || !fullName) return json({ error: "Email, password and full name are required" }, 400);
+    if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    let teamId: string | null = null;
+    if (body.team_id) {
+      const { data: team } = await supabase.from("teams").select("id").eq("id", String(body.team_id)).eq("manager_id", user.id).eq("org_id", user.org_id).maybeSingle();
+      if (!team) return json({ error: "Team not found." }, 404);
+      teamId = team.id;
+    }
+    const { data: created, error } = await supabase.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { full_name: fullName, role: "employee", org_id: String(user.org_id), phone: phone || null },
+    });
+    if (error) return json({ error: error.message }, (error as any).status || 400);
+    const userId = created.user?.id;
+    if (userId) {
+      const { error: upErr } = await supabase.from("profiles").upsert(
+        { id: userId, email, full_name: fullName, role: "employee", org_id: user.org_id, phone: phone || null },
+        { onConflict: "id" },
+      );
+      if (upErr) {
+        const { data: row } = await supabase.from("profiles").select("id").eq("id", userId).maybeSingle();
+        if (!row) return json({ error: "User created but profile linking failed", detail: upErr.message }, 500);
+      }
+      if (teamId) await supabase.from("team_members").insert([{ team_id: teamId, user_id: userId }]);
+    }
+    return json({ message: "User created", user_id: userId, email, full_name: fullName, role: "employee", team_id: teamId }, 201);
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
 async function handleAdmin(req: Request, path: string) {
   const auth = await requireAuth(req);
   if ("error" in auth) return auth.error;
@@ -5657,7 +6291,7 @@ async function handleAdmin(req: Request, path: string) {
     if (!user.org_id) {
       return json({ error: "Your profile has no organization; cannot create users." }, 400);
     }
-    const role = rawRole === "admin" ? "admin" : "employee";
+    const role = rawRole === "admin" ? "admin" : rawRole === "manager" ? "manager" : "employee";
 
     const { data: created, error } = await supabase.auth.admin.createUser({
       email,
@@ -5737,9 +6371,34 @@ async function handleAdmin(req: Request, path: string) {
     if (typeof (body as any).fullName === "string" && (body as any).fullName.trim()) {
       updates.full_name = (body as any).fullName.trim();
     }
+    const rawRole = (body as any).role;
+    let newRole: "admin" | "manager" | "employee" | null = null;
+    let wasManager = false;
+    if (rawRole !== undefined) {
+      if (rawRole !== "admin" && rawRole !== "manager" && rawRole !== "employee") return json({ error: "Role must be admin, manager or employee." }, 400);
+      const { data: cur } = await supabase.from("profiles").select("role").eq("id", targetId).maybeSingle();
+      if (cur && cur.role !== rawRole) {
+        if (targetId === user.id) return json({ error: "You cannot change your own role." }, 400);
+        if (cur.role === "admin") {
+          const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true })
+            .eq("org_id", user.org_id).eq("role", "admin");
+          if ((count ?? 0) <= 1) return json({ error: "A workspace needs at least one admin." }, 400);
+        }
+        newRole = rawRole;
+        wasManager = cur.role === "manager";
+        updates.role = rawRole;
+      }
+    }
     if (Object.keys(updates).length === 0) return json({ error: "Nothing to update." }, 400);
     const { error: upErr } = await supabase.from("profiles").update(updates).eq("id", targetId);
     if (upErr) return json({ error: upErr.message }, 500);
+    // A user who stops being a manager no longer runs teams; their former members then report straight to the admin.
+    if (wasManager && newRole !== "manager") await supabase.from("teams").delete().eq("manager_id", targetId);
+    if (newRole) {
+      // Keep the auth metadata in step with the profile (best effort: the profile is what the API reads).
+      const { data: au } = await supabase.auth.admin.getUserById(targetId);
+      if (au?.user) await supabase.auth.admin.updateUserById(targetId, { user_metadata: { ...(au.user.user_metadata || {}), role: newRole } });
+    }
     const { data: updated } = await supabase
       .from("profiles").select("id, email, full_name, role, phone, created_at").eq("id", targetId).maybeSingle();
     return json({ message: "User updated", user: updated });
@@ -6337,6 +6996,115 @@ async function handleGithub(req: Request, path: string): Promise<Response | null
   return null;
 }
 
+// ── Billing ─────────────────────────────────────────────────────────────────────────────────────
+// Which payment provider is connected. There is none until PAYMENT_PROVIDER (and that provider's keys) are set on the server;
+// until then checkout answers 503 and never records a payment.
+function paymentProvider(): string | null {
+  const p = (Deno.env.get("PAYMENT_PROVIDER") || "").trim().toLowerCase();
+  return p || null;
+}
+
+async function billingPayload(user: AppUser) {
+  const org = user.org_id ? await getOrgBilling(user.org_id, true) : null;
+  const state = accessState(org);
+  let lastPayment: { status: string; failure_reason: string | null; at: string } | null = null;
+  if (user.org_id) {
+    const { data } = await supabase.from("payments").select("status, failure_reason, created_at")
+      .eq("org_id", user.org_id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (data) lastPayment = { status: data.status, failure_reason: data.failure_reason ?? null, at: data.created_at };
+  }
+  return { ...state, trialDays: TRIAL_DAYS, canManageBilling: user.role === "admin", paymentsEnabled: !!paymentProvider(), lastPayment };
+}
+
+async function handleBilling(req: Request, path: string) {
+  if (!path.startsWith("/billing/")) return null;
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+  const { user } = auth;
+
+  if (req.method === "GET" && path === "/billing/status") return json(await billingPayload(user));
+
+  // Only a workspace admin can start a trial or pay.
+  const denied = requireAdmin(user);
+  if (denied) return denied;
+  if (!user.org_id) return json({ error: "You need a workspace first." }, 400);
+
+  if (req.method === "POST" && path === "/billing/start-trial") {
+    const now = new Date();
+    const ends = new Date(now.getTime() + TRIAL_DAYS * 86_400_000);
+    // One atomic, conditional update: only a Free workspace that has never had a trial can start one, so a paid plan is never
+    // overwritten and a trial can never be started twice.
+    const { data, error } = await supabase.from("organizations")
+      .update({ plan: "pro", plan_status: "trialing", trial_started_at: now.toISOString(), trial_ends_at: ends.toISOString(), trial_used: true })
+      .eq("id", user.org_id).eq("plan", "free").eq("plan_status", "none").eq("trial_used", false)
+      .select("id");
+    if (error) return json({ error: error.message }, 400);
+    orgBillingCache.delete(user.org_id);
+    if (!data?.length) {
+      const state = accessState(await getOrgBilling(user.org_id, true));
+      const why = state.plan !== "free" || state.status === "active" || state.status === "trialing"
+        ? "Your workspace is already on a plan."
+        : "The free trial has already been used for this workspace.";
+      return json({ error: why, code: "trial_not_available" }, 409);
+    }
+    return json(await billingPayload(user), 201);
+  }
+
+  if (req.method === "POST" && path === "/billing/checkout") {
+    const state = accessState(await getOrgBilling(user.org_id, true));
+    if (state.plan === "business" || (state.plan === "pro" && state.status === "active")) {
+      return json({ error: "Your workspace is already on a paid plan.", code: "already_paid" }, 409);
+    }
+    if (!paymentProvider()) {
+      return json({
+        error: "Online payments are not switched on yet. Please contact info@unimisk.com and we will activate your plan.",
+        code: "payments_not_configured",
+      }, 503);
+    }
+    return json({ error: "The configured payment provider is not supported by this server yet.", code: "provider_unsupported" }, 501);
+  }
+
+  // The person closed the payment window. Only a payment that is still pending can be cancelled.
+  const cancel = path.match(/^\/billing\/payments\/([0-9a-f-]{36})\/cancel$/i);
+  if (req.method === "POST" && cancel) {
+    const { data, error } = await supabase.from("payments")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", cancel[1]).eq("org_id", user.org_id).eq("status", "pending").select("id");
+    if (error) return json({ error: error.message }, 400);
+    if (!data?.length) return json({ error: "That payment can no longer be cancelled." }, 409);
+    return json(await billingPayload(user));
+  }
+
+  return json({ error: "Not found" }, 404);
+}
+
+async function handleBusinessInquiry(req: Request) {
+  let body: Record<string, unknown>;
+  try { body = (await parseBody(req)) as Record<string, unknown>; } catch { return json({ error: "Invalid request." }, 400); }
+  // Hidden field that people never see: only bots fill it. Pretend it worked.
+  if (typeof body.website === "string" && body.website.trim()) return json({ ok: true });
+
+  const checked = validateInquiry(body);
+  if (!checked.ok) return json({ error: "Please check the form.", fields: checked.errors }, 422);
+  const v = checked.value;
+
+  const since = new Date(Date.now() - 3_600_000).toISOString();
+  const { count: sameEmail } = await supabase.from("business_inquiries").select("id", { count: "exact", head: true })
+    .ilike("work_email", v.work_email).gte("created_at", since);
+  const { count: everyone } = await supabase.from("business_inquiries").select("id", { count: "exact", head: true }).gte("created_at", since);
+  if ((sameEmail ?? 0) >= 3 || (everyone ?? 0) >= 40) {
+    return json({ error: "Too many requests right now. Please try again later or email info@unimisk.com." }, 429);
+  }
+
+  const { error } = await supabase.from("business_inquiries").insert([{
+    name: v.name, work_email: v.work_email, company: v.company, job_title: v.job_title, team_size: v.team_size,
+    requirements: v.requirements, required_features: v.required_features, contact_method: v.contact_method,
+    phone: v.phone, budget: v.budget, message: v.message,
+  }]);
+  if (error) return json({ error: "We could not send your request. Please email info@unimisk.com." }, 500);
+  return json({ ok: true }, 201);
+}
+
 Deno.serve(async (req): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -6375,6 +7143,10 @@ Deno.serve(async (req): Promise<Response> => {
     // Outbound: send a signed message to the Axynt agent (authenticated user)
     if (req.method === "POST" && path === "/ai/axynt") return await handleAxyntSend(req);
 
+    if (req.method === "POST" && path === "/public/business-inquiry") return await handleBusinessInquiry(req);
+    const billingResp = await handleBilling(req, path);
+    if (billingResp) return billingResp;
+
     const notificationsResp = await handleNotificationRoutes(req, path, supabase, requireAuth);
     if (notificationsResp) return notificationsResp;
 
@@ -6386,6 +7158,9 @@ Deno.serve(async (req): Promise<Response> => {
     const driveResp = await handleDrive(req, path);
     if (driveResp) return driveResp;
 
+    const leavesResp = await handleLeaves(req, path);
+    if (leavesResp) return leavesResp;
+
     const projectsResp = await handleProjects(req, path);
     if (projectsResp) return projectsResp;
 
@@ -6394,6 +7169,9 @@ Deno.serve(async (req): Promise<Response> => {
 
     const meetingsResp = await handleMeetings(req, path);
     if (meetingsResp) return meetingsResp;
+
+    const managerResp = await handleManager(req, path);
+    if (managerResp) return managerResp;
 
     const adminResp = await handleAdmin(req, path);
     if (adminResp) return adminResp;

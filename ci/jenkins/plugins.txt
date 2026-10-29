@@ -1,0 +1,17 @@
+# Minimal plugin set (resolved to the latest compatible versions at image build time; the image tag
+# is the pin — rebuild deliberately, then run `scan-image.sh` before using the new image).
+configuration-as-code
+job-dsl
+workflow-aggregator
+pipeline-stage-view
+git
+github-branch-source
+credentials-binding
+plain-credentials
+timestamper
+ws-cleanup
+build-timeout
+matrix-auth
+role-strategy
+config-file-provider
+pipeline-multibranch-defaults

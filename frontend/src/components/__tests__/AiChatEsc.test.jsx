@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 
-vi.mock('../../api', () => ({ default: { post: vi.fn() } }));
+vi.mock('../../api', () => ({ default: { post: vi.fn(), get: vi.fn().mockResolvedValue({ data: {} }) } }));
 vi.mock('../AiMessage', () => ({ default: () => <div /> }));
 
 import AiChat from '../AiChat';

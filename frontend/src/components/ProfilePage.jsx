@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BadgeCheck, Building2, CalendarDays, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react';
+import { BadgeCheck, Building2, CalendarDays, Crown, Mail, Phone, ShieldCheck, UserRound } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
+import { useBilling } from '../BillingContext';
+import { planSummary } from '../lib/useWorkspacePlan';
 
 const fieldStyle = {
   width: '100%',
@@ -28,6 +30,7 @@ function Detail({ icon: Icon, label, value }) {
 
 export default function ProfilePage() {
   const { profile, refreshProfile } = useAuth();
+  const { billing } = useBilling();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [saving, setSaving] = useState(false);
@@ -53,7 +56,7 @@ export default function ProfilePage() {
     }
   }
 
-  const role = profile?.role === 'admin' ? 'Administrator' : 'Employee';
+  const role = profile?.role === 'admin' ? 'Administrator' : profile?.role === 'manager' ? 'Manager' : 'Employee';
   const joined = profile?.created_at ? new Date(profile.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
 
   return (
@@ -75,6 +78,7 @@ export default function ProfilePage() {
           </span>
           <div style={{ textAlign: 'left', marginTop: 18 }}>
             <Detail icon={Building2} label="Workspace" value={profile?.organization_name || profile?.org?.name || (profile?.org_id ? 'Workspace member' : 'No workspace')} />
+            {billing && <Detail icon={Crown} label="Plan" value={planSummary(billing)} />}
             <Detail icon={CalendarDays} label="Member since" value={joined} />
             <Detail icon={BadgeCheck} label="Account status" value={profile?.status === 'active' || !profile?.status ? 'Active' : profile.status.replaceAll('_', ' ')} />
           </div>
