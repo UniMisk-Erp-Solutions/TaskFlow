@@ -1,0 +1,23 @@
+{
+  "_note": "UniMisk CI project registry. ONE Jenkins and ONE gate serve every project listed here. Admin-owned: changed only through a reviewed pull request. No secrets belong in this file (they live in files on the server). After editing run: node ci/jenkins/generate.mjs",
+  "defaultProject": "taskflow",
+  "admins": ["admin", "unimisk-erp-solutions"],
+  "projects": [
+    {
+      "id": "taskflow",
+      "displayName": "TaskFlow",
+      "repo": "UniMisk-Erp-Solutions/TaskFlow",
+      "jenkinsFolder": "taskflow",
+      "centralJenkinsfile": "Jenkinsfile.central",
+      "developers": [
+        { "user": "naveena246", "prefixes": ["naveena246", "naveena"] },
+        { "user": "salomi2810", "prefixes": ["salomi2810", "salomi"] },
+        { "user": "lakshyabyteo", "prefixes": ["lakshyabyteo", "lakshya"] },
+        { "user": "nikunjbyteo", "prefixes": ["nikunjbyteo", "nikunj"] },
+        { "user": "jacktechie", "prefixes": ["jacktechie"] },
+        { "user": "preet1249", "prefixes": ["preet1249", "preet"] },
+        { "user": "priyanshubyte", "prefixes": ["priyanshubyte", "priyanshu"] }
+      ]
+    }
+  ]
+}

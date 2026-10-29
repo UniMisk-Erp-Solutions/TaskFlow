@@ -142,7 +142,7 @@ Each stage also writes `.ci/quality/<check>.json` (archived by Jenkins) with eve
 | Developer logins | `ci/jenkins/casc/jenkins.yaml` | GitHub usernames and branch prefixes for per-developer visibility |
 | Database checks (later) | per-project test database and migrations | see below |
 
-**Onboarding a new project, in order:**
+**Onboarding a new project:** `node ci/bootstrap/new-project.mjs` prepares the project's side in one step and prints the server steps (see "Many projects, one Jenkins and one gate" in [ci-cd-pipeline.md](ci-cd-pipeline.md)). The same steps by hand:
 1. Copy `ci/` into the repository; run `node ci/verify/quality/run.mjs --init`.
 2. Edit `policy.json` (roots, aliases, tests) and write the architecture rules with the team.
 3. Run `all --audit`, read the report, fix cheap findings (broken imports, dead files).

@@ -1035,6 +1035,32 @@ Developers see their own pipeline in Jenkins without any admin rights.
 
 Four static quality stages (repository policy, code standards, maintainability, architecture) enforce the UniMisk engineering standard on every branch, blocking only new or worsened problems against a baseline. Rules, thresholds, the TaskFlow architecture, what is universal and what each project must provide, and what is not implemented yet: see [engineering-quality.md](engineering-quality.md).
 
+## Many projects, one Jenkins and one gate (2026-10-29)
+
+One Jenkins server and one gate serve every UniMisk project. A project is described **once**, in the registry `ci/projects.json` (id, repository, Jenkins folder, developers and their branch prefixes; admins are listed once for all). No secrets are in it.
+
+**What the registry drives**
+- `node ci/jenkins/generate.mjs` writes, from the registry, the Jenkins parts that depend on a project: the developer logins, the admin role entries, one folder role and one branch role per developer per project, one central-Jenkinsfile entry per project, and one multibranch job per project. Everything else in `jenkins.yaml` and `github.yaml` stays hand-written. A test (`multi-project.test.mjs`) fails if the committed files differ from what the registry would produce.
+- The gate (`ci/gate-service/main.mjs`) starts one verification pipeline per project: its own Jenkins folder, git mirror, state, attestations, webhook secret and status posting. The first project keeps the original state paths and the baked-in pipeline pin; every other project is judged against **the tip of its own `main`** (a change reaches `main` only through an admin-reviewed pull request), so there is nothing to re-pin by hand. If a project's `main` cannot be read, nothing is signed.
+- Webhooks: `POST /github` is the first project; `POST /github/<id>` is any project. Each has its own secret and allowed repository; one project's secret does not open another's endpoint. The webhook is optional: the gate also detects pushes by polling.
+
+**On the server**
+- `.env`: `GATE_PROJECTS_FILE=/app/ci/projects.json` (empty or unset = the old single-repository mode) and `GATE_PROJECT_SECRETS_PATH=<folder>` (mounted read-only into the gate).
+- For every project except the first: `<GATE_PROJECT_SECRETS_PATH>/<id>/webhook-secret` (required, the gate refuses to start without it) and optionally `<id>/github-token` (otherwise the main token is used, so it must have access to that repository).
+- State lives in `projects/<id>/` inside the gate volume.
+
+**Adding a project** (the tool prepares the project's side; the admin does the rest)
+1. In the platform repository: `node ci/bootstrap/new-project.mjs --id acme --repo UniMisk-Erp-Solutions/Acme --target ../Acme` shows the plan; add `--write` to create the files in the project, `--baseline` to also record its quality baseline (needs its dependencies installed). It detects the packages and their `lint`, `typecheck`, `build` and `test` scripts, generates `ci/pipeline/config.mjs`, the `Jenkinsfile` and the quality policy, and adapts the overlay and Trivy scripts. It copies the shared `ci/lib`, `ci/gate` and the quality engine.
+2. In the project: fill `PRODUCTION_HOSTS` and `CI_BUILD_ENV` in `ci/pipeline/config.mjs`, write the architecture rules in `ci/verify/quality/policy.json`, record the baseline, and merge it by pull request.
+3. In `ci/projects.json`: add the entry the tool printed (with its developers) and run `node ci/jenkins/generate.mjs`. Copy the project's `Jenkinsfile` to `ci/jenkins/casc/projects/<id>/Jenkinsfile` (a test must show it equals the repository one).
+4. On the server: create `secrets/projects/<id>/webhook-secret`, rebuild and restart Jenkins (new job, roles, central Jenkinsfile) and the gate (new project), then optionally add the GitHub webhook to `<gate address>/github/<id>`.
+
+**Limits (honest)**
+- Each project carries its own copy of the shared `ci/` files for now, so improving a rule means copying the updated files into each project (the bootstrap tool re-creates them). A separate shared toolkit repository can replace the copies later without changing anything else here.
+- The central Jenkinsfile of each project is baked into the Jenkins image, so changing a project's `Jenkinsfile` needs an image rebuild, exactly as for TaskFlow.
+- The gate needs `main` of every project to be admin-controlled. On a free GitHub organization that is a team agreement, not an enforced rule.
+- Not yet exercised with a real second project: it is covered by tests with fake projects (registry, gate judgement, webhook routing, the real gate process with two projects, generator output, bootstrap output).
+
 ## Revision log
 
 | Date | Change |
@@ -1064,3 +1090,4 @@ Four static quality stages (repository policy, code standards, maintainability, 
 | 2026-10-29 | Engineering quality gates: four new required stages, quality engine in `ci/verify/quality`, TaskFlow policy and baseline. See `docs/engineering-quality.md`. |
 | 2026-10-29 | `unimisk-erp-solutions` made a Jenkins admin with its own password file instead of the shared developer password. |
 | 2026-10-29 | Added the `priyanshubyte` branch-developer login (same initial password as the others). |
+| 2026-10-29 | One Jenkins and one gate for many projects: project registry `ci/projects.json`, generated Jenkins jobs and roles, multi-project gate, `ci/bootstrap/new-project.mjs`. TaskFlow behaviour unchanged. |

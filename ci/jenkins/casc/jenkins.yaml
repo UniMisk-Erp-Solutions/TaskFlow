@@ -28,6 +28,7 @@ jenkins:
           password: "${JENKINS_ADMIN_PASSWORD}"
         - id: "developer"     # read-only: see jobs, stages and logs; cannot build, configure or see credentials
           password: "${trim:${readFile:${DEVELOPER_PASSWORD_FILE}}}"
+        # >>> generated:users (from ci/projects.json: do not edit by hand)
         - id: "naveena246"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "salomi2810"      # branch developer: sees only their own branches (roleBased below)
@@ -38,12 +39,13 @@ jenkins:
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "jacktechie"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
-        - id: "unimisk-erp-solutions"      # ADMIN (organisation account): its own password file, never the shared developer password
-          password: "${trim:${readFile:${UNIMISK_ADMIN_PASSWORD_FILE}}}"
         - id: "preet1249"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
         - id: "priyanshubyte"      # branch developer: sees only their own branches (roleBased below)
           password: "${trim:${readFile:${DEV_USERS_PASSWORD_FILE}}}"
+        # <<< generated:users
+        - id: "unimisk-erp-solutions"      # ADMIN (organisation account): its own password file, never the shared developer password
+          password: "${trim:${readFile:${UNIMISK_ADMIN_PASSWORD_FILE}}}"
         - id: "gate"          # read jobs + start builds, nothing else (used by the gate container)
           password: "${trim:${readFile:${GATE_JENKINS_PASSWORD_FILE}}}"
   authorizationStrategy:
@@ -57,8 +59,10 @@ jenkins:
             description: "Full control"
             permissions: ["Overall/Administer"]
             entries:
+              # >>> generated:admins (from ci/projects.json: do not edit by hand)
               - user: "admin"
               - user: "unimisk-erp-solutions"
+              # <<< generated:admins
           - name: "authenticated"
             description: "Every logged-in user may open the UI; what they see is decided by the item roles"
             permissions: ["Overall/Read", "View/Read"]
@@ -77,7 +81,8 @@ jenkins:
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "developer"
-          - name: "folder-visible"
+          # >>> generated:roles (from ci/projects.json: do not edit by hand)
+          - name: "folder-taskflow"
             description: "The TaskFlow folder itself, so a developer can open it; it lists only the children they may read"
             pattern: "^taskflow$"
             permissions: ["Job/Read", "Job/Discover"]
@@ -87,57 +92,51 @@ jenkins:
               - user: "lakshyabyteo"
               - user: "nikunjbyteo"
               - user: "jacktechie"
-              - user: "unimisk-erp-solutions"
               - user: "preet1249"
               - user: "priyanshubyte"
-          - name: "branches-naveena246"
-            description: "Branches of naveena246"
+          - name: "branches-taskflow-naveena246"
+            description: "Branches of naveena246 in TaskFlow"
             pattern: "(?i)^taskflow/(naveena246|naveena)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "naveena246"
-          - name: "branches-salomi2810"
-            description: "Branches of salomi2810"
+          - name: "branches-taskflow-salomi2810"
+            description: "Branches of salomi2810 in TaskFlow"
             pattern: "(?i)^taskflow/(salomi2810|salomi)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "salomi2810"
-          - name: "branches-lakshyabyteo"
-            description: "Branches of lakshyabyteo"
+          - name: "branches-taskflow-lakshyabyteo"
+            description: "Branches of lakshyabyteo in TaskFlow"
             pattern: "(?i)^taskflow/(lakshyabyteo|lakshya)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "lakshyabyteo"
-          - name: "branches-nikunjbyteo"
-            description: "Branches of nikunjbyteo"
+          - name: "branches-taskflow-nikunjbyteo"
+            description: "Branches of nikunjbyteo in TaskFlow"
             pattern: "(?i)^taskflow/(nikunjbyteo|nikunj)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "nikunjbyteo"
-          - name: "branches-jacktechie"
-            description: "Branches of jacktechie"
+          - name: "branches-taskflow-jacktechie"
+            description: "Branches of jacktechie in TaskFlow"
             pattern: "(?i)^taskflow/(jacktechie)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "jacktechie"
-          - name: "branches-unimisk-erp-solutions"
-            description: "Branches of unimisk-erp-solutions"
-            pattern: "(?i)^taskflow/(unimisk-erp-solutions)(%2F|/).*$"
-            permissions: ["Job/Read", "Job/Discover"]
-            entries:
-              - user: "unimisk-erp-solutions"
-          - name: "branches-preet1249"
-            description: "Branches of preet1249"
+          - name: "branches-taskflow-preet1249"
+            description: "Branches of preet1249 in TaskFlow"
             pattern: "(?i)^taskflow/(preet1249|preet)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "preet1249"
-          - name: "branches-priyanshubyte"
-            description: "Branches of priyanshubyte"
+          - name: "branches-taskflow-priyanshubyte"
+            description: "Branches of priyanshubyte in TaskFlow"
             pattern: "(?i)^taskflow/(priyanshubyte|priyanshu)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "priyanshubyte"
+          # <<< generated:roles
   crumbIssuer: "standard"
   remotingSecurity:
     enabled: true
@@ -163,8 +162,10 @@ unclassified:
     url: "${JENKINS_URL}"
   globalConfigFiles:
     configs:
+      # >>> generated:configfiles (from ci/projects.json: do not edit by hand)
       - custom:
           id: "taskflow-central-jenkinsfile"
           name: "TaskFlow central Jenkinsfile"
           comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
           content: "${readFile:/usr/share/jenkins/ref/casc/Jenkinsfile.central}"
+      # <<< generated:configfiles

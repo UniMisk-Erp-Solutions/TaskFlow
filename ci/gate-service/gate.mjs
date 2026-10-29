@@ -51,19 +51,21 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
     // through a pull request an admin approved, so merging it is the approval and nobody re-pins by hand). The toolkit the build used and any
     // pipeline file the branch carries must each equal one of those approved versions.
     const mainTip = await git.inspectRef?.("main");
+    // A project without a baked-in pin (every project except the first) is judged against the tip of its own main only.
+    const approvedPin = pin ?? mainTip?.pinned ?? null;
     const okValue = (p, v) => v !== null && v !== undefined && (v === pin?.[p] || v === mainTip?.pinned?.[p]);
     const effective = gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
       const own = gi.pinned?.[p] ?? null, central = tgi?.pinned?.[p] ?? null;
       if (!okValue(p, central)) return [p, `toolkit:${central}`];
       if (own !== null && !okValue(p, own)) return [p, own];
-      return [p, pin[p]];
+      return [p, approvedPin?.[p]];
     })) };
     const results = {};
     for (const name of required) results[name] = await jenkins.artifactJson(b.path, `.ci/results/${name}.json`);
     const aborted = b.result !== "SUCCESS" && Object.values(results).every((r) => !r);
     let outcome;
     if (aborted) outcome = { verdict: "error", reasons: [`build ${b.result || "unknown"} before any stage result was produced`] };
-    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin });
+    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin: approvedPin });
     if (outcome.verdict === "passed" && b.result !== "SUCCESS") outcome = { verdict: "failed", reasons: [`Jenkins result ${b.result}`] };
 
     const prev = published()[b.sha];
