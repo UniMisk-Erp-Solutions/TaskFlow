@@ -11,7 +11,7 @@ import {
 // This keeps the function bootable on every Supabase Edge runtime — auth and
 // CRUD routes never touch the push code path on boot.
 // ─────────────────────────────────────────────────────────────────────────────
-type PushCategory = "task_assigned" | "meeting_assigned" | "task_update" | "meeting_update";
+type PushCategory = "task_assigned" | "meeting_assigned" | "task_update" | "meeting_update" | "chat_message";
 
 type WebPushLib = {
   setVapidDetails: (subject: string, pub: string, priv: string) => void;
@@ -82,6 +82,7 @@ function pushAllows(prefs: Record<string, unknown> | null, category: PushCategor
   if (category === "meeting_assigned") return !!prefs.notify_meeting_assigned;
   if (category === "task_update") return !!prefs.notify_task_updates;
   if (category === "meeting_update") return !!prefs.notify_meeting_updates;
+  if (category === "chat_message") return true; // chat follows the master push switch
   return false;
 }
 
@@ -272,6 +273,37 @@ async function handleNotificationRoutes(
       .select()
       .single();
     return jsonPush({ ok: true, preferences: data }, 201);
+  }
+
+  // Chat messages are inserted straight into Postgres by the browser, so the sender's client calls this
+  // right after sending to push the message to everyone else in the conversation.
+  if (req.method === "POST" && path === "/notifications/chat-message") {
+    const body = (await parseBody(req)) as { message_id?: string };
+    if (!body.message_id) return jsonPush({ error: "message_id is required" }, 400);
+    const { data: msg } = await supabase.from("chat_messages")
+      .select("id, conversation_id, org_id, sender_id, body, attachment_name, kind, created_at")
+      .eq("id", body.message_id).maybeSingle();
+    if (!msg || msg.sender_id !== userId) return jsonPush({ error: "Message not found" }, 404);
+    if (msg.kind === "system" || Date.now() - new Date(msg.created_at).getTime() > 5 * 60_000) return jsonPush({ ok: true, sent: 0 });
+    const { data: conv } = await supabase.from("chat_conversations").select("id, type, name, org_id").eq("id", msg.conversation_id).maybeSingle();
+    if (!conv) return jsonPush({ error: "Conversation not found" }, 404);
+    let recipients: string[];
+    if (conv.type === "group") {
+      const { data: people } = await supabase.from("profiles").select("id").eq("org_id", conv.org_id);
+      recipients = (people ?? []).map((p: { id: string }) => p.id);
+    } else {
+      const { data: parts } = await supabase.from("chat_participants").select("user_id").eq("conversation_id", conv.id);
+      recipients = (parts ?? []).map((p: { user_id: string }) => p.user_id);
+    }
+    const senderName = await getActorDisplayName(null, userId);
+    const text = String(msg.body || "").trim() || (msg.attachment_name ? "Sent " + msg.attachment_name : "Sent an attachment");
+    const preview = text.length > 140 ? text.slice(0, 137) + "..." : text;
+    const title = conv.type === "direct" ? senderName : (conv.type === "group" ? "General" : String(conv.name || "Group")) + " · " + senderName;
+    scheduleNotify(() => notifyUsers({
+      userIds: recipients, excludeUserId: userId, category: "chat_message", title, body: preview,
+      data: { url: "/app?open=chat" },
+    }));
+    return jsonPush({ ok: true });
   }
 
   if (req.method === "POST" && path === "/notifications/unsubscribe") {

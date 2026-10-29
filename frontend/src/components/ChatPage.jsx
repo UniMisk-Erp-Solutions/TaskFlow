@@ -5,6 +5,7 @@ import {
   FileText, Download, Reply, MoreVertical, Copy, Users, Plus, Check, LogOut, Crown, UserPlus, Info, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import supabase from '../supabaseClient';
+import api from '../api';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
 
@@ -850,6 +851,7 @@ export default function ChatPage() {
       .select(MSG_COLS)
       .single();
     if (sendErr) { setError(sendErr.message); return null; }
+    api.post('/notifications/chat-message', { message_id: data.id }).catch(() => {}); // push to the other people in this chat
     setMessages((list) => (list.some((m) => m.id === data.id) ? list : [...list, data]));
     return data;
   }

@@ -133,9 +133,10 @@ function RoleRouter() {
   if (gate) return gate;
 
   const userRole = profile?.role;
-  if (userRole === 'admin') return <Navigate to="/admin" replace />;
-  if (userRole === 'manager') return <Navigate to="/manager" replace />;
-  return <Navigate to="/dashboard" replace />;
+  const base = userRole === 'admin' ? '/admin' : userRole === 'manager' ? '/manager' : '/dashboard';
+  // Push notifications open /app?open=chat so each role lands on its own chat tab.
+  const open = new URLSearchParams(window.location.search).get('open');
+  return <Navigate to={open === 'chat' ? base + '/chat' : base} replace />;
 }
 
 function ProtectedAdmin({ children }) {
