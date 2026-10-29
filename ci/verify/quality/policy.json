@@ -141,9 +141,9 @@
       },
       {
         "id": "ARCH-006",
-        "title": "the marketing site (landing/) must not import application components or pages",
+        "title": "the marketing site (landing/) must not import application components or pages (shared services such as AuthContext, BillingContext and api.js are allowed: sign-up and pricing need them)",
         "from": "^frontend/src/landing/",
-        "to": "^frontend/src/(components/|[A-Za-z]+\\.jsx?$)",
+        "to": "^frontend/src/(components/|(AdminDashboard|EmployeeDashboard|Login|Onboarding|PendingApproval|MaintenanceGate|App|main)\\.jsx?$)",
         "suggestion": "put shared pieces in lib/ or landing/components"
       },
       {

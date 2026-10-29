@@ -91,17 +91,17 @@ TaskFlow has three deployables that must stay separate: the React app (`frontend
 | ARCH-003 | UI components and the landing site do not touch the database client; they go through `api.js` or a `use*.js` hook. Only `supabaseClient.js` imports the Supabase SDK |
 | ARCH-004 | routes call controllers, controllers call services; routes never reach the database; services, middleware, utils and config never import routes or controllers |
 | ARCH-005 | `lib/` (shared helpers) imports no components, pages or app state |
-| ARCH-006 | the marketing site (`landing/`) does not import application components |
+| ARCH-006 | the marketing site (`landing/`) does not import application components or dashboards; shared services (`AuthContext`, `BillingContext`, `api.js`) are allowed because sign-up and pricing need them |
 | ARCH-007 | data hooks and `api.js` do not import UI components |
 
-### Audit of the current code (the baseline, 2026-10-29)
+### Audit of the current code (the baseline, refreshed on `main` 2026-10-29)
 
 The baseline holds what exists today; none of it blocks work, none may grow.
 
-- **Maintainability:** 154 functions over cognitive complexity 15, 89 over cyclomatic 15, 64 over 100 lines (largest: `ChatPage` 903 lines, `handleTasks` in the edge function 901, `FileExplorer` 747, `AdminDashboard` 739), 9 nested deeper than 4, 5 files over 700 lines. Duplicated code is **13.2%**, mostly the edge function repeating backend controllers and the two near-identical meeting/task detail modals.
-- **Architecture:** 5 components use the database client directly (ChatPage, FileExplorer, MeetingDetailModal, TaskDetailModal, WhiteboardPage), 2 `lib/` files import app code, **no circular dependencies**, and **35 broken imports**: 14 in stale duplicate files in `backend/src/` root (`ai.js`, `auth.js`, `email.js`, `tasks.js` and four controllers import `../middleware/...` that does not exist there) and 21 in the booking-calendar files that import a design system TaskFlow does not have (already excluded from the type check).
+- **Maintainability:** 166 functions over cognitive complexity 15, 93 over cyclomatic 15, 67 over 100 lines (largest: `ChatPage` 904 lines, `handleTasks` in the edge function 901, `AdminDashboard` 743, `FileExplorer` 747), 9 nested deeper than 4, 5 files over 700 lines. Duplicated code is **12.5%**, mostly the edge function repeating backend controllers and the two near-identical meeting/task detail modals.
+- **Architecture:** 5 components use the database client directly (ChatPage, FileExplorer, MeetingDetailModal, TaskDetailModal, WhiteboardPage), 3 `lib/` files import app code, **no circular dependencies**, and **35 broken imports**: 14 in stale duplicate files in `backend/src/` root (`ai.js`, `auth.js`, `email.js`, `tasks.js` and four controllers import `../middleware/...` that does not exist there) and 21 in the booking-calendar files that import a design system TaskFlow does not have (already excluded from the type check).
 - **Standards:** 3 files with explicit `any`, 1 with a double cast, 8 with `console.log`, 1 with HTML injection, 8 with trailing whitespace, 2 without a final newline.
-- **Repository:** 6 files carry suppression comments; 12 test files with 58 tests are protected from removal.
+- **Repository:** 8 files carry suppression comments; 18 test files with 123 tests are protected from removal.
 
 Cleaning the 35 broken imports (delete the stale duplicates, fix or remove the booking files) is the cheapest first win.
 
@@ -183,4 +183,5 @@ The stages run from the trusted toolkit (`CI_TOOLKIT_REF=main`). Nothing changes
 
 | Date | Change |
 |---|---|
+| 2026-10-29 | Baseline refreshed against current `main` (it had picked up pricing, billing and chat commits after the first audit: 63 would-be violations) and ARCH-006 relaxed for shared services. Activation waits for this refresh to be merged. |
 | 2026-10-29 | Quality engine (`ci/verify/quality`), four new required stages (repo-policy, code-standards, maintainability, architecture), TaskFlow policy and baseline from the first audit, 12 engine tests, `--init` for new projects. Rollout phases 1 to 3 (audit, code-level standards, architecture). Phase 4 items listed above. |
