@@ -1046,7 +1046,8 @@ One Jenkins server and one gate serve every UniMisk project. A project is descri
 
 **On the server**
 - `.env`: `GATE_PROJECTS_FILE=/app/ci/projects.json` (empty or unset = the old single-repository mode) and `GATE_PROJECT_SECRETS_PATH=<folder>` (mounted read-only into the gate).
-- For every project except the first: `<GATE_PROJECT_SECRETS_PATH>/<id>/webhook-secret` (required, the gate refuses to start without it) and optionally `<id>/github-token` (otherwise the main token is used, so it must have access to that repository).
+- For every project except the first: `<GATE_PROJECT_SECRETS_PATH>/<id>/webhook-secret` (required, the gate refuses to start without it) and `<id>/github-token` (required for a **private** repository). That one token is used by the gate (mirror, push detection, commit statuses) **and** by Jenkins (repository scan), through a per-project read credential generated into `github.yaml` (`<id>-github-read`); the folder is mounted read-only into both containers, and Jenkins refuses to start when the file is missing, so `add-project.sh` checks it first.
+- **Who creates that token matters.** A fine-grained token of a mere *collaborator* cannot reach a private repository owned by another account (it only works for public ones, which is why the shared read token works for TaskFlow). The token must be created by the account that **owns** the repository, with only that repository selected and only these permissions: Contents, Pull requests, Metadata = read-only, Commit statuses = read and write. It has no write permission on code, so it can neither push nor merge. It is saved on the server without being displayed (hidden prompt piped over SSH).
 - State lives in `projects/<id>/` inside the gate volume.
 
 **Adding a project** (the tool prepares the project's side; the admin does the rest)
@@ -1096,3 +1097,4 @@ One Jenkins server and one gate serve every UniMisk project. A project is descri
 | 2026-10-29 | Added the `priyanshubyte` branch-developer login (same initial password as the others). |
 | 2026-10-29 | One Jenkins and one gate for many projects: project registry `ci/projects.json`, generated Jenkins jobs and roles, multi-project gate, `ci/bootstrap/new-project.mjs`. TaskFlow behaviour unchanged. |
 | 2026-10-30 | Second project registered (`ops-central`), per-project `branchFilter`, bootstrap tool options (`--install`, `--quality-extra`, `--stage`), `.trivyignore` generated, dependency scan limited to folders with a lockfile. |
+| 2026-10-30 | Per-project repository credential (`<id>/github-token`, created by the repository owner, read-only for code) for private projects; Jenkins mounts the per-project secrets folder; `add-project.sh` checks the token and the project's `main` before changing anything. |

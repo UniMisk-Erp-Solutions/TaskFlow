@@ -11,13 +11,21 @@ credentials:
               description: "Read-only token used to scan and fetch the private repository"
               username: "${GITHUB_READ_USER}"
               password: "${trim:${readFile:${GITHUB_READ_TOKEN_FILE}}}"
+          # >>> generated:credentials (from ci/projects.json: do not edit by hand)
+          - usernamePassword:
+              scope: GLOBAL
+              id: "ops-central-github-read"
+              description: "Read-only token for OP Central (created by the repository owner, no write permission)"
+              username: "${GITHUB_READ_USER}"
+              password: "${trim:${readFile:/run/project-secrets/ops-central/github-token}}"
+          # <<< generated:credentials
 
 jobs:
   - script: |
       // >>> generated:projects (from ci/projects.json: do not edit by hand)
       def PROJECTS = [
-        [id: 'taskflow', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
-        [id: 'ops-central', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(nikunjbyteo|nikunj|naveena246|naveena|priyanshubyte|priyanshu)/.*)$'],
+        [id: 'taskflow', cred: 'taskflow-github-read', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
+        [id: 'ops-central', cred: 'ops-central-github-read', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(nikunjbyteo|nikunj|naveena246|naveena|priyanshubyte|priyanshu)/.*)$'],
       ]
       // <<< generated:projects
       PROJECTS.each { p ->
@@ -28,7 +36,7 @@ jobs:
               id(p.id + '-github')
               repoOwner(p.owner)
               repository(p.repo)
-              scanCredentialsId('taskflow-github-read')
+              scanCredentialsId(p.cred)
               // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
               buildOriginBranch(true)          // branches without a pull request
               buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)

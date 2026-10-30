@@ -106,7 +106,8 @@ test("JCasC core: the controller runs no builds and holds no signing key or writ
   assert.doesNotMatch(core, /Administer:gate|Overall\/Manage:gate|Credentials/);
   const github = read("ci", "jenkins", "casc", "github.yaml");
   assert.match(github, /usernamePassword:/);
-  assert.match(github, /scanCredentialsId\('taskflow-github-read'\)/);
+  assert.match(github, /scanCredentialsId\(p\.cred\)/, "every project reads with the credential named in its entry");
+  assert.match(github, /id: 'taskflow', cred: 'taskflow-github-read'/, "the default project keeps its shared read credential");
   assert.match(github, /password:\s*"\$\{trim:\$\{readFile:/);
   assert.doesNotMatch(github, /gitHubApp:|periodicFolderTrigger/, "no App credential, and no polling timer (the gate drives scans)");
 });

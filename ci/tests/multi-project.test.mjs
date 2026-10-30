@@ -193,7 +193,9 @@ test("GENERATOR: a second project gets its own job, folder role, branch roles, l
   assert.match(j, /- id: "bob"/);
   assert.match(j, /- user: "boss"/, "admins come from the registry");
   assert.ok(!j.includes("naveena246"), "the registry replaces the developer list entirely");
-  assert.match(g, /\[id: 'beta', folder: 'beta', display: 'beta', owner: 'Org', repo: 'Beta'\]/);
+  assert.match(g, /\[id: 'beta', cred: 'beta-github-read', folder: 'beta', display: 'beta', owner: 'Org', repo: 'Beta'\]/);
+  assert.match(g, /id: "beta-github-read"[\s\S]*?\/run\/project-secrets\/beta\/github-token/, "a non-default project gets its own read credential, read from its own token file");
+  assert.ok(!/id: "alpha-github-read"/.test(g), "the default project keeps the shared credential");
   assert.match(g, /production health check|Production health check/i, "the hand-written monitor job is kept");
 });
 

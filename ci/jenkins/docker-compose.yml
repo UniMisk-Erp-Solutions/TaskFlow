@@ -49,6 +49,7 @@ services:
       - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
+      - "${GATE_PROJECT_SECRETS_PATH:?folder holding <project>/github-token and <project>/webhook-secret for each extra project (may be empty)}:/run/project-secrets:ro"
     networks: [taskflow_ci, taskflow_agent]
     mem_limit: 2g
     memswap_limit: 2g

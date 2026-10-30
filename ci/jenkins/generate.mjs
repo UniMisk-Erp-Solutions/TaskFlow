@@ -65,7 +65,7 @@ ${list}      // <<< generated:projects
               id(p.id + '-github')
               repoOwner(p.owner)
               repository(p.repo)
-              scanCredentialsId('taskflow-github-read')
+              scanCredentialsId(p.cred)
               // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
               buildOriginBranch(true)          // branches without a pull request
               buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)
@@ -95,10 +95,14 @@ ${list}      // <<< generated:projects
 `;
 
 export function renderGithubYaml(text, reg) {
-  const list = "      def PROJECTS = [\n" + reg.projects.map((p) => { const [owner, repo] = p.repo.split("/"); const br = branchRegexFor(p); return `        [id: '${p.id}', folder: '${p.jenkinsFolder}', display: '${p.displayName.replace(/'/g, "")}', owner: '${owner}', repo: '${repo}'${br ? `, branchRegex: '${br}'` : ""}],\n`; }).join("") + "      ]\n";
+  const list = "      def PROJECTS = [\n" + reg.projects.map((p) => { const [owner, repo] = p.repo.split("/"); const br = branchRegexFor(p); const cred = p.id === reg.defaultProject ? "taskflow-github-read" : `${p.id}-github-read`; return `        [id: '${p.id}', cred: '${cred}', folder: '${p.jenkinsFolder}', display: '${p.displayName.replace(/'/g, "")}', owner: '${owner}', repo: '${repo}'${br ? `, branchRegex: '${br}'` : ""}],\n`; }).join("") + "      ]\n";
   const rx = /jobs:\n {2}- script: \|\n[\s\S]*?(?=\n {2}# Production health check)/;
   if (!rx.test(text)) throw new Error("github.yaml: the jobs block was not found");
-  return text.replace(rx, () => JOB_TEMPLATE(list));
+  // every project except the default reads its repository with ITS OWN read-only credential (a token created by the repository's owner:
+  // a token of a mere collaborator cannot reach another account's private repository). The file is mounted into Jenkins from
+  // <GATE_PROJECT_SECRETS_PATH>/<id>/github-token; Jenkins refuses to start when it is missing, so the deploy script checks it first.
+  const creds = reg.projects.filter((p) => p.id !== reg.defaultProject).map((p) => `          - usernamePassword:\n              scope: GLOBAL\n              id: "${p.id}-github-read"\n              description: "Read-only token for ${p.displayName} (created by the repository owner, no write permission)"\n              username: "\${GITHUB_READ_USER}"\n              password: "\${trim:\${readFile:/run/project-secrets/${p.id}/github-token}}"\n`).join("");
+  return region(text.replace(rx, () => JOB_TEMPLATE(list)), "credentials", creds, "          ", "#");
 }
 
 const eol = (raw) => (raw.includes("\r\n") ? "\r\n" : "\n");
