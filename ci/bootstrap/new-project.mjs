@@ -2,6 +2,9 @@
 // Sets up the UniMisk CI for a NEW project from this repository (the toolkit): copies the universal pieces into the
 // project, generates the parts that depend on its stack, and prints exactly what the admin must still do on the server.
 //   node ci/bootstrap/new-project.mjs --id acme --repo UniMisk-Erp-Solutions/Acme --target ../Acme [--display "Acme"] [--write] [--baseline]
+//     [--install "npm i --no-save x@1"]...      replaces the default per-package "npm install" (repeatable)
+//     [--quality-extra globals,database]        also run the no-build global-scope check and/or the SQL migration check
+//     [--stage "ui-checks|UI checks|node ci/pipeline/run-ui-checks.mjs"]...   a project-specific required stage (repeatable)
 // Without --write it only prints the plan. Nothing here touches the server, GitHub or Jenkins.
 //
 // What is copied unchanged (universal):   ci/lib, ci/gate, ci/verify/quality (engine), ci/pipeline/{run-stage,scan-credentials}.mjs
@@ -17,6 +20,7 @@ import { initPolicy } from "../verify/quality/run.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TOOLKIT = path.resolve(HERE, "..", "..");
 const SKIP = new Set(["node_modules", ".git", ".ci", "dist", "build", "ci"]);
+const QUALITY_EXTRA = { globals: ["Global scope", "globals"], database: ["Database migrations", "database"] };
 const QUALITY = [["repo-policy", "Repository policy", "repo-policy"], ["code-standards", "Code standards", "standards"], ["maintainability", "Maintainability", "maintainability"], ["architecture", "Architecture", "architecture"]];
 
 /** package.json folders (depth <= 2) and which of the standard scripts each defines. */
@@ -81,11 +85,14 @@ export const GITHUB_CHECK_NAME = "unimisk/verified";
 `;
 }
 
-export function renderJenkinsfile(stages, packages, display, repo) {
+export function renderJenkinsfile(stages, packages, display, repo, opts = {}) {
   const has = (n) => Boolean(stages[n]);
   const run = (n) => `sh 'node ci/pipeline/run-stage.mjs ${n}'`;
   const group = (title, names, titles) => `    stage('${title}') {\n      parallel {\n${names.filter(has).map((n) => `        stage('${titles[n]}') { steps { ${run(n)} } }`).join("\n")}\n      }\n    }\n`;
-  const installs = packages.map((p) => `        sh 'npm ${p.dir === "." ? "" : `--prefix ${p.dir} `}install --no-audit --no-fund'`).join("\n");
+  const installs = opts.installs?.length ? opts.installs.map((c) => `        sh '${c}'`).join("\n") : packages.map((p) => `        sh 'npm ${p.dir === "." ? "" : `--prefix ${p.dir} `}install --no-audit --no-fund'`).join("\n");
+  const qualityNames = ["repo-policy", "code-standards", "maintainability", "architecture", ...Object.keys(QUALITY_EXTRA).filter((n) => stages[n])];
+  const qualityTitles = { "repo-policy": "Repository policy", "code-standards": "Code standards", maintainability: "Maintainability", architecture: "Architecture", ...Object.fromEntries(Object.entries(QUALITY_EXTRA).map(([k, v]) => [k, v[0]])) };
+  const projectStages = Object.entries(stages).filter(([, v]) => v.group === "project").map(([n, v]) => `    stage('${v.title}') {\n      steps { ${run(n)} }\n    }\n`).join("\n");
   const buildStage = has("build") ? `    stage('Build') {\n      steps { ${run("build")} }\n    }\n\n` : "";
   return `// ${display} CI. Triggered by a push to GitHub (gate -> Jenkins branch scan); see the platform docs (docs/ci-cd-pipeline.md).
 //   push -> checks -> (gate verifies independently, signs, publishes the commit status) -> PR review -> ADMIN merge
@@ -129,7 +136,8 @@ ${installs}
     }
 
     // Engineering quality (UniMisk standard): fast static gates that block only NEW or WORSENED problems against the baseline.
-${group("Engineering quality", ["repo-policy", "code-standards", "maintainability", "architecture"], { "repo-policy": "Repository policy", "code-standards": "Code standards", maintainability: "Maintainability", architecture: "Architecture" })}
+${group("Engineering quality", qualityNames, qualityTitles)}
+${projectStages}
     stage('Checks') {
       parallel {
 ${["lint", "typecheck", "trivy-secrets"].filter(has).map((n) => `        stage('${{ lint: "Lint", typecheck: "Typecheck", "trivy-secrets": "Secrets" }[n]}') { steps { ${run(n)} } }`).join("\n")}
@@ -156,25 +164,31 @@ ${["unit-tests", "trivy-deps"].filter(has).map((n) => `        stage('${{ "unit-
 /** Replaces `a` by `b` in a copied toolkit file; a toolkit change that removes the anchor must fail loudly, not silently skip. */
 function patch(text, a, b, label) { if (!text.includes(a)) throw new Error(`bootstrap anchor missing in ${label}: the toolkit changed, update ci/bootstrap/new-project.mjs`); return text.replace(a, () => b); }
 
-export function planProject({ id, repo, display, target, toolkit = TOOLKIT }) {
+export function planProject({ id, repo, display, target, toolkit = TOOLKIT, installs = [], qualityExtra = [], extraStages = [] }) {
   const reg = parseRegistry({ defaultProject: id, projects: [{ id, repo, jenkinsFolder: id, displayName: display }] }); // validates id and repo
   const packages = detectPackages(target);
   if (!packages.length) throw new Error("no package.json found in the target (depth 2): nothing to build or test");
   const stages = buildStages(packages);
+  for (const q of qualityExtra) { if (!QUALITY_EXTRA[q]) throw new Error(`unknown quality check "${q}" (known: ${Object.keys(QUALITY_EXTRA).join(", ")})`); stages[q] = { phase: "build", title: QUALITY_EXTRA[q][0], commands: [{ cmd: "node", args: ["ci/verify/quality/run.mjs", QUALITY_EXTRA[q][1]] }], group: "quality" }; }
+  for (const x of extraStages) { if (!/^[a-z][a-z0-9-]*$/.test(x.name)) throw new Error(`stage name "${x.name}" must be lowercase letters, digits and dashes`); if (/['\\\n]/.test(x.title)) throw new Error(`stage title "${x.title}" must not contain quotes or backslashes (it is written into the Jenkinsfile)`); }
+  for (const x of extraStages) stages[x.name] = { phase: "test", title: x.title, commands: [{ cmd: x.cmd, args: x.args }], group: "project" };
   const files = new Map();
   const copy = (rel) => { const abs = path.join(toolkit, rel); if (fs.statSync(abs).isDirectory()) { for (const n of fs.readdirSync(abs)) copy(`${rel}/${n}`); } else files.set(rel, fs.readFileSync(abs, "utf8")); };
   for (const rel of ["ci/lib", "ci/gate", "ci/pipeline/run-stage.mjs", "ci/pipeline/scan-credentials.mjs", "ci/verify/quality/run.mjs", "ci/verify/quality/lib"]) copy(rel);
   // overlay: which CI-owned files replace the branch's own (a branch must not weaken its lint or type config)
-  const owned = ["ci", ".trivyignore", ...packages.flatMap((p) => [p.eslint ? `${p.dir === "." ? "" : p.dir + "/"}eslint.config.js` : null, p.tsci ? `${p.dir === "." ? "" : p.dir + "/"}tsconfig.ci.json` : null].filter(Boolean))];
+  const owned = ["ci", ".trivyignore", ".trivyignore.yaml", ...packages.flatMap((p) => [p.eslint ? `${p.dir === "." ? "" : p.dir + "/"}eslint.config.js` : null, p.tsci ? `${p.dir === "." ? "" : p.dir + "/"}tsconfig.ci.json` : null].filter(Boolean))];
   let overlay = fs.readFileSync(path.join(toolkit, "ci/pipeline/overlay.mjs"), "utf8");
   overlay = patch(overlay, `  "ci",\n  "frontend/eslint.config.js", "frontend/tsconfig.ci.json", "frontend/playwright.config.js", "frontend/e2e",\n  "backend/eslint.config.js", ".trivyignore",\n`, `  ${owned.map(js).join(", ")},\n`, "overlay OVERLAY_PATHS");
   overlay = patch(overlay, `const PACKAGES = ["frontend", "backend"];`, `const PACKAGES = ${js(packages.map((p) => p.dir))};`, "overlay PACKAGES");
   files.set("ci/pipeline/overlay.mjs", overlay);
   let trivy = fs.readFileSync(path.join(toolkit, "ci/pipeline/run-trivy.mjs"), "utf8");
-  trivy = patch(trivy, `for (const dir of ["frontend", "backend"]) {`, `for (const dir of ${js(packages.map((p) => p.dir))}) {`, "run-trivy dirs");
+  // the dependency scan reads a lockfile per folder and fails when one is missing: only scan folders that have one (a root package.json with no dependencies has none)
+  const withLock = packages.filter((p) => fs.existsSync(path.join(target, p.dir, "package-lock.json"))).map((p) => p.dir);
+  trivy = patch(trivy, `for (const dir of ["frontend", "backend"]) {`, `for (const dir of ${js(withLock.length ? withLock : packages.map((p) => p.dir))}) {`, "run-trivy dirs");
   files.set("ci/pipeline/run-trivy.mjs", trivy);
+  if (!fs.existsSync(path.join(target, ".trivyignore"))) files.set(".trivyignore", "# Accepted, reviewed Trivy exceptions only. Every entry needs a justification comment above it and an admin's approval.\n# Trivy refuses to run when this file is missing, so it exists even while it is empty.\n");
   files.set("ci/pipeline/config.mjs", renderConfig(stages, display));
-  files.set("Jenkinsfile", renderJenkinsfile(stages, packages, display, repo));
+  files.set("Jenkinsfile", renderJenkinsfile(stages, packages, display, repo, { installs }));
   files.set("ci/verify/quality/policy.json", JSON.stringify(initPolicy(target, display), null, 2) + "\n");
   const registryEntry = { id, displayName: display, repo, jenkinsFolder: id, requiredChecks: Object.keys(stages), developers: [] };
   return { reg, packages, stages, files, registryEntry };
@@ -184,10 +198,12 @@ function main() {
   const a = process.argv.slice(2);
   const opt = (k) => (a.includes(`--${k}`) ? a[a.indexOf(`--${k}`) + 1] : undefined);
   const id = opt("id"), repo = opt("repo"), t = opt("target");
-  if (!id || !repo || !t) { console.error('usage: node ci/bootstrap/new-project.mjs --id acme --repo Org/Acme --target ../Acme [--display "Acme"] [--write] [--baseline]'); process.exit(2); }
+  if (!id || !repo || !t) { console.error('usage: node ci/bootstrap/new-project.mjs --id acme --repo Org/Acme --target ../Acme [--display "Acme"] [--write] [--baseline] [--install "cmd"]... [--quality-extra globals,database] [--stage "name|Title|command args"]...'); process.exit(2); }
   const target = path.resolve(t);
+  const all = (k) => a.flatMap((x, i) => (x === `--${k}` ? [a[i + 1]] : []));
+  const extraStages = all("stage").map((v) => { const [name, title, cmd] = v.split("|"); const parts = cmd.trim().split(/\s+/); return { name, title, cmd: parts[0], args: parts.slice(1) }; });
   let plan;
-  try { plan = planProject({ id, repo, display: opt("display") || id, target }); } catch (e) { console.error(`✘ ${e.message}`); process.exit(1); }
+  try { plan = planProject({ id, repo, display: opt("display") || id, target, installs: all("install"), qualityExtra: (opt("quality-extra") || "").split(",").filter(Boolean), extraStages }); } catch (e) { console.error(`✘ ${e.message}`); process.exit(1); }
   console.log(`Project "${id}" (${repo}) at ${target}`);
   console.log(`  packages found: ${plan.packages.map((p) => `${p.dir} [${p.scripts.filter((s) => ["lint", "typecheck", "build", "test"].includes(s)).join(", ") || "no standard scripts"}]`).join("; ")}`);
   console.log(`  required checks: ${Object.keys(plan.stages).join(", ")}`);

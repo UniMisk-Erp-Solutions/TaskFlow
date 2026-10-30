@@ -62,7 +62,7 @@ test("BOOTSTRAP: the generated config is a valid module whose required checks eq
   // the registry accepts the entry once developers are added
   const taskflow = JSON.parse(fs.readFileSync(path.join(HERE, "..", "projects.json"), "utf8"));
   const reg = parseRegistry({ ...taskflow, projects: [...taskflow.projects, { ...p.registryEntry, developers: [{ user: "zed", prefixes: ["zed"] }] }] });
-  assert.equal(reg.projects.length, 2);
+  assert.equal(reg.projects.length, taskflow.projects.length + 1, "the entry is accepted next to every project already registered");
   for (const rel of ["ci/pipeline/overlay.mjs", "ci/pipeline/run-trivy.mjs"]) { const t = p.files.get(rel); assert.ok(!t.includes('"frontend"') && t.includes('"web"') && t.includes('"api"'), `${rel} is adapted to this project's packages`); }
   assert.match(p.files.get("ci/pipeline/overlay.mjs"), /"web\/eslint\.config\.js"/, "the trusted lint config replaces the branch's own");
   assert.match(p.files.get("ci/pipeline/overlay.mjs"), /"web\/tsconfig\.ci\.json"/);
@@ -81,4 +81,34 @@ test("BOOTSTRAP: bad input and a changed toolkit fail loudly", () => {
   const ov = path.join(fake, "ci/pipeline/overlay.mjs");
   fs.writeFileSync(ov, fs.readFileSync(ov, "utf8").replace('const PACKAGES = ["frontend", "backend"];', "const PACKAGES = [];"));
   assert.throws(() => plan(f.root, { toolkit: fake }), /bootstrap anchor missing in overlay PACKAGES/);
+});
+
+test("BOOTSTRAP: install commands, the global-scope and database checks and project stages are wired into config and Jenkinsfile; unsafe titles are refused", () => {
+  const f = fixture();
+  const p = plan(f.root, { installs: ["npm i --no-save a@1.0.0 b@2.0.0", "npm --prefix api install"], qualityExtra: ["globals", "database"], extraStages: [{ name: "ui-checks", title: "UI checks", cmd: "node", args: ["ci/pipeline/run-ui-checks.mjs"] }] });
+  const jf = p.files.get("Jenkinsfile");
+  assert.match(jf, /sh 'npm i --no-save a@1\.0\.0 b@2\.0\.0'/);
+  assert.doesNotMatch(jf, /--prefix web install/, "the default installs are replaced");
+  const run = [...jf.matchAll(/run-stage\.mjs (\S+?)'/g)].map((m) => m[1]);
+  assert.deepEqual([...run].sort(), Object.keys(p.stages).sort(), "every stage including the extra ones is run exactly once");
+  assert.ok(p.stages.globals && p.stages.database && p.stages["ui-checks"]);
+  assert.match(p.files.get("ci/pipeline/config.mjs"), /"ui-checks"/);
+  assert.throws(() => plan(f.root, { extraStages: [{ name: "x", title: "it's bad", cmd: "node", args: [] }] }), /must not contain quotes/);
+  assert.throws(() => plan(f.root, { qualityExtra: ["nonsense"] }), /unknown quality check/);
+});
+
+test("BOOTSTRAP: the dependency scan only covers folders that have a lockfile", () => {
+  const f = fixture();
+  f.put("package.json", JSON.stringify({ scripts: { dev: "x" } }));            // a root package.json with no dependencies and no lockfile
+  f.put("web/package-lock.json", "{}\n"); f.put("api/package-lock.json", "{}\n");
+  const trivy = plan(f.root).files.get("ci/pipeline/run-trivy.mjs");
+  assert.match(trivy, /for \(const dir of \[\s*"api"\s*,\s*"web"\s*\]\)/);
+  assert.doesNotMatch(trivy, /for \(const dir of \[[^\]]*"\."/);
+});
+
+test("BOOTSTRAP: a .trivyignore is created when the project has none (Trivy refuses to run without it) and an existing one is never overwritten", () => {
+  const f = fixture();
+  assert.match(plan(f.root).files.get(".trivyignore"), /Accepted, reviewed Trivy exceptions only/);
+  f.put(".trivyignore", "CVE-2099-0001\n");
+  assert.equal(plan(f.root).files.has(".trivyignore"), false);
 });

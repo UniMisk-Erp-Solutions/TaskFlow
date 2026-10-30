@@ -24,6 +24,13 @@ function region(text, name, body, indent, comment) {
   return text.replace(rx, () => `${open}\n${body}${close}`);
 }
 
+/** `^(main|(a|b)/.*)$` for a project built only for main and its developers' branches (a dot in a prefix is escaped for the Groovy string). */
+export function branchRegexFor(p) {
+  if (p.branchFilter !== "developers") return null;
+  const prefixes = [...new Set(p.developers.flatMap((d) => d.prefixes))].map((x) => x.replace(/[.]/g, `${BS}${BS}.`));
+  return prefixes.length ? `^(main|(${prefixes.join("|")})/.*)$` : "^main$";
+}
+
 export function renderJenkinsYaml(text, reg) {
   const devUsers = reg.projects.flatMap((p) => p.developers.map((d) => d.user));
   const uniq = [...new Set(devUsers)];
@@ -74,6 +81,13 @@ ${list}      // <<< generated:projects
             f / 'scriptId'(p.id + '-central-jenkinsfile')
             f / 'useSandbox'(true)
           }
+          // Optional per-project branch filter: only main and the branches of the project's developers are discovered, so onboarding a repository with many old branches does not build all of them.
+          if (p.branchRegex) {
+            configure { node ->
+              def traits = node / 'sources' / 'data' / 'jenkins.branch.BranchSource' / 'source' / 'traits'
+              traits << 'jenkins.scm.impl.trait.RegexSCMHeadFilterTrait' { regex(p.branchRegex) }
+            }
+          }
           orphanedItemStrategy { discardOldItems { numToKeep(10) } }
           // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
         }
@@ -81,7 +95,7 @@ ${list}      // <<< generated:projects
 `;
 
 export function renderGithubYaml(text, reg) {
-  const list = "      def PROJECTS = [\n" + reg.projects.map((p) => { const [owner, repo] = p.repo.split("/"); return `        [id: '${p.id}', folder: '${p.jenkinsFolder}', display: '${p.displayName.replace(/'/g, "")}', owner: '${owner}', repo: '${repo}'],\n`; }).join("") + "      ]\n";
+  const list = "      def PROJECTS = [\n" + reg.projects.map((p) => { const [owner, repo] = p.repo.split("/"); const br = branchRegexFor(p); return `        [id: '${p.id}', folder: '${p.jenkinsFolder}', display: '${p.displayName.replace(/'/g, "")}', owner: '${owner}', repo: '${repo}'${br ? `, branchRegex: '${br}'` : ""}],\n`; }).join("") + "      ]\n";
   const rx = /jobs:\n {2}- script: \|\n[\s\S]*?(?=\n {2}# Production health check)/;
   if (!rx.test(text)) throw new Error("github.yaml: the jobs block was not found");
   return text.replace(rx, () => JOB_TEMPLATE(list));

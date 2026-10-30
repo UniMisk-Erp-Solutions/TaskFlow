@@ -30,7 +30,7 @@ Every failure prints the rule, file, line, severity and a suggested fix, and the
 | 05 | Software architecture | Architecture | **Done** for TaskFlow |
 | 06 | Design and maintainability | Architecture + Maintainability (duplication) | **Done** (rules plus measurements; reviews still needed for judgement calls) |
 | 07 | API and backend engineering | existing Backend tests | **Not yet.** Needs API contract and authorization tests per project |
-| 08 | Database engineering | none yet | **Not yet.** Needs a disposable test database |
+| 08 | Database engineering | Database migrations (static) | **Partial.** Static checks done (RLS, destructive statements, open policies); tests against a disposable database are not |
 | 09 | Security | existing Secrets and Dependencies + Code standards (HTML injection, `eval`) | **Partial.** SAST (Semgrep) not added |
 | 10 | Testing quality | existing Vitest, Backend, E2E + Repository policy (tests may not be deleted, skipped or focused) | **Partial.** Coverage gate not added |
 | 11 | Performance and reliability | existing Vite build | **Not yet.** Bundle budgets need a per-app baseline |
@@ -68,6 +68,31 @@ New stage names in the pipeline (group "Engineering quality", run in parallel af
 ### Architecture (`architecture`)
 
 Universal rules: **ARCH-002** no circular dependencies (an existing cycle may not grow), **ARCH-011** no import that resolves to nothing. Everything else comes from the project's policy (see below). Test files are not part of the graph.
+
+### Global scope (`globals`): applications with no build step (opt-in: `policy.globals`)
+
+For apps where every file is a plain `<script>` sharing one global scope (in-browser Babel, no `import`), a mistake is a **runtime** error, not a build error. The check reads every script with the TypeScript binder (no new dependency) and the page's `<script>` list:
+
+| Rule | Check |
+|---|---|
+| GLOB-001 | the same top-level name declared in two files |
+| GLOB-002 | a name that is read but defined in no file (a ReferenceError, a white page) |
+| GLOB-004 | `import`/`export` in a file that is loaded as a plain script |
+| GLOB-005 | a source file the page never loads, or a `<script>` for a file that does not exist |
+| GLOB-006 | a name used while a file *loads* that is defined only by a file loaded later |
+| GLOB-007 / 008 | a CDN script not pinned to an exact version (fail) / without an integrity attribute (warning) |
+
+The same analysis yields a file-to-file "reads" graph, so **architecture rules work for such apps too**, by file and optionally by name (`names` regex), for example "the importer's `imp*` helpers are private to its screen".
+
+### Database migrations (`database`, opt-in: `policy.database`)
+
+Static checks of SQL migrations (they complement, never replace, tests against a disposable database): **DB-001** a public table that never gets row-level security (also when enabled in a loop over a table list), **DB-002** destructive statements (DROP TABLE/COLUMN, TRUNCATE, DELETE without WHERE), **DB-003** open policies (`USING (true)`), **DB-004** `SECURITY DEFINER` without a pinned `search_path`. Existing migrations are in the baseline; a new violation fails.
+
+### Project-specific rules and documentation
+
+- `policy.forbiddenPatterns[]` turns a team rule into a check: `{ id, regex, files, message, suggestion }`, counted per file against the baseline (for example "a screen must not call the database directly").
+- **REPO-008** (`policy.docs`): every document in the docs folder is listed in the index, and the index links only to documents that exist.
+- A project without `globals` or `database` in its policy is told `not configured`; it is never silently passed.
 
 ### Repository policy (`repo-policy`)
 
@@ -185,3 +210,4 @@ The stages run from the trusted toolkit (`CI_TOOLKIT_REF=main`). Nothing changes
 |---|---|
 | 2026-10-29 | Baseline refreshed against current `main` (it had picked up pricing, billing and chat commits after the first audit: 63 would-be violations) and ARCH-006 relaxed for shared services. Activation waits for this refresh to be merged. |
 | 2026-10-29 | Quality engine (`ci/verify/quality`), four new required stages (repo-policy, code-standards, maintainability, architecture), TaskFlow policy and baseline from the first audit, 12 engine tests, `--init` for new projects. Rollout phases 1 to 3 (audit, code-level standards, architecture). Phase 4 items listed above. |
+| 2026-10-30 | Global-scope check for no-build apps (GLOB-001 to 008), architecture rules over file-to-file reads (rules may filter by name), static SQL migration checks (DB-001 to 004), documentation index check (REPO-008), project-specific forbidden patterns. First used for OP Central. |

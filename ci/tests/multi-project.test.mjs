@@ -202,3 +202,15 @@ test("GENERATOR: a developer's prefix is matched literally, never as a pattern",
   const j = renderJenkinsYaml(fs.readFileSync(path.join(HERE, "..", "jenkins", "casc", "jenkins.yaml"), "utf8").replace(/\r\n/g, "\n"), reg);
   assert.ok(j.includes("(a" + String.fromCharCode(92) + String.fromCharCode(92) + ".b)"), "a dot in a prefix is escaped for the YAML string");
 });
+
+test("BRANCH FILTER: a project can build only main and its developers' branches; a project without the option is untouched", () => {
+  const reg = parseRegistry({ ...REG, projects: [REG.projects[0], { ...REG.projects[1], branchFilter: "developers", developers: [{ user: "bob", prefixes: ["bob", "a.b"] }] }] });
+  const g = renderGithubYaml(fs.readFileSync(path.join(HERE, "..", "jenkins", "casc", "github.yaml"), "utf8").replace(/\r\n/g, "\n"), reg);
+  const BSL = String.fromCharCode(92);
+  assert.ok(g.includes("branchRegex: '^(main|(bob|a" + BSL + BSL + ".b)/.*)$'"), "a prefix dot is escaped, main is always included");
+  assert.doesNotMatch(g.split("\n").find((l) => l.includes("id: 'alpha'")), /branchRegex/, "the first project has no filter");
+  assert.ok(g.includes("RegexSCMHeadFilterTrait"), "the trait is part of the job template");
+  assert.throws(() => parseRegistry({ ...REG, projects: [{ ...REG.projects[0], branchFilter: "everything" }, REG.projects[1]] }), /branchFilter must be/);
+  const none = parseRegistry({ ...REG, projects: [{ ...REG.projects[0], branchFilter: "developers", developers: [] }, REG.projects[1]] });
+  assert.ok(renderGithubYaml(fs.readFileSync(path.join(HERE, "..", "jenkins", "casc", "github.yaml"), "utf8").replace(/\r\n/g, "\n"), none).includes("branchRegex: '^main$'"), "no developers: main only");
+});

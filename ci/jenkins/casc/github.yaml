@@ -17,6 +17,7 @@ jobs:
       // >>> generated:projects (from ci/projects.json: do not edit by hand)
       def PROJECTS = [
         [id: 'taskflow', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
+        [id: 'ops-central', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(nikunjbyteo|nikunj|naveena246|naveena|priyanshubyte|priyanshu)/.*)$'],
       ]
       // <<< generated:projects
       PROJECTS.each { p ->
@@ -42,6 +43,13 @@ jobs:
             f.children().clear()
             f / 'scriptId'(p.id + '-central-jenkinsfile')
             f / 'useSandbox'(true)
+          }
+          // Optional per-project branch filter: only main and the branches of the project's developers are discovered, so onboarding a repository with many old branches does not build all of them.
+          if (p.branchRegex) {
+            configure { node ->
+              def traits = node / 'sources' / 'data' / 'jenkins.branch.BranchSource' / 'source' / 'traits'
+              traits << 'jenkins.scm.impl.trait.RegexSCMHeadFilterTrait' { regex(p.branchRegex) }
+            }
           }
           orphanedItemStrategy { discardOldItems { numToKeep(10) } }
           // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).

@@ -136,6 +136,32 @@ jenkins:
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "priyanshubyte"
+          - name: "folder-ops-central"
+            description: "The OP Central folder itself, so a developer can open it; it lists only the children they may read"
+            pattern: "^ops-central$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "nikunjbyteo"
+              - user: "naveena246"
+              - user: "priyanshubyte"
+          - name: "branches-ops-central-nikunjbyteo"
+            description: "Branches of nikunjbyteo in OP Central"
+            pattern: "(?i)^ops-central/(nikunjbyteo|nikunj)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "nikunjbyteo"
+          - name: "branches-ops-central-naveena246"
+            description: "Branches of naveena246 in OP Central"
+            pattern: "(?i)^ops-central/(naveena246|naveena)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "naveena246"
+          - name: "branches-ops-central-priyanshubyte"
+            description: "Branches of priyanshubyte in OP Central"
+            pattern: "(?i)^ops-central/(priyanshubyte|priyanshu)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "priyanshubyte"
           # <<< generated:roles
   crumbIssuer: "standard"
   remotingSecurity:
@@ -168,4 +194,9 @@ unclassified:
           name: "TaskFlow central Jenkinsfile"
           comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
           content: "${readFile:/usr/share/jenkins/ref/casc/Jenkinsfile.central}"
+      - custom:
+          id: "ops-central-central-jenkinsfile"
+          name: "OP Central central Jenkinsfile"
+          comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
+          content: "${readFile:/usr/share/jenkins/ref/casc/projects/ops-central/Jenkinsfile}"
       # <<< generated:configfiles

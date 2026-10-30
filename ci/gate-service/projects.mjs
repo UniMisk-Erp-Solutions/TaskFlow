@@ -33,8 +33,9 @@ export function parseRegistry(json) {
     });
     if (new Set(devs.map((d) => d.user.toLowerCase())).size !== devs.length) fail(`${p.id}: a developer is listed twice`);
     if (devs.some((d) => admins.includes(d.user))) fail(`${p.id}: an admin cannot also be listed as a branch developer`);
+    if (p.branchFilter !== undefined && p.branchFilter !== "developers") fail(`${p.id}: branchFilter must be "developers" (build main and the branches of the listed developers only) or left out (build every branch)`);
     if (p.requiredChecks !== undefined && (!Array.isArray(p.requiredChecks) || p.requiredChecks.length === 0 || p.requiredChecks.some((c) => !CHECK_RE.test(c)) || new Set(p.requiredChecks).size !== p.requiredChecks.length)) fail(`${p.id}: requiredChecks must be a non-empty list of unique stage names`);
-    return { id: p.id, displayName: p.displayName || p.id, repo: p.repo, jenkinsFolder: p.jenkinsFolder, centralJenkinsfile: central, developers: devs, requiredChecks: p.requiredChecks };
+    return { id: p.id, displayName: p.displayName || p.id, repo: p.repo, jenkinsFolder: p.jenkinsFolder, centralJenkinsfile: central, developers: devs, requiredChecks: p.requiredChecks, branchFilter: p.branchFilter };
   });
   const defaultProject = json.defaultProject ?? projects[0].id;
   if (!seen.id.has(defaultProject)) fail(`defaultProject "${defaultProject}" is not in the list`);
