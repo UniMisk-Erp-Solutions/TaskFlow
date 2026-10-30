@@ -76,7 +76,7 @@ test("Jenkins compose: every secret is required (':?'), none has a default value
   const env = [...compose.matchAll(/^\s+(\w+): "\$\{(\w+)(.*?)\}"/gm)];
   assert.ok(env.length >= 4);
   // These select files / mirrors (not secrets) and legitimately have defaults.
-  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_STATUS_MODE", "CI_TOOLKIT_REF", "MONITOR_URL"]);
+  const NOT_SECRETS = new Set(["CASC_JENKINS_CONFIG", "DEBIAN_MIRROR", "JENKINS_UC_DOWNLOAD", "GITHUB_READ_USER", "GATE_REPO", "GATE_JENKINS_FOLDER", "GATE_PROJECTS_FILE", "GATE_STATUS_MODE", "CI_TOOLKIT_REF", "MONITOR_URL"]);
   for (const [, key, , rest] of env.filter(([, k]) => !NOT_SECRETS.has(k))) assert.match(rest, /^:\?/, `${key} must fail when unset`);
 });
 
@@ -127,7 +127,7 @@ test("ISOLATION: the build agent has no secret but its own agent secret, no publ
 test("ISOLATION: the controller holds neither the signing key nor the webhook secret nor a GitHub write token", () => {
   const jenkins = service("jenkins");
   const secrets = listOf(jenkins, "secrets");
-  assert.deepEqual(secrets.sort(), ["dev_users_password", "developer_password", "gate_jenkins_password", "github_read_token"]);
+  assert.deepEqual(secrets.sort(), ["dev_users_password", "developer_password", "gate_jenkins_password", "github_read_token", "unimisk_admin_password"]);
   assert.deepEqual(listOf(jenkins, "networks").sort(), ["taskflow_agent", "taskflow_ci"]);
 });
 
@@ -278,21 +278,33 @@ test("ROLES: each branch developer sees only branches under their own name and c
   const items = core.slice(core.indexOf("        items:"), core.indexOf("  crumbIssuer:"));
   const blocks = items.split("          - name: ").slice(1);
   const role = (n) => blocks.find((b) => b.startsWith('"' + n + '"'));
-  const devs = ["naveena246", "salomi2810", "lakshyabyteo", "nikunjbyteo", "jacktechie", "unimisk-erp-solutions", "preet1249"];
-  for (const d of devs) {
-    const b = role("branches-" + d);
-    assert.ok(b, "a branch role for " + d);
-    assert.ok(b.includes('pattern: "(?i)^taskflow/(' + d), "pattern anchored to the TaskFlow folder and starting with the username: " + d);
-    assert.ok(b.includes('(%2F|/).*$"'), "the prefix must be followed by the branch separator, so naveena never matches naveenaX");
-    assert.ok(b.includes('permissions: ["Job/Read", "Job/Discover"]'), "read only: " + d);
-    assert.equal((b.match(/- user:/g) || []).length, 1, "exactly one user per branch role: " + d);
-    assert.ok(b.includes('- user: "' + d + '"'));
-    assert.ok(core.includes('- id: "' + d + '"'), "a login exists for " + d);
+  const reg = JSON.parse(read("ci", "projects.json"));
+  for (const p of reg.projects) {
+    assert.ok(role("folder-" + p.id), "the " + p.id + " folder is visible to its developers");
+    for (const dev of p.developers) {
+      const d = dev.user;
+      const b = role("branches-" + p.id + "-" + d);
+      assert.ok(b, "a branch role for " + d + " in " + p.id);
+      assert.ok(b.includes('pattern: "(?i)^' + p.jenkinsFolder + "/(" + dev.prefixes[0]), "pattern anchored to the project folder and starting with the username: " + d);
+      for (const pre of dev.prefixes) assert.ok(b.includes(pre), d + " may use the prefix " + pre);
+      assert.ok(b.includes('(%2F|/).*$"'), "the prefix must be followed by the branch separator, so naveena never matches naveenaX");
+      assert.ok(b.includes('permissions: ["Job/Read", "Job/Discover"]'), "read only: " + d);
+      assert.equal((b.match(/- user:/g) || []).length, 1, "exactly one user per branch role: " + d);
+      assert.ok(b.includes('- user: "' + d + '"'));
+      assert.ok(core.includes('- id: "' + d + '"'), "a login exists for " + d);
+    }
   }
+  const adminRoleOf = core.split('          - name: "admin"')[1].split("          - name: ")[0];
+  for (const a of reg.admins) { assert.ok(adminRoleOf.includes('- user: "' + a + '"'), a + " is an admin"); assert.ok(core.includes('- id: "' + a + '"'), "a login exists for the admin " + a); }
   // nobody but admin may administer, and only the gate may build
   assert.equal(core.split("Overall/Administer").length - 1, 1);
   assert.equal(core.split("Job/Build").length - 1, 1);
   assert.doesNotMatch(core, /ChaosInTheWake/i, "no password literal in the repository");
+  // the organisation account is an admin, and because it is an admin it must NOT use the password every developer knows
+  const adminRole = core.split('          - name: "admin"')[1].split("          - name: ")[0];
+  assert.ok(adminRole.includes('- user: "unimisk-erp-solutions"'), "unimisk-erp-solutions is an admin");
+  const adminUser = core.split('- id: "unimisk-erp-solutions"')[1].split("- id: ")[0];
+  assert.ok(adminUser.includes("UNIMISK_ADMIN_PASSWORD_FILE") && !adminUser.includes("DEV_USERS_PASSWORD_FILE"), "admin account has its own password file");
   assert.match(read("ci", "jenkins", "plugins.txt"), /^role-strategy$/m);
   const github = read("ci", "jenkins", "casc", "github.yaml");
   assert.ok(github.includes("buildOriginBranchWithPR(true)"), "a branch with a PR is built as the branch, so the job name keeps the owner");

@@ -38,12 +38,14 @@ services:
       GATE_JENKINS_PASSWORD_FILE: /run/secrets/gate_jenkins_password
       DEVELOPER_PASSWORD_FILE: /run/secrets/developer_password
       DEV_USERS_PASSWORD_FILE: /run/secrets/dev_users_password
+      UNIMISK_ADMIN_PASSWORD_FILE: /run/secrets/unimisk_admin_password
       GITHUB_READ_TOKEN_FILE: /run/secrets/github_read_token
       GITHUB_READ_USER: "${GITHUB_READ_USER:-unused}"
     secrets:
       - gate_jenkins_password
       - developer_password
       - dev_users_password
+      - unimisk_admin_password
       - github_read_token
     volumes:
       - jenkins_home:/var/jenkins_home
@@ -104,7 +106,9 @@ services:
       GATE_GIT_SOURCE: "${GATE_GIT_SOURCE:?set GATE_GIT_SOURCE}"
       GATE_JENKINS_URL: http://taskflow-jenkins:8080
       GATE_DASHBOARD_URL: "${JENKINS_URL:?set JENKINS_URL}"   # GitHub status link target; ignored while it is a loopback address
-      GATE_JENKINS_FOLDER: "${GATE_JENKINS_FOLDER:-taskflow-local}"
+      GATE_JENKINS_FOLDER: "${GATE_JENKINS_FOLDER:-taskflow-local}"   # single-project mode only; with a registry the folder of each project comes from it
+      GATE_PROJECTS_FILE: "${GATE_PROJECTS_FILE:-}"                # /app/ci/projects.json = serve every project in the registry; empty = the single repository GATE_REPO
+      GATE_PROJECT_SECRETS_DIR: /run/project-secrets               # <id>/webhook-secret (and optional <id>/github-token) for every project but the first
       GATE_STATUS_MODE: "${GATE_STATUS_MODE:-record}"
       GATE_WEBHOOK_SECRET_FILE: /run/secrets/gate_webhook_secret
       GATE_ATTEST_KEY_FILE: /run/secrets/attest_key
@@ -117,6 +121,7 @@ services:
       - gate_github_token
     volumes:
       - gate_state:/var/lib/gate
+      - "${GATE_PROJECT_SECRETS_PATH:?folder holding <project>/webhook-secret for each extra project (may be empty)}:/run/project-secrets:ro"
     read_only: true
     tmpfs: [/tmp]
     networks: [taskflow_ci]
@@ -143,6 +148,8 @@ networks:
     driver: bridge
 
 secrets:
+  unimisk_admin_password:
+    file: "${UNIMISK_ADMIN_PASSWORD_PATH:?path to the password file of the unimisk-erp-solutions admin login}"
   dev_users_password:
     file: "${DEV_USERS_PASSWORD_PATH:?path to the password file of the per-branch developer logins}"
   developer_password:

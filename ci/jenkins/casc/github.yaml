@@ -14,31 +14,46 @@ credentials:
 
 jobs:
   - script: |
-      multibranchPipelineJob('taskflow') {
-        displayName('TaskFlow')
-        branchSources {
-          github {
-            id('taskflow-github')
-            repoOwner('UniMisk-Erp-Solutions')
-            repository('TaskFlow')
-            scanCredentialsId('taskflow-github-read')
-            // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
-            buildOriginBranch(true)          // branches without a pull request
-            buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)
-            buildOriginPRHead(false)         // no separate PR job: the status is stored on the commit, so the pull request shows it exactly as before
+      // >>> generated:projects (from ci/projects.json: do not edit by hand)
+      def PROJECTS = [
+        [id: 'taskflow', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
+        [id: 'ops-central', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(nikunjbyteo|nikunj|naveena246|naveena|priyanshubyte|priyanshu)/.*)$'],
+      ]
+      // <<< generated:projects
+      PROJECTS.each { p ->
+        multibranchPipelineJob(p.folder) {
+          displayName(p.display)
+          branchSources {
+            github {
+              id(p.id + '-github')
+              repoOwner(p.owner)
+              repository(p.repo)
+              scanCredentialsId('taskflow-github-read')
+              // Discovery only. Pull requests from forks are NOT built: they could run hostile code.
+              buildOriginBranch(true)          // branches without a pull request
+              buildOriginBranchWithPR(true)    // a branch that has a PR is built AS THE BRANCH, so the job keeps the branch name (a "PR-12" job names no owner, so per-developer visibility is impossible)
+              buildOriginPRHead(false)         // no separate PR job: the status is stored on the commit, so the pull request shows it exactly as before
+            }
           }
+          // CENTRAL PIPELINE: branches need no Jenkinsfile. The one stored in Jenkins (config file below) is used for every
+          // branch that has none; the gate refuses to sign a branch whose own Jenkinsfile differs from the admin-approved pin.
+          configure { node ->
+            def f = node / 'factory'
+            f.@class = 'org.jenkinsci.plugins.pipeline.multibranch.defaults.PipelineBranchDefaultsProjectFactory'
+            f.children().clear()
+            f / 'scriptId'(p.id + '-central-jenkinsfile')
+            f / 'useSandbox'(true)
+          }
+          // Optional per-project branch filter: only main and the branches of the project's developers are discovered, so onboarding a repository with many old branches does not build all of them.
+          if (p.branchRegex) {
+            configure { node ->
+              def traits = node / 'sources' / 'data' / 'jenkins.branch.BranchSource' / 'source' / 'traits'
+              traits << 'jenkins.scm.impl.trait.RegexSCMHeadFilterTrait' { regex(p.branchRegex) }
+            }
+          }
+          orphanedItemStrategy { discardOldItems { numToKeep(10) } }
+          // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
         }
-        // CENTRAL PIPELINE: branches need no Jenkinsfile. The one stored in Jenkins (config file below) is used for every
-        // branch that has none; the gate refuses to sign a branch whose own Jenkinsfile differs from the admin-approved pin.
-        configure { node ->
-          def f = node / 'factory'
-          f.@class = 'org.jenkinsci.plugins.pipeline.multibranch.defaults.PipelineBranchDefaultsProjectFactory'
-          f.children().clear()
-          f / 'scriptId'('taskflow-central-jenkinsfile')
-          f / 'useSandbox'(true)
-        }
-        orphanedItemStrategy { discardOldItems { numToKeep(10) } }
-        // No periodic trigger here: the gate asks for a scan on every verified webhook and on a timer (recovery path).
       }
 
   # Production health check (free monitoring): one read-only GET every 10 minutes, red build = site down.

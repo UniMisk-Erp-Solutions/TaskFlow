@@ -29,9 +29,11 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
   async function publishOnce(sha, st, description, extraIn = {}) {
     const { path: buildPath, ...extra } = extraIn;
     const cur = published()[sha];
-    if (cur && cur.state === st && (st === "success" || cur.description === description)) return "same";
-    try { await publish({ sha, state: st, description, targetUrl: linkFor(buildPath) }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
-    published()[sha] = { state: st, description, at: now(), ...extra };
+    const url = linkFor(buildPath);
+    // the same fact is not published twice, unless the earlier status has no Details link and one is available now
+    if (cur && cur.state === st && (st === "success" || cur.description === description) && (cur.linked || !url)) return "same";
+    try { await publish({ sha, state: st, description, targetUrl: url }); } catch (e) { log(`[gate] status publish failed for ${sha.slice(0, 7)}: ${e.message}`); return "failed"; }
+    published()[sha] = { state: st, description, at: now(), ...extra, linked: Boolean(url) };
     state.save();
     return "published";
   }
@@ -49,19 +51,21 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
     // through a pull request an admin approved, so merging it is the approval and nobody re-pins by hand). The toolkit the build used and any
     // pipeline file the branch carries must each equal one of those approved versions.
     const mainTip = await git.inspectRef?.("main");
+    // A project without a baked-in pin (every project except the first) is judged against the tip of its own main only.
+    const approvedPin = pin ?? mainTip?.pinned ?? null;
     const okValue = (p, v) => v !== null && v !== undefined && (v === pin?.[p] || v === mainTip?.pinned?.[p]);
     const effective = gi && { ...gi, pinned: Object.fromEntries(PINNED_PATHS.map((p) => {
       const own = gi.pinned?.[p] ?? null, central = tgi?.pinned?.[p] ?? null;
       if (!okValue(p, central)) return [p, `toolkit:${central}`];
       if (own !== null && !okValue(p, own)) return [p, own];
-      return [p, pin[p]];
+      return [p, approvedPin?.[p]];
     })) };
     const results = {};
     for (const name of required) results[name] = await jenkins.artifactJson(b.path, `.ci/results/${name}.json`);
     const aborted = b.result !== "SUCCESS" && Object.values(results).every((r) => !r);
     let outcome;
     if (aborted) outcome = { verdict: "error", reasons: [`build ${b.result || "unknown"} before any stage result was produced`] };
-    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin });
+    else outcome = evaluateBuild({ sha: b.sha, git: effective, results, required, pin: approvedPin });
     if (outcome.verdict === "passed" && b.result !== "SUCCESS") outcome = { verdict: "failed", reasons: [`Jenkins result ${b.result}`] };
 
     const prev = published()[b.sha];
@@ -99,7 +103,18 @@ export function createGate({ cfg, jenkins, git, state, publish, required, pin, p
         if (state.data.builds[key]) continue;
         if (await processBuild(b, mirrorReady)) handled += 1;
       }
-      return { builds: builds.length, handled };
+      // Statuses published before a dashboard address was configured have no Details link. Add it once, with the same state and text.
+      let linked = 0;
+      for (const b of builds) {
+        if (linked >= 25 || !b.sha || b.building) continue;
+        const cur = published()[b.sha];
+        if (!cur || cur.linked || cur.job !== b.job || cur.build !== b.number) continue;
+        const url = linkFor(b.path);
+        if (!url) continue;
+        try { await publish({ sha: b.sha, state: cur.state, description: cur.description, targetUrl: url }); cur.linked = true; state.save(); linked += 1; }
+        catch (e) { log(`[gate] adding the link failed for ${b.sha.slice(0, 7)}: ${e.message}`); }
+      }
+      return { builds: builds.length, handled, linked };
     },
   };
 }
