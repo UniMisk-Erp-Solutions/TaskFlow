@@ -11,6 +11,11 @@ import path from "node:path";
 import { lineOf } from "./project.mjs";
 import { fileLoc, measureDuplication, measureFunctions } from "./metrics.mjs";
 import { buildGraph, expandRules, findCycles, violatingEdges } from "./graph.mjs";
+import { analyzeGlobals } from "./globals.mjs";
+import { analyzeMigrations } from "./database.mjs";
+
+const skipped = (why) => ({ violations: [], warnings: [], baselined: 0, snapshot: {}, info: `not configured: ${why}` });
+const globalsOf = (project) => (project._globals ||= analyzeGlobals(project));
 
 const V = (check, rule, severity, file, line, message, suggestion, key, value) => ({ check, rule, severity, file, line, message, suggestion, key, value });
 const sortV = (a) => a.sort((x, y) => (x.file + String(x.line).padStart(7, "0")).localeCompare(y.file + String(y.line).padStart(7, "0")));
@@ -101,6 +106,13 @@ export function standards(project, baseline) {
     if (f.raw.includes("\r\n") && /[^\r]\n/.test(f.raw)) hit("STD-011", f, 1, "mixed CRLF and LF line endings", "use one line ending per file", "error");
     if (f.text.length && !f.text.endsWith("\n")) hit("STD-012", f, lines.length, "missing final newline", "end the file with a newline", "error");
   }
+  for (const fp of policy.forbiddenPatterns || []) {
+    const rx = new RegExp(fp.regex, fp.flags || ""), only = fp.files ? new RegExp(fp.files) : null;
+    for (const f of project.prod) {
+      if (only && !only.test(f.rel)) continue;
+      f.text.split("\n").forEach((line, i) => { if (rx.test(line)) hit(fp.id, f, i + 1, fp.message, fp.suggestion || "", fp.severity || "error"); });
+    }
+  }
   const measures = [...found.values()].map((x) => ({ ...x, key: `${x.rule}|${x.file}`, value: x.lines.length }));
   const errs = measures.filter((m) => m.sev === "error"), warns = measures.filter((m) => m.sev === "warn");
   const [worse, same] = diffAgainst(errs, baseline?.standards);
@@ -117,7 +129,8 @@ export function standards(project, baseline) {
 export function architecture(project, baseline) {
   const rules = expandRules(project.policy);
   const edges = buildGraph(project);
-  const hits = violatingEdges(edges, rules);
+  const gEdges = project.policy.globals ? globalsOf(project).edges : [];
+  const hits = violatingEdges([...edges, ...gEdges], rules);
   const known = new Set(baseline?.architecture?.violations || []);
   const fp = (h) => h.fp || `${h.rule.id}|${h.edge.from}|${h.edge.to}`;
   const violations = [], same = [];
@@ -145,7 +158,7 @@ export function architecture(project, baseline) {
   return {
     violations: sortV(violations), warnings: [], baselined: same.length,
     snapshot: { architecture: { violations: hits.map(fp).sort(), cycles } },
-    info: `${edges.length} imports, ${rules.length} rules, ${cycles.length} existing cycle(s)`,
+    info: `${edges.length} imports${gEdges.length ? `, ${gEdges.length} cross-file global reads` : ""}, ${rules.length} rules, ${cycles.length} existing cycle(s)`,
   };
 }
 
@@ -234,11 +247,67 @@ export function repoPolicy(project, baseline) {
     if (baseline?.repo?.protected && b !== undefined && prot[p] !== b) push("REPO-007", p, 1, `protected configuration changed${prot[p] === null ? " (deleted)" : ""}`, "needs admin review: a change here can weaken type checking, routing or production settings", `REPO-007|${p}`);
   }
 
+  // REPO-008 the documentation index lists every document and links only to documents that exist
+  const docKeys = [];
+  if (policy.docs) {
+    const dir = path.join(root, policy.docs.dir), idxFile = path.join(root, policy.docs.index);
+    if (fs.existsSync(dir) && fs.existsSync(idxFile)) {
+      const idx = fs.readFileSync(idxFile, "utf8"), idxName = path.basename(policy.docs.index);
+      const known = new Set(baseline?.repo?.docs || []);
+      const add = (key, file, msg, sug) => { docKeys.push(key); if (baseline?.repo && !known.has(key)) push("REPO-008", file, 1, msg, sug, key); };
+      for (const n of fs.readdirSync(dir).filter((x) => x.endsWith(".md") && x !== idxName)) if (!idx.includes(n)) add(`REPO-008|unlisted|${n}`, `${policy.docs.dir}/${n}`, `document is not listed in ${policy.docs.index}`, "add a row to the index: it is the first thing a teammate reads");
+      for (const m of idx.matchAll(/\]\(\.?\/?([\w./-]+\.md)\)/g)) if (!fs.existsSync(path.join(dir, m[1]))) add(`REPO-008|dead|${m[1]}`, policy.docs.index, `the index links to a document that does not exist: ${m[1]}`, "remove the row or restore the document");
+    }
+  }
+
   return {
     violations: sortV(violations), warnings: sortV(review), baselined: 0,
-    snapshot: { repo: { dependencies: deps, suppressions: supp, tests, protected: prot } },
+    snapshot: { repo: { dependencies: deps, suppressions: supp, tests, protected: prot, docs: docKeys.sort() } },
     info: `${project.files.filter((f) => f.test).length} test files, ${Object.keys(supp).length} files with suppressions`,
   };
 }
 
-export const CHECKS = { maintainability, standards, architecture, "repo-policy": repoPolicy };
+// ───────────────────────────── 5. global scope (no-build applications) ─────────────────────────────
+export function globals(project, baseline) {
+  if (!project.policy.globals) return skipped("no \"globals\" section in policy.json (this is not a no-build, shared-global-scope application)");
+  const g = globalsOf(project);
+  const found = [];
+  const add = (rule, severity, file, line, message, suggestion, key) => found.push(V("globals", rule, severity, file, line, message, suggestion, key, 1));
+  for (const [name, list] of g.decls) {
+    const files = [...new Set(list.map((d) => d.file))].sort();
+    if (files.length > 1) add("GLOB-001", "error", list.find((d) => d.file === files[1]).file, list.find((d) => d.file === files[1]).line, `top-level \"${name}\" is declared in ${files.length} files (${files.join(", ")}): they share one global scope and break each other`, "rename one (prefix helpers that belong to one screen, e.g. imp*, alloc*)", `GLOB-001|${name}|${files.join(",")}`);
+  }
+  const known = new Set(project.policy.globals.knownUndefined || []);
+  for (const u of g.undeclared) if (!known.has(u.name)) add("GLOB-002", "error", u.file, u.line, `\"${u.name}\" is read but defined in no file: a ReferenceError at run time (a white page)`, "define it, load the file that defines it, or fix the name", `GLOB-002|${u.file}|${u.name}`);
+  for (const m of g.moduleSyntax) add("GLOB-004", "error", m.file, m.line, "import/export syntax in a file loaded as a plain script: it will not run in the browser", "share through window.* and read it as a global", `GLOB-004|${m.file}`);
+  for (const d of g.dead) add("GLOB-005", "error", d.file, 1, "source file that the page never loads (dead code or a missing <script> tag)", "add its <script> tag to the page, or delete the file", `GLOB-005|dead|${d.file}`);
+  for (const d of g.missing) add("GLOB-005", "error", d.file, d.line, "the page loads a script that does not exist (404, the app will not start)", "fix the path or remove the tag", `GLOB-005|missing|${d.file}`);
+  for (const l of g.lateUse) add("GLOB-006", "error", l.file, l.line, `\"${l.name}\" is used while this file loads, but it is defined in ${l.definedIn}, which the page loads LATER`, "reorder the <script> tags, or read it only inside a function that runs after load", `GLOB-006|${l.file}|${l.name}`);
+  for (const c of g.cdn.filter((x) => x.kind === "unpinned")) add("GLOB-007", "error", project.policy.globals.html, c.line, `CDN script is not pinned to an exact version: ${c.src}`, "pin it (a floating version can change what every user runs)", `GLOB-007|${c.src}`);
+  const knownKeys = new Set(baseline?.globals?.keys || []);
+  const violations = found.filter((v) => !knownKeys.has(v.key));
+  const warnings = g.cdn.filter((x) => x.kind === "no-integrity").map((c) => V("globals", "GLOB-008", "warn", project.policy.globals.html, c.line, `CDN script has no integrity (SRI) attribute: ${c.src}`, "add integrity= and crossorigin=", `GLOB-008|${c.src}`, 1));
+  return { violations: sortV(violations), warnings, baselined: found.length - violations.length, snapshot: { globals: { keys: found.map((f) => f.key).sort() } }, info: `${g.files.length} script files, ${g.decls.size} top-level names, ${g.edges.length} cross-file reads` };
+}
+
+// ───────────────────────────── 6. database migrations (static) ─────────────────────────────
+export function database(project, baseline) {
+  const cfg = project.policy.database;
+  if (!cfg) return skipped("no \"database\" section in policy.json");
+  const a = analyzeMigrations(project.root, cfg);
+  const violations = [], keys = [];
+  const known = new Set(baseline?.database?.keys || []);
+  for (const [table, file] of a.tables) {
+    if (a.rls.has(table) || a.dropped.has(table)) continue;
+    const key = `DB-001|${table}`; keys.push(key);
+    if (!known.has(key)) violations.push(V("database", "DB-001", "error", file, 1, `table \"${table}\" is created but row-level security is never enabled on it: in a multi-tenant database every tenant could read every row`, `add: alter table ${table} enable row level security; and a policy that scopes rows to the tenant`, key, 1));
+  }
+  const MSG = { "DB-002": ["destructive statement (DROP TABLE / DROP COLUMN / TRUNCATE / DELETE without WHERE)", "needs admin approval and a backup plan; prefer a reversible change"], "DB-003": ["open policy USING (true) / WITH CHECK (true): every row is visible or writable", "scope the policy to the tenant or the owner"], "DB-004": ["SECURITY DEFINER function without a pinned search_path (privilege-escalation risk)", "add: set search_path = public"] };
+  for (const [key, value] of Object.entries(a.counts)) {
+    const [rule, file] = key.split("|");
+    if (value > (baseline?.database?.counts?.[key] ?? 0)) violations.push(V("database", rule, "error", file, 1, `${value} × ${MSG[rule][0]} (baseline ${baseline?.database?.counts?.[key] ?? 0})`, MSG[rule][1], key, value));
+  }
+  return { violations: sortV(violations), warnings: [], baselined: keys.length + Object.keys(a.counts).length - violations.length, snapshot: { database: { keys: keys.sort(), counts: a.counts } }, info: `${a.files.length} migrations, ${a.tables.size} tables` };
+}
+
+export const CHECKS = { maintainability, standards, architecture, "repo-policy": repoPolicy, globals, database };
