@@ -18,6 +18,12 @@ credentials:
               description: "Read-only token for OP Central (created by the repository owner, no write permission)"
               username: "${GITHUB_READ_USER}"
               password: "${trim:${readFile:/run/project-secrets/ops-central/github-token}}"
+          - usernamePassword:
+              scope: GLOBAL
+              id: "kidzo-github-read"
+              description: "Read-only token for Kidzo (created by the repository owner, no write permission)"
+              username: "${GITHUB_READ_USER}"
+              password: "${trim:${readFile:/run/project-secrets/kidzo/github-token}}"
           # <<< generated:credentials
 
 jobs:
@@ -26,6 +32,7 @@ jobs:
       def PROJECTS = [
         [id: 'taskflow', cred: 'taskflow-github-read', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
         [id: 'ops-central', cred: 'ops-central-github-read', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(naveena246|naveena|salomi2810|salomi|lakshyabyteo|lakshya|nikunjbyteo|nikunj|jacktechie|preet1249|preet|priyanshubyte|priyanshu)/.*)$'],
+        [id: 'kidzo', cred: 'kidzo-github-read', folder: 'kidzo', display: 'Kidzo', owner: 'UniMisk-Erp-Solutions', repo: 'Kidzo', branchRegex: '^(main|(naveena246|naveena|salomi2810|salomi|lakshyabyteo|lakshya|nikunjbyteo|nikunj|jacktechie|preet1249|preet|priyanshubyte|priyanshu)/.*)$'],
       ]
       // <<< generated:projects
       PROJECTS.each { p ->

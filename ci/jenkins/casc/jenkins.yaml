@@ -190,6 +190,60 @@ jenkins:
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "priyanshubyte"
+          - name: "folder-kidzo"
+            description: "The Kidzo folder itself, so a developer can open it; it lists only the children they may read"
+            pattern: "^kidzo$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "naveena246"
+              - user: "salomi2810"
+              - user: "lakshyabyteo"
+              - user: "nikunjbyteo"
+              - user: "jacktechie"
+              - user: "preet1249"
+              - user: "priyanshubyte"
+          - name: "branches-kidzo-naveena246"
+            description: "Branches of naveena246 in Kidzo"
+            pattern: "(?i)^kidzo/(naveena246|naveena)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "naveena246"
+          - name: "branches-kidzo-salomi2810"
+            description: "Branches of salomi2810 in Kidzo"
+            pattern: "(?i)^kidzo/(salomi2810|salomi)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "salomi2810"
+          - name: "branches-kidzo-lakshyabyteo"
+            description: "Branches of lakshyabyteo in Kidzo"
+            pattern: "(?i)^kidzo/(lakshyabyteo|lakshya)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "lakshyabyteo"
+          - name: "branches-kidzo-nikunjbyteo"
+            description: "Branches of nikunjbyteo in Kidzo"
+            pattern: "(?i)^kidzo/(nikunjbyteo|nikunj)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "nikunjbyteo"
+          - name: "branches-kidzo-jacktechie"
+            description: "Branches of jacktechie in Kidzo"
+            pattern: "(?i)^kidzo/(jacktechie)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "jacktechie"
+          - name: "branches-kidzo-preet1249"
+            description: "Branches of preet1249 in Kidzo"
+            pattern: "(?i)^kidzo/(preet1249|preet)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "preet1249"
+          - name: "branches-kidzo-priyanshubyte"
+            description: "Branches of priyanshubyte in Kidzo"
+            pattern: "(?i)^kidzo/(priyanshubyte|priyanshu)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "priyanshubyte"
           # <<< generated:roles
   crumbIssuer: "standard"
   remotingSecurity:
@@ -227,4 +281,9 @@ unclassified:
           name: "OP Central central Jenkinsfile"
           comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
           content: "${readFile:/usr/share/jenkins/ref/casc/projects/ops-central/Jenkinsfile}"
+      - custom:
+          id: "kidzo-central-jenkinsfile"
+          name: "Kidzo central Jenkinsfile"
+          comment: "Used for every branch without its own Jenkinsfile. Identical to the repository Jenkinsfile (enforced by a test)."
+          content: "${readFile:/usr/share/jenkins/ref/casc/projects/kidzo/Jenkinsfile}"
       # <<< generated:configfiles

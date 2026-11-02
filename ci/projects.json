@@ -80,6 +80,25 @@
         "database",
         "ui-checks"
       ]
+    },
+    {
+      "id": "kidzo",
+      "displayName": "Kidzo",
+      "repo": "UniMisk-Erp-Solutions/Kidzo",
+      "jenkinsFolder": "kidzo",
+      "branchFilter": "developers",
+      "requiredChecks": [
+        "lint",
+        "build",
+        "unit-tests",
+        "trivy-deps",
+        "trivy-secrets",
+        "repo-policy",
+        "code-standards",
+        "maintainability",
+        "architecture",
+        "database"
+      ]
     }
   ]
 }

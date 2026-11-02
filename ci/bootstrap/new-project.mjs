@@ -7,7 +7,7 @@
 //     [--stage "ui-checks|UI checks|node ci/pipeline/run-ui-checks.mjs"]...   a project-specific required stage (repeatable)
 // Without --write it only prints the plan. Nothing here touches the server, GitHub or Jenkins.
 //
-// What is copied unchanged (universal):   ci/lib, ci/gate, ci/verify/quality (engine), ci/pipeline/{run-stage,scan-credentials}.mjs
+// What is copied unchanged (universal):   ci/lib, ci/gate, ci/verify/quality (engine), ci/pipeline/{run-stage,scan-credentials,run-lint}.mjs
 // What is generated (project specific):   ci/pipeline/config.mjs (its build/test commands), Jenkinsfile, ci/verify/quality/policy.json,
 //                                         ci/pipeline/overlay.mjs and run-trivy.mjs (its package folders)
 import { spawnSync } from "node:child_process";
@@ -174,7 +174,7 @@ export function planProject({ id, repo, display, target, toolkit = TOOLKIT, inst
   for (const x of extraStages) stages[x.name] = { phase: "test", title: x.title, commands: [{ cmd: x.cmd, args: x.args }], group: "project" };
   const files = new Map();
   const copy = (rel) => { const abs = path.join(toolkit, rel); if (fs.statSync(abs).isDirectory()) { for (const n of fs.readdirSync(abs)) copy(`${rel}/${n}`); } else files.set(rel, fs.readFileSync(abs, "utf8")); };
-  for (const rel of ["ci/lib", "ci/gate", "ci/pipeline/run-stage.mjs", "ci/pipeline/scan-credentials.mjs", "ci/verify/quality/run.mjs", "ci/verify/quality/lib"]) copy(rel);
+  for (const rel of ["ci/lib", "ci/gate", "ci/pipeline/run-stage.mjs", "ci/pipeline/scan-credentials.mjs", "ci/pipeline/run-lint.mjs", "ci/verify/quality/run.mjs", "ci/verify/quality/lib"]) copy(rel);
   // overlay: which CI-owned files replace the branch's own (a branch must not weaken its lint or type config)
   const owned = ["ci", ".trivyignore", ".trivyignore.yaml", ...packages.flatMap((p) => [p.eslint ? `${p.dir === "." ? "" : p.dir + "/"}eslint.config.js` : null, p.tsci ? `${p.dir === "." ? "" : p.dir + "/"}tsconfig.ci.json` : null].filter(Boolean))];
   let overlay = fs.readFileSync(path.join(toolkit, "ci/pipeline/overlay.mjs"), "utf8");
