@@ -1022,7 +1022,8 @@ Developers see their own pipeline in Jenkins without any admin rights.
 
 : the username, or the short form the team already uses, followed by the branch separator. `naveenaX/...` therefore does not match.
 - **Branch-only builds** (`github.yaml`): a branch that has a pull request is built as the branch (`buildOriginBranchWithPR(true)`, `buildOriginPRHead(false)`). A `PR-12` job names no owner, so it could not be shown to one person. The `unimisk/verified` status is stored on the commit, so the pull request shows the check exactly as before. Pull requests from forks are still not built. Old `PR-N` jobs stay visible to admins only until Jenkins discards them.
-- **Logins:** `naveena246`, `salomi2810`, `lakshyabyteo`, `nikunjbyteo`, `jacktechie`, `unimisk-erp-solutions`, `preet1249`. They share one initial password, read from the file at `DEV_USERS_PASSWORD_PATH` (server: `secrets/dev-users-password`, mode 0400, never in the repository). **Change it per person**: with a shared password any developer can log in as another. Replace the file content (or give each user their own `readFile`) and recreate the `jenkins` container.
+- **Logins:** `naveena246`, `salomi2810`, `lakshyabyteo`, `nikunjbyteo`, `jacktechie`, `unimisk-erp-solutions`, `preet1249`, `priyanshubyte`. They share one initial password, read from the file at `DEV_USERS_PASSWORD_PATH` (server: `secrets/dev-users-password`, mode 0400, never in the repository). **Change it per person**: with a shared password any developer can log in as another. Replace the file content (or give each user their own `readFile`) and recreate the `jenkins` container.
+- **Admin account:** `unimisk-erp-solutions` is also a full Jenkins admin (role `admin`). Because an admin must never share the developers' password, it has its own file (`UNIMISK_ADMIN_PASSWORD_PATH`, server: `secrets/unimisk-admin-password`, mode 0400). The shared developer password does not work for it.
 - **Branches of nobody on the list** (for example `jay/...`, `main`, `feature/...`) are visible to admins and to the `developer` login only.
 - **Add a developer:** add a user, a `branches-<name>` role with its pattern, and the name in `folder-visible`; the test `ROLES` in `config.test.mjs` lists the expected developers.
 
@@ -1033,6 +1034,36 @@ Developers see their own pipeline in Jenkins without any admin rights.
 ## Engineering quality gates
 
 Four static quality stages (repository policy, code standards, maintainability, architecture) enforce the UniMisk engineering standard on every branch, blocking only new or worsened problems against a baseline. Rules, thresholds, the TaskFlow architecture, what is universal and what each project must provide, and what is not implemented yet: see [engineering-quality.md](engineering-quality.md).
+
+## Many projects, one Jenkins and one gate (2026-10-29)
+
+One Jenkins server and one gate serve every UniMisk project. A project is described **once**, in the registry `ci/projects.json` (id, repository, Jenkins folder, developers and their branch prefixes; admins are listed once for all). No secrets are in it.
+
+**What the registry drives**
+- `node ci/jenkins/generate.mjs` writes, from the registry, the Jenkins parts that depend on a project: the developer logins, the admin role entries, one folder role and one branch role per developer per project, one central-Jenkinsfile entry per project, and one multibranch job per project. Everything else in `jenkins.yaml` and `github.yaml` stays hand-written. A test (`multi-project.test.mjs`) fails if the committed files differ from what the registry would produce.
+- The gate (`ci/gate-service/main.mjs`) starts one verification pipeline per project: its own Jenkins folder, git mirror, state, attestations, webhook secret and status posting. The first project keeps the original state paths and the baked-in pipeline pin; every other project is judged against **the tip of its own `main`** (a change reaches `main` only through an admin-reviewed pull request), so there is nothing to re-pin by hand. If a project's `main` cannot be read, nothing is signed.
+- Webhooks: `POST /github` is the first project; `POST /github/<id>` is any project. Each has its own secret and allowed repository; one project's secret does not open another's endpoint. The webhook is optional: the gate also detects pushes by polling.
+
+**On the server**
+- `.env`: `GATE_PROJECTS_FILE=/app/ci/projects.json` (empty or unset = the old single-repository mode) and `GATE_PROJECT_SECRETS_PATH=<folder>` (mounted read-only into the gate).
+- For every project except the first: `<GATE_PROJECT_SECRETS_PATH>/<id>/webhook-secret` (required, the gate refuses to start without it) and optionally `<id>/github-token` (otherwise the main token is used, so it must have access to that repository).
+- State lives in `projects/<id>/` inside the gate volume.
+
+**Adding a project** (the tool prepares the project's side; the admin does the rest)
+1. In the platform repository: `node ci/bootstrap/new-project.mjs --id acme --repo UniMisk-Erp-Solutions/Acme --target ../Acme` shows the plan; add `--write` to create the files in the project, `--baseline` to also record its quality baseline (needs its dependencies installed). It detects the packages and their `lint`, `typecheck`, `build` and `test` scripts, generates `ci/pipeline/config.mjs`, the `Jenkinsfile` and the quality policy, and adapts the overlay and Trivy scripts. It copies the shared `ci/lib`, `ci/gate` and the quality engine.
+2. In the project: fill `PRODUCTION_HOSTS` and `CI_BUILD_ENV` in `ci/pipeline/config.mjs`, write the architecture rules in `ci/verify/quality/policy.json`, record the baseline, and merge it by pull request.
+3. In `ci/projects.json`: add the entry the tool printed (with its developers) and run `node ci/jenkins/generate.mjs`. Copy the project's `Jenkinsfile` to `ci/jenkins/casc/projects/<id>/Jenkinsfile` (a test must show it equals the repository one).
+4. On the server: create `secrets/projects/<id>/webhook-secret`, rebuild and restart Jenkins (new job, roles, central Jenkinsfile) and the gate (new project), then optionally add the GitHub webhook to `<gate address>/github/<id>`.
+
+**Registered projects** (see `ci/projects.json`): `taskflow` (the default) and `ops-central` (OP Central, a no-build React/Babel app with 25 browser-less UI checks, onboarded 2026-10-30). Its pipeline runs: the six quality stages (including the global-scope and migration checks), its own 25 UI checks inside a **network jail** (`ci/pipeline/network-jail.cjs`: any connection to a host other than this machine is refused), Trivy secrets and dependencies. Its public Supabase anon key is accepted by a **path-scoped** `.trivyignore.yaml`, and `check-jwt-roles.mjs` fails on any committed JWT whose role is not `anon`.
+
+**Per-project branch filter.** `"branchFilter": "developers"` in a registry entry makes Jenkins discover only `main` and the branches that start with a listed developer's prefix (a Jenkins `RegexSCMHeadFilterTrait` generated by `generate.mjs`). Use it when onboarding a repository with many old branches, so they are not all built at once. A project without the option builds every branch, as before.
+
+**Limits (honest)**
+- Each project carries its own copy of the shared `ci/` files for now, so improving a rule means copying the updated files into each project (the bootstrap tool re-creates them). A separate shared toolkit repository can replace the copies later without changing anything else here.
+- The central Jenkinsfile of each project is baked into the Jenkins image, so changing a project's `Jenkinsfile` needs an image rebuild, exactly as for TaskFlow.
+- The gate needs `main` of every project to be admin-controlled. On a free GitHub organization that is a team agreement, not an enforced rule.
+- Not yet exercised with a real second project: it is covered by tests with fake projects (registry, gate judgement, webhook routing, the real gate process with two projects, generator output, bootstrap output).
 
 ## Revision log
 
@@ -1061,3 +1092,7 @@ Four static quality stages (repository policy, code standards, maintainability, 
 | 2026-10-29 | Read-only `developer` login, optional LAN publishing of Jenkins (`JENKINS_LAN_BIND`), GitHub status Details link to the build page. Gate failure text now ignores passing tests whose title contains FAILURE. E2E smoke test updated for the 404 page. |
 | 2026-10-29 | Per-developer visibility: Role Strategy plugin, seven branch-developer logins, branch-only builds (pull requests are built as the branch). Section "Per-developer visibility". |
 | 2026-10-29 | Engineering quality gates: four new required stages, quality engine in `ci/verify/quality`, TaskFlow policy and baseline. See `docs/engineering-quality.md`. |
+| 2026-10-29 | `unimisk-erp-solutions` made a Jenkins admin with its own password file instead of the shared developer password. |
+| 2026-10-29 | Added the `priyanshubyte` branch-developer login (same initial password as the others). |
+| 2026-10-29 | One Jenkins and one gate for many projects: project registry `ci/projects.json`, generated Jenkins jobs and roles, multi-project gate, `ci/bootstrap/new-project.mjs`. TaskFlow behaviour unchanged. |
+| 2026-10-30 | Second project registered (`ops-central`), per-project `branchFilter`, bootstrap tool options (`--install`, `--quality-extra`, `--stage`), `.trivyignore` generated, dependency scan limited to folders with a lockfile. |

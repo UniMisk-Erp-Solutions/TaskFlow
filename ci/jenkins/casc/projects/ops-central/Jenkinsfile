@@ -1,0 +1,78 @@
+// OP Central CI. Triggered by a push to GitHub (gate -> Jenkins branch scan); see the platform docs (docs/ci-cd-pipeline.md).
+//   push -> checks -> (gate verifies independently, signs, publishes the commit status) -> PR review -> ADMIN merge
+// This file ONLY builds and tests. It runs on the "untrusted" agent, a container with no secrets: it holds no signing key,
+// no GitHub token, and cannot reach the gate. It NEVER merges, pushes or deploys.
+// Changing this file or the pipeline scripts under ci/ makes the gate refuse to sign until an admin approves the change.
+pipeline {
+  agent { label 'untrusted' }
+
+  options {
+    timestamps()
+    timeout(time: 45, unit: 'MINUTES')
+    disableConcurrentBuilds(abortPrevious: true)
+    buildDiscarder(logRotator(numToKeepStr: '10', daysToKeepStr: '14'))
+  }
+
+  environment {
+    CI_REPO           = 'UniMisk-Erp-Solutions/ops-central'
+    NPM_CONFIG_AUDIT  = 'false'
+    NPM_CONFIG_FUND   = 'false'
+  }
+
+  stages {
+    // CENTRAL PIPELINE: the CI-owned files (ci/, lint/type config) are always taken from the trusted ref, never from the branch.
+    stage('Trusted pipeline') {
+      steps {
+        script {
+          def ref = env.CI_TOOLKIT_REF ?: 'main'
+          dir('.ci-toolkit') { git url: 'https://github.com/' + env.CI_REPO + '.git', branch: ref, changelog: false, poll: false }
+        }
+        sh 'node .ci-toolkit/ci/pipeline/overlay.mjs --toolkit .ci-toolkit --workspace .'
+        sh 'rm -rf .ci-toolkit'
+      }
+    }
+
+    stage('Install') {
+      steps {
+        sh 'node --version && npm --version && trivy --version | head -1'
+        sh 'npm i --no-save @babel/standalone@7.29.0 react@18.3.1 react-dom@18.3.1 jsdom typescript@5.9.3'
+        sh 'npm --prefix backend install --no-audit --no-fund'
+      }
+    }
+
+    // Engineering quality (UniMisk standard): fast static gates that block only NEW or WORSENED problems against the baseline.
+    stage('Engineering quality') {
+      parallel {
+        stage('Repository policy') { steps { sh 'node ci/pipeline/run-stage.mjs repo-policy' } }
+        stage('Code standards') { steps { sh 'node ci/pipeline/run-stage.mjs code-standards' } }
+        stage('Maintainability') { steps { sh 'node ci/pipeline/run-stage.mjs maintainability' } }
+        stage('Architecture') { steps { sh 'node ci/pipeline/run-stage.mjs architecture' } }
+        stage('Global scope') { steps { sh 'node ci/pipeline/run-stage.mjs globals' } }
+        stage('Database migrations') { steps { sh 'node ci/pipeline/run-stage.mjs database' } }
+      }
+    }
+
+    stage('UI checks') {
+      steps { sh 'node ci/pipeline/run-stage.mjs ui-checks' }
+    }
+
+    stage('Checks') {
+      parallel {
+        stage('Secrets') { steps { sh 'node ci/pipeline/run-stage.mjs trivy-secrets' } }
+      }
+    }
+
+    stage('Test') {
+      parallel {
+        stage('Dependencies') { steps { sh 'node ci/pipeline/run-stage.mjs trivy-deps' } }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: '.ci/results/*.json, .ci/toolkit.json, .ci/quality/*.json', allowEmptyArchive: true
+    }
+    cleanup { cleanWs(deleteDirs: true, notFailBuild: true) }
+  }
+}

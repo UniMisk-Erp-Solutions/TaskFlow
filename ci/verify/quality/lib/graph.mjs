@@ -86,9 +86,11 @@ export function expandRules(policy) {
 export function violatingEdges(edges, rules) {
   const out = [];
   for (const r of rules) {
+    const nameRx = r.names ? new RegExp(r.names) : null;
     const from = new RegExp(r.from), to = new RegExp(r.to), exFrom = (r.exceptFrom || []).map((s) => new RegExp(s)), exTo = (r.exceptTo || []).map((s) => new RegExp(s));
     for (const e of edges) {
       if (e.to.startsWith("unresolved:")) continue;
+      if (nameRx && !nameRx.test(e.spec)) continue; // a rule may be about specific NAMES read across files (no-build apps have no imports)
       if (from.test(e.from) && to.test(e.to) && !matchesAny(exFrom, e.from) && !matchesAny(exTo, e.to)) out.push({ rule: r, edge: e });
     }
   }
