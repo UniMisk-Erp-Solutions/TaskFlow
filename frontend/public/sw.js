@@ -12,7 +12,7 @@
  *   works offline and the download happens once per install. Bump VERSION if those files are ever replaced.
  * - Bump VERSION to drop every old cache.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const STATIC_CACHE = `taskflow-static-${VERSION}`;
 const ASSET_CACHE = `taskflow-assets-${VERSION}`;
 const PRECACHE = [
