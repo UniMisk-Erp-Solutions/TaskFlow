@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { REPO_ROOT, REQUIRED_CHECKS, STAGES } from "../pipeline/config.mjs";
 import { STATUS_CONTEXT as GITHUB_CHECK_NAME } from "../lib/github-status.mjs";
 import { buildPayload, REPO_SETTINGS } from "../github/branch-protection.mjs";
+import { parseRegistry } from "../gate-service/projects.mjs";
 
 // Normalise line endings: a Windows checkout (core.autocrlf) has CRLF, which would defeat the comment-stripping regexes below.
 const read = (...p) => fs.readFileSync(path.join(REPO_ROOT, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -279,7 +280,7 @@ test("ROLES: each branch developer sees only branches under their own name and c
   const items = core.slice(core.indexOf("        items:"), core.indexOf("  crumbIssuer:"));
   const blocks = items.split("          - name: ").slice(1);
   const role = (n) => blocks.find((b) => b.startsWith('"' + n + '"'));
-  const reg = JSON.parse(read("ci", "projects.json"));
+  const reg = parseRegistry(JSON.parse(read("ci", "projects.json")));
   for (const p of reg.projects) {
     assert.ok(role("folder-" + p.id), "the " + p.id + " folder is visible to its developers");
     for (const dev of p.developers) {

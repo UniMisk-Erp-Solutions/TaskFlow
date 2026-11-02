@@ -190,7 +190,7 @@ export function planProject({ id, repo, display, target, toolkit = TOOLKIT, inst
   files.set("ci/pipeline/config.mjs", renderConfig(stages, display));
   files.set("Jenkinsfile", renderJenkinsfile(stages, packages, display, repo, { installs }));
   files.set("ci/verify/quality/policy.json", JSON.stringify(initPolicy(target, display), null, 2) + "\n");
-  const registryEntry = { id, displayName: display, repo, jenkinsFolder: id, requiredChecks: Object.keys(stages), developers: [] };
+  const registryEntry = { id, displayName: display, repo, jenkinsFolder: id, requiredChecks: Object.keys(stages) };
   return { reg, packages, stages, files, registryEntry };
 }
 
@@ -220,7 +220,7 @@ function main() {
 Still to do (admin):
   1. In the project: open ci/pipeline/config.mjs and fill PRODUCTION_HOSTS and CI_BUILD_ENV; open ci/verify/quality/policy.json and write the architecture rules with the team.
   2. Run  node ci/verify/quality/run.mjs all --audit  then  --update-baseline  (or re-run this tool with --baseline). Commit everything in a pull request; an admin reviews and merges it.
-  3. Add this entry to ci/projects.json in the platform repository (fill developers) and run  node ci/jenkins/generate.mjs :
+  3. Add this entry to ci/projects.json in the platform repository (developers: leave it out and the project takes the whole team list) and run  node ci/jenkins/generate.mjs :
 ${JSON.stringify(plan.registryEntry, null, 2).split("\n").map((l) => "       " + l).join("\n")}
   4. On the CI server: create secrets/projects/${id}/webhook-secret (a random string), copy ${id}'s Jenkinsfile to ci/jenkins/casc/projects/${id}/Jenkinsfile,
      rebuild and restart Jenkins and the gate (docs/ci-cd-pipeline.md, "Adding a project").

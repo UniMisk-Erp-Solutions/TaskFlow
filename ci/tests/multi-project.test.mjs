@@ -217,3 +217,22 @@ test("BRANCH FILTER: a project can build only main and its developers' branches;
   const none = parseRegistry({ ...REG, projects: [{ ...REG.projects[0], branchFilter: "developers", developers: [] }, REG.projects[1]] });
   assert.ok(renderGithubYaml(fs.readFileSync(path.join(HERE, "..", "jenkins", "casc", "github.yaml"), "utf8").replace(/\r\n/g, "\n"), none).includes("branchRegex: '^main$'"), "no developers: main only");
 });
+
+test("TEAM LIST: developers are described once; a project takes the whole team, a named subset, or (older style) its own entries", () => {
+  const team = [{ user: "ann", prefixes: ["ann"] }, { user: "bob", prefixes: ["bob", "robert"] }];
+  const reg = parseRegistry({ admins: ["boss"], developers: team, projects: [
+    { id: "alpha", repo: "Org/Alpha", jenkinsFolder: "alpha" },
+    { id: "beta", repo: "Org/Beta", jenkinsFolder: "beta", requiredChecks: ["lint"], developers: "all" },
+    { id: "gamma", repo: "Org/Gamma", jenkinsFolder: "gamma", requiredChecks: ["lint"], developers: ["BOB"] },
+    { id: "delta", repo: "Org/Delta", jenkinsFolder: "delta", requiredChecks: ["lint"], developers: [{ user: "cy", prefixes: ["cy"] }] },
+  ] });
+  const of = (id) => reg.projects.find((p) => p.id === id).developers.map((d) => d.user);
+  assert.deepEqual(of("alpha"), ["ann", "bob"], "no list = the whole team");
+  assert.deepEqual(of("beta"), ["ann", "bob"], '"all" = the whole team');
+  assert.deepEqual(of("gamma"), ["bob"], "a named subset is resolved from the team list");
+  assert.deepEqual(of("delta"), ["cy"], "full entries still work");
+  const bad = (mut, re) => assert.throws(() => parseRegistry(mut()), re);
+  bad(() => ({ developers: team, projects: [{ id: "alpha", repo: "Org/Alpha", jenkinsFolder: "alpha", developers: ["nobody"] }] }), /not in the team list/);
+  bad(() => ({ developers: [...team, { user: "ann", prefixes: ["x"] }], projects: [{ id: "alpha", repo: "Org/Alpha", jenkinsFolder: "alpha" }] }), /listed twice/);
+  bad(() => ({ admins: ["ann"], developers: team, projects: [{ id: "alpha", repo: "Org/Alpha", jenkinsFolder: "alpha" }] }), /admin cannot also be/);
+});

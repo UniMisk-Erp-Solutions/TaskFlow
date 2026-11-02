@@ -141,21 +141,49 @@ jenkins:
             pattern: "^ops-central$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
-              - user: "nikunjbyteo"
               - user: "naveena246"
-              - user: "priyanshubyte"
-          - name: "branches-ops-central-nikunjbyteo"
-            description: "Branches of nikunjbyteo in OP Central"
-            pattern: "(?i)^ops-central/(nikunjbyteo|nikunj)(%2F|/).*$"
-            permissions: ["Job/Read", "Job/Discover"]
-            entries:
+              - user: "salomi2810"
+              - user: "lakshyabyteo"
               - user: "nikunjbyteo"
+              - user: "jacktechie"
+              - user: "preet1249"
+              - user: "priyanshubyte"
           - name: "branches-ops-central-naveena246"
             description: "Branches of naveena246 in OP Central"
             pattern: "(?i)^ops-central/(naveena246|naveena)(%2F|/).*$"
             permissions: ["Job/Read", "Job/Discover"]
             entries:
               - user: "naveena246"
+          - name: "branches-ops-central-salomi2810"
+            description: "Branches of salomi2810 in OP Central"
+            pattern: "(?i)^ops-central/(salomi2810|salomi)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "salomi2810"
+          - name: "branches-ops-central-lakshyabyteo"
+            description: "Branches of lakshyabyteo in OP Central"
+            pattern: "(?i)^ops-central/(lakshyabyteo|lakshya)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "lakshyabyteo"
+          - name: "branches-ops-central-nikunjbyteo"
+            description: "Branches of nikunjbyteo in OP Central"
+            pattern: "(?i)^ops-central/(nikunjbyteo|nikunj)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "nikunjbyteo"
+          - name: "branches-ops-central-jacktechie"
+            description: "Branches of jacktechie in OP Central"
+            pattern: "(?i)^ops-central/(jacktechie)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "jacktechie"
+          - name: "branches-ops-central-preet1249"
+            description: "Branches of preet1249 in OP Central"
+            pattern: "(?i)^ops-central/(preet1249|preet)(%2F|/).*$"
+            permissions: ["Job/Read", "Job/Discover"]
+            entries:
+              - user: "preet1249"
           - name: "branches-ops-central-priyanshubyte"
             description: "Branches of priyanshubyte in OP Central"
             pattern: "(?i)^ops-central/(priyanshubyte|priyanshu)(%2F|/).*$"

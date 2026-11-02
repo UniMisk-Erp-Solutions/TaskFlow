@@ -25,7 +25,7 @@ jobs:
       // >>> generated:projects (from ci/projects.json: do not edit by hand)
       def PROJECTS = [
         [id: 'taskflow', cred: 'taskflow-github-read', folder: 'taskflow', display: 'TaskFlow', owner: 'UniMisk-Erp-Solutions', repo: 'TaskFlow'],
-        [id: 'ops-central', cred: 'ops-central-github-read', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(nikunjbyteo|nikunj|naveena246|naveena|priyanshubyte|priyanshu)/.*)$'],
+        [id: 'ops-central', cred: 'ops-central-github-read', folder: 'ops-central', display: 'OP Central', owner: 'UniMisk-Erp-Solutions', repo: 'ops-central', branchRegex: '^(main|(naveena246|naveena|salomi2810|salomi|lakshyabyteo|lakshya|nikunjbyteo|nikunj|jacktechie|preet1249|preet|priyanshubyte|priyanshu)/.*)$'],
       ]
       // <<< generated:projects
       PROJECTS.each { p ->
