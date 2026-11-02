@@ -61,6 +61,17 @@ function GoogleIcon() {
   );
 }
 
+/** Turn a failed request into something a person can act on (axios only says "status code 401"). */
+function friendlyError(err) {
+  const status = err?.response?.status;
+  const fromServer = err?.response?.data?.error;
+  if (status === 401) return 'Incorrect email or password. Please check them and try again.';
+  if (status === 429) return 'Too many attempts. Please wait a minute and try again.';
+  if (typeof fromServer === 'string' && fromServer) return fromServer;
+  if (err?.code === 'ERR_NETWORK') return 'Could not reach the server. Check your internet connection and try again.';
+  return err?.message || 'Something went wrong';
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -107,13 +118,15 @@ export default function Login() {
           setLoading(false);
           return;
         }
+        setRememberMe(remember);
         await signUp(email, password, name.trim(), 'admin');
+        rememberEmail(email, remember);
       }
       // Back to where the person came from (e.g. the pricing page) when it is a path inside this site.
       const next = new URLSearchParams(location.search).get('next');
       navigate(next && /^\/(?![/\\])/.test(next) ? next : '/app');
     } catch (err) {
-      setError(err.message || 'Something went wrong');
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }
@@ -169,7 +182,7 @@ export default function Login() {
                 </button>
               </label>
 
-              {mode === 'signin' && (
+              {mode === 'signup' && (
                 <label className="auth-check">
                   <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                   <span>Remember me</span>
