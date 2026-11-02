@@ -85,6 +85,9 @@ ${list}      // <<< generated:projects
           if (p.branchRegex) {
             configure { node ->
               def traits = node / 'sources' / 'data' / 'jenkins.branch.BranchSource' / 'source' / 'traits'
+              // An explicit <traits> list switches OFF the plugin's conversion of the legacy buildOrigin* flags, so branch discovery must be stated here
+              // (3 = every origin branch, whether or not it also has a pull request; forks are never discovered).
+              traits << 'org.jenkinsci.plugins.github_branch_source.BranchDiscoveryTrait' { strategyId(3) }
               traits << 'jenkins.scm.impl.trait.RegexSCMHeadFilterTrait' { regex(p.branchRegex) }
             }
           }

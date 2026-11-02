@@ -212,6 +212,7 @@ test("BRANCH FILTER: a project can build only main and its developers' branches;
   assert.ok(g.includes("branchRegex: '^(main|(bob|a" + BSL + BSL + ".b)/.*)$'"), "a prefix dot is escaped, main is always included");
   assert.doesNotMatch(g.split("\n").find((l) => l.includes("id: 'alpha'")), /branchRegex/, "the first project has no filter");
   assert.ok(g.includes("RegexSCMHeadFilterTrait"), "the trait is part of the job template");
+  assert.match(g, /BranchDiscoveryTrait'\s*\{\s*strategyId\(3\)/, "a filtered job must also state branch discovery, or an explicit trait list discovers NOTHING");
   assert.throws(() => parseRegistry({ ...REG, projects: [{ ...REG.projects[0], branchFilter: "everything" }, REG.projects[1]] }), /branchFilter must be/);
   const none = parseRegistry({ ...REG, projects: [{ ...REG.projects[0], branchFilter: "developers", developers: [] }, REG.projects[1]] });
   assert.ok(renderGithubYaml(fs.readFileSync(path.join(HERE, "..", "jenkins", "casc", "github.yaml"), "utf8").replace(/\r\n/g, "\n"), none).includes("branchRegex: '^main$'"), "no developers: main only");
