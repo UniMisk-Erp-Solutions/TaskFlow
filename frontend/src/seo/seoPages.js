@@ -244,6 +244,57 @@ export const LANDING_PAGES = [
     ],
     related: ['/task-management-app', '/kanban-board-software', '/blog/task-approval-workflow'],
   },
+  {
+    path: '/task-approval-workflow-software',
+    title: 'Task Approval Workflow Software for Teams | TaskFlow',
+    description:
+      'Task approval workflow software: employees submit finished work, managers and admins approve it or send it back with a note, and every decision is logged.',
+    keyword: 'task approval workflow software',
+    changefreq: 'monthly',
+    priority: 0.8,
+    lastmod: '2026-10-31',
+    eyebrow: 'Task approval workflow',
+    h1: 'Task approval workflow software where work is done only when it is approved',
+    intro: [
+      'Work often gets marked as finished without anyone checking it, and later nobody can say who signed it off. TaskFlow adds a review step: people submit finished work, a reviewer approves it or sends it back, and every decision is kept in the task history.',
+    ],
+    sections: [
+      {
+        h2: 'How the approval flow works',
+        bullets: [
+          'An employee submits a finished task for review instead of closing it themselves.',
+          'The reviewer approves it, and only then is the task marked complete.',
+          'Or the reviewer sends it back with a note that explains what to change, and the task returns to In Progress.',
+          'Reviewers and the person who submitted the work are notified at each step.',
+        ],
+      },
+      {
+        h2: 'One reviewer or two',
+        paragraphs: [
+          'On the Pro plan, submitted work goes to an admin for review. On the Business plan you can add a second step: the employee’s manager approves first and an admin gives the final approval. If an employee has no manager, the task goes straight to an admin.',
+        ],
+      },
+      {
+        h2: 'A history of every decision',
+        paragraphs: [
+          'Each submission, approval and rejection is written to the task’s history with who did it and when. When someone asks why a task was sent back or who approved it, the answer is on the task, not buried in messages.',
+        ],
+      },
+      {
+        h2: 'Works with the rest of your task management',
+        paragraphs: [
+          'Approvals sit on the same tasks you already plan on the Kanban board and calendar, alongside time tracking and team chat. Pushes and pull requests that reference a task can move it forward from GitHub, and it still waits for an admin to approve it.',
+        ],
+      },
+    ],
+    faqs: [
+      { q: 'Who approves submitted work?', a: 'On the Pro plan an admin reviews it. On the Business plan the employee’s manager approves first and an admin gives the final approval. Employees without a manager go straight to an admin.' },
+      { q: 'Can a reviewer send a task back?', a: 'Yes. A reviewer can reject a submission with a note explaining what to change, and the task returns to In Progress.' },
+      { q: 'Is the approval workflow on the Free plan?', a: 'No. The approval workflow is part of the Pro and Business plans. The Free plan covers tasks, list and board views, team chat and file sharing.' },
+      { q: 'Does a GitHub push approve a task?', a: 'No. A push or pull request that references a task can move it from In Progress to Done, but an admin still has to approve it.' },
+    ],
+    related: ['/employee-task-tracking', '/kanban-board-software', '/blog/task-approval-workflow', '/pricing'],
+  },
 ];
 
 export const BLOG_POSTS = [
@@ -392,7 +443,7 @@ export const BLOG_POSTS = [
         ],
       },
     ],
-    related: ['/employee-task-tracking', '/kanban-board-software', '/task-management-app'],
+    related: ['/task-approval-workflow-software', '/employee-task-tracking', '/kanban-board-software', '/task-management-app'],
   },
   {
     slug: 'weekly-planning-template',
