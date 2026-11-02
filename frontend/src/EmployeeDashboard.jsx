@@ -9,7 +9,6 @@ import ProjectsPanel from './components/ProjectsPanel';
 import TaskForm from './components/TaskForm';
 import MeetingForm from './components/MeetingForm';
 import { useAuth } from './AuthContext';
-import { ThemeToggle } from './ThemeContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime, useLiveRefresh } from './useRealtime';
@@ -219,7 +218,7 @@ export default function EmployeeDashboard({ role = 'employee' }) {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex' }}>
+    <div className="tf-app-shell" style={{ minHeight: '100vh', display: 'flex' }}>
       <Sidebar active={page} onNav={navigateToPage} role={role} />
       <main style={{ flex: 1, minWidth: 0 }}>
       <div className="employee-dashboard-content" style={{ width: '100%', minWidth: 0, padding: '24px' }}>
@@ -245,7 +244,6 @@ export default function EmployeeDashboard({ role = 'employee' }) {
             <button type="button" className={`btn btn-ghost btn-sm btn-icon${refreshing ? ' tf-refresh-spin' : ''}`} onClick={refreshAll} disabled={refreshing} aria-label="Refresh" title="Refresh this page">
               <RefreshCw size={20} strokeWidth={2} />
             </button>
-            <ThemeToggle size={16} />
           </div>
         </div>
 

@@ -24,7 +24,7 @@ describe('home page FAQ', () => {
 
     const html = container.innerHTML;
     expect(html.indexOf('Everything teams need')).toBeLessThan(html.indexOf('home-faq-heading'));
-    expect(html.indexOf('home-faq-heading')).toBeLessThan(html.indexOf('Bring calm to your team'));
+    expect(html.indexOf('home-faq-heading')).toBeLessThan(html.indexOf('Bring clarity to your team'));
   });
 
   it('shows only five questions on the home page, with a Show more button that leads to the FAQ page', () => {

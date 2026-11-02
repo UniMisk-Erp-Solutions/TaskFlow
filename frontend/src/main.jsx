@@ -13,7 +13,7 @@ window.__TASKFLOW_BUILD__ = BUILD_STAMP;
 // eslint-disable-next-line no-console
 console.log(
   `%cTaskFlow build %c${BUILD_STAMP}`,
-  'color:#8B5CF6;font-weight:600;',
+  'color:#3b82f6;font-weight:600;',
   'color:#1a1a1a;font-family:monospace;background:#f6f5f4;padding:2px 6px;border-radius:4px;',
 );
 

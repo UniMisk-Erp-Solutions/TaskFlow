@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { sessionStorageAdapter } from './rememberMe';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -19,7 +20,8 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // request that held it fail with "AbortError: Lock broken by another request with the steal option" when the server is slow
     // or many requests start at once (a chat full of images). Wait longer instead; only a truly orphaned lock gets stolen.
     lockAcquireTimeout: 30000,
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    // localStorage when "Remember me" is on (the default), sessionStorage when it is off. See rememberMe.js.
+    storage: typeof window !== 'undefined' ? sessionStorageAdapter : undefined,
   },
 });
 

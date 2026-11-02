@@ -113,4 +113,29 @@ describe('LeavePortal', () => {
     expect(await screen.findByText('Traffic')).toBeTruthy();
     expect(screen.getByText('Cancel request')).toBeTruthy();
   });
+
+  it('filters the list by when the leave happens: earlier, today or coming up', async () => {
+    const day = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+    get.mockResolvedValue({ data: [
+      row({ id: 'a', employee_name: 'Past Person', start_date: day(-5), end_date: day(-5) }),
+      row({ id: 'b', employee_name: 'Today Person', start_date: day(0), end_date: day(0) }),
+      row({ id: 'c', employee_name: 'Future Person', start_date: day(6), end_date: day(6) }),
+    ] });
+    render(<LeavePortal isAdmin />);
+    expect(await screen.findByText('Past Person')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Coming up' }));
+    expect(screen.queryByText('Past Person')).toBeNull();
+    expect(screen.queryByText('Today Person')).toBeNull();
+    expect(screen.getByText('Future Person')).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'On today' }));
+    expect(screen.getByText('Today Person')).toBeTruthy();
+    expect(screen.queryByText('Future Person')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: 'Earlier' }));
+    expect(screen.getByText('Past Person')).toBeTruthy();
+    expect(screen.queryByText('Today Person')).toBeNull();
+    // the status filter lives in the same panel
+    fireEvent.click(screen.getByRole('radio', { name: /Rejected/ }));
+    expect(screen.queryByText('Past Person')).toBeNull();
+  });
 });

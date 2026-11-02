@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, ShieldCheck, Building2, Users, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Building2, Users, ArrowLeft } from 'lucide-react';
 import api from './api';
 import { useAuth } from './AuthContext';
 
@@ -114,7 +114,7 @@ export default function Onboarding() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--tf-page)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Zap size={20} color="var(--color-primary)" />
+        <img src="/logo-mark.png" alt="" width={30} height={30} style={{ width: 30, height: 30, borderRadius: 8 }} />
         <span style={{ fontSize: 19, fontWeight: 600, color: 'var(--tf-text)' }}>TaskFlow</span>
       </div>
 

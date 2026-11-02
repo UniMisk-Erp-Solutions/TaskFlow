@@ -1,14 +1,13 @@
 import React from 'react';
-import { LogOut, Zap } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAuth } from '../AuthContext';
-import { ThemeToggle } from '../ThemeContext';
 
 export default function Navbar() {
   const { profile, signOut } = useAuth();
   return (
     <header className="tf-nav-global">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Zap size={15} color="var(--color-body-on-dark)" strokeWidth={1.5} />
+        <img src="/logo-mark.png" alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: 6 }} />
         <span
           style={{
             fontFamily: 'var(--font-display)',
@@ -23,7 +22,6 @@ export default function Navbar() {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <ThemeToggle onDark size={14} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{

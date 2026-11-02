@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Sparkles, Send, RefreshCw, Upload } from 'lucide-react';
 import CsvImportModal from './components/CsvImportModal';
 import { useAuth } from './AuthContext';
-import { ThemeToggle } from './ThemeContext';
 import { useTasks } from './useTasks';
 import { useMeetings } from './useMeetings';
 import { useRealtime, useLiveRefresh } from './useRealtime';
@@ -279,7 +278,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--tf-page)' }}>
+    <div className="tf-app-shell" style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar active={page} onNav={navigateToPage} />
 
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -374,7 +373,6 @@ export default function AdminDashboard() {
             <button type="button" className={`btn btn-ghost btn-sm btn-icon${refreshing ? ' tf-refresh-spin' : ''}`} onClick={refreshAll} disabled={refreshing} aria-label="Refresh" title="Refresh this page">
               <RefreshCw size={18} strokeWidth={2} />
             </button>
-            <ThemeToggle size={16} />
           </div>
         </div>
 

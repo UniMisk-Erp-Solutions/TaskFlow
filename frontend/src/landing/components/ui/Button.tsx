@@ -20,9 +20,10 @@ const variants: Record<Variant, string> = {
 // so buttons sit with real presence on the page (and the lg variant matches
 // the visual weight of section headings on the marketing pages).
 const sizes: Record<Size, string> = {
-  sm: "h-10 px-5 text-sm font-medium",
-  md: "h-12 px-7 text-[15px] font-semibold",
-  lg: "h-14 px-9 text-base font-semibold min-w-[180px]",
+  // The "!" keeps the padding: index.css has an unlayered "* { padding: 0 }" reset that would otherwise beat Tailwind's layered utilities.
+  sm: "h-10 px-5! text-sm font-medium",
+  md: "h-12 px-7! text-[15px] font-semibold",
+  lg: "h-14 px-9! text-base font-semibold min-w-[180px]",
 };
 
 const baseClasses =

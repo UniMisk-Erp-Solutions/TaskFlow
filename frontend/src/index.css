@@ -36,11 +36,14 @@
 :root {
   color-scheme: light;
 
-  /* Notion primary (signature purple). */
-  --color-primary: #5645d4;
-  --color-primary-focus: #4534b3;
-  --color-primary-deep: #3a2a99;
-  --color-primary-on-dark: #b3a5ff;
+  /* Primary brand colour (blue). */
+  --color-primary: #2563eb;
+  --color-primary-focus: #1d4ed8;
+  --color-primary-deep: #1e40af;
+  /* Buttons and filled controls keep the original purple; links, focus and highlights are blue. */
+  --color-action: #5645d4;
+  --color-action-focus: #4534b3;
+  --color-primary-on-dark: #9db9ff;
   --color-on-primary: #ffffff;
 
   /* Brand navy (used by the top global nav band). */
@@ -73,7 +76,7 @@
   --status-danger: #e03131;
   --status-danger-bg: rgba(224, 49, 49, 0.10);
   --status-info: var(--color-primary);
-  --status-info-bg: rgba(86, 69, 212, 0.10);
+  --status-info-bg: rgba(37, 99, 235, 0.10);
 
   /* Semantic theme shortcuts. */
   --tf-page: var(--color-canvas-parchment);
@@ -91,7 +94,7 @@
   --tf-glass-border: rgba(10, 21, 48, 0.06);
 
   /* Focus halo derived from primary so it adapts in dark mode. */
-  --tf-focus-ring: rgba(86, 69, 212, 0.20);
+  --tf-focus-ring: rgba(37, 99, 235, 0.20);
 
   /* Card tints (echo Notion's database property palette). Reserved for
      future "feature card" surfaces — none of the existing components use
@@ -99,7 +102,7 @@
   --card-tint-peach: #ffe8d4;
   --card-tint-rose: #fde0ec;
   --card-tint-mint: #d9f3e1;
-  --card-tint-lavender: #e6e0f5;
+  --card-tint-lavender: #dbe6fb;
   --card-tint-sky: #dcecfa;
   --card-tint-yellow: #fef7d6;
   --card-tint-yellow-bold: #f9e79f;
@@ -115,7 +118,7 @@
   --border: #e2e8f0;
   --muted: #475569;
   --accent: #f8fafc;
-  --primary-soft: #f5f3ff;
+  --primary-soft: #eff6ff;
 
   /* Legacy aliases — kept so any rule below still resolves. */
   --bg: var(--tf-page);
@@ -160,38 +163,40 @@
   color-scheme: dark;
 
   /* Marketing palette — dark variant. */
-  --background: #0b0e14;
+  --background: #060c20;
   --foreground: #f8fafc;
-  --card: #141820;
+  --card: #0d1630;
   --card-foreground: #f8fafc;
-  --border: #1f2937;
+  --border: #1c2a58;
   --muted: #94a3b8;
-  --accent: #1e1b4b;
-  --primary-soft: #1e1b4b;
+  --accent: #10204f;
+  --primary-soft: #10204f;
 
-  --color-primary: #8b75ff;
-  --color-primary-focus: #a89aff;
-  --color-primary-deep: #6856e6;
-  --color-primary-on-dark: #b3a5ff;
+  --color-primary: #5b8cff;
+  --color-primary-focus: #7aa2ff;
+  --color-primary-deep: #3b6fe6;
+  --color-action: #8b75ff;
+  --color-action-focus: #a89aff;
+  --color-primary-on-dark: #9db9ff;
   --color-on-primary: #ffffff;
 
   --color-nav-black: #050a1c;
 
-  --color-ink: #f1f0ec;
-  --color-ink-muted-80: #d4d3cf;
-  --color-ink-muted-48: #9b9a93;
+  --color-ink: #eaf0ff;
+  --color-ink-muted-80: #c5d1f0;
+  --color-ink-muted-48: #8d9cc4;
   --color-body-on-dark: #ffffff;
   --color-body-muted-dark: rgba(255, 255, 255, 0.65);
 
-  --color-canvas: #1f1f1f;
-  --color-canvas-parchment: #161616;
-  --color-surface-pearl: #262626;
-  --color-surface-tile-1: #1a1a1a;
-  --color-surface-tile-2: #232323;
-  --color-surface-chip: rgba(255, 255, 255, 0.10);
+  --color-canvas: #0d1630;
+  --color-canvas-parchment: #060c20;
+  --color-surface-pearl: #14214a;
+  --color-surface-tile-1: #0a1228;
+  --color-surface-tile-2: #101b3a;
+  --color-surface-chip: rgba(120, 160, 255, 0.14);
 
-  --color-hairline: #373737;
-  --color-divider-soft: #2a2a2a;
+  --color-hairline: #1c2a58;
+  --color-divider-soft: #162349;
 
   --status-success: #2cc54a;
   --status-success-bg: rgba(44, 197, 74, 0.16);
@@ -200,22 +205,22 @@
   --status-danger: #ff5a5a;
   --status-danger-bg: rgba(255, 90, 90, 0.16);
   --status-info: var(--color-primary);
-  --status-info-bg: rgba(139, 117, 255, 0.16);
+  --status-info-bg: rgba(91, 140, 255, 0.16);
 
   --tf-page: var(--color-canvas-parchment);
   --tf-panel: var(--color-canvas);
   --tf-border: var(--color-hairline);
-  --tf-border-soft: rgba(255, 255, 255, 0.10);
+  --tf-border-soft: rgba(120, 160, 255, 0.16);
   --tf-text: var(--color-ink);
   --tf-muted: var(--color-ink-muted-48);
   --tf-subhead: var(--color-ink-muted-80);
   --tf-pearl: var(--color-surface-pearl);
   --tf-nav: var(--color-nav-black);
 
-  --tf-glass-bg: rgba(31, 31, 31, 0.78);
-  --tf-glass-border: rgba(255, 255, 255, 0.08);
+  --tf-glass-bg: rgba(10, 18, 44, 0.72);
+  --tf-glass-border: rgba(130, 170, 255, 0.16);
 
-  --tf-focus-ring: rgba(139, 117, 255, 0.32);
+  --tf-focus-ring: rgba(91, 140, 255, 0.32);
 }
 
 *,
@@ -318,13 +323,13 @@ h3 {
 }
 
 .btn-primary {
-  background: var(--color-primary);
+  background: var(--color-action);
   color: var(--color-on-primary);
-  border-color: var(--color-primary);
+  border-color: var(--color-action);
 }
 .btn-primary:hover:not(:disabled) {
-  background: var(--color-primary-focus);
-  border-color: var(--color-primary-focus);
+  background: var(--color-action-focus);
+  border-color: var(--color-action-focus);
 }
 
 .btn-ghost {
@@ -648,7 +653,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   text-align: center;
 }
 
-/* AI floating action — Notion purple, minimal elevation. */
+/* AI floating action — brand blue, minimal elevation. */
 .tf-fab {
   position: fixed;
   bottom: 28px;
@@ -664,7 +669,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   justify-content: center;
   transition: transform var(--t), background var(--t);
-  box-shadow: 0 6px 18px -8px rgba(86, 69, 212, 0.55);
+  box-shadow: 0 6px 18px -8px rgba(37, 99, 235, 0.55);
 }
 .tf-fab:hover {
   background: var(--color-primary-focus);
@@ -1139,7 +1144,7 @@ main { padding-bottom: 0; }
 @media (max-width: 960px) { .timer-segments li { grid-template-columns: 22px minmax(0, 1fr); } }
 
 .tf-fab { cursor: grab; user-select: none; -webkit-user-select: none; transition: transform var(--t), background var(--t), box-shadow var(--t); }
-.tf-fab.is-dragging { cursor: grabbing; transform: scale(1.08); box-shadow: 0 12px 28px -8px rgba(86, 69, 212, 0.65); transition: none; }
+.tf-fab.is-dragging { cursor: grabbing; transform: scale(1.08); box-shadow: 0 12px 28px -8px rgba(37, 99, 235, 0.65); transition: none; }
 
 .timer-task-time { display: grid; justify-items: end; line-height: 1.35; }
 .timer-task-time strong { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -2281,7 +2286,7 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .tf-leave-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .tf-leave-views { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-panel); }
 .tf-leave-views button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--tf-muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-.tf-leave-views button.is-active { background: var(--color-primary); color: var(--color-on-primary, #fff); }
+.tf-leave-views button.is-active { background: var(--color-action); color: var(--color-on-primary, #fff); }
 .tf-lc { background: var(--tf-panel); border: 1px solid var(--tf-border); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }
 .tf-lc-head { display: flex; align-items: center; gap: 8px; }
 .tf-lc-title { flex: 1; text-align: center; font-size: 15px; color: var(--tf-text); }
@@ -2290,7 +2295,7 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .tf-lc-cell { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-height: 84px; padding: 6px; border: 1px solid var(--tf-border); border-radius: 10px; background: var(--tf-page); color: var(--tf-text); font: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .tf-lc-cell.is-empty { border-color: transparent; background: transparent; cursor: default; }
 .tf-lc-cell:not(.is-empty):hover { border-color: var(--color-primary); }
-.tf-lc-cell.is-today .tf-lc-num { background: var(--color-primary); color: var(--color-on-primary, #fff); }
+.tf-lc-cell.is-today .tf-lc-num { background: var(--color-action); color: var(--color-on-primary, #fff); }
 .tf-lc-cell.is-selected { border-color: var(--color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 35%, transparent); }
 .tf-lc-num { align-self: flex-start; min-width: 22px; height: 22px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 999px; font-size: 12px; font-weight: 600; }
 .tf-lc-chips { display: grid; gap: 2px; min-width: 0; }
@@ -2365,3 +2370,33 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .tf-admin-actions { padding-right: 38px; }
 @media (max-width: 1100px) { .tf-admin-actions { padding-right: 32px; } }
 @media (max-width: 640px) { .tf-admin-actions { padding-right: 10px; } }
+
+
+/* Glass boxes on the public pages: every box painted with the card colour (inline styles or Tailwind classes) gets a
+   frosted-glass look over the 3D scene (a translucent tint, an edge and a shine; no backdrop blur, which is costly to repaint every frame). The edge, shine and shadow colours come from the dark/light variable sets in
+   landing/lib/homeDark.ts. */
+.tf-site [style*="var(--card)"],
+.tf-site [class*="var(--card)"] {
+  border-color: var(--glass-edge) !important;
+  box-shadow: inset 0 1px 0 var(--glass-shine), 0 20px 50px -30px var(--glass-shadow);
+}
+
+
+/* ── Dashboards: deep navy with a blue glow, glass panels and glowing blue buttons ────────────────── */
+.tf-app-shell { background: var(--tf-page); }
+:root[data-theme="dark"] .tf-app-shell {
+  background:
+    radial-gradient(90% 46% at 50% -14%, rgba(47, 107, 255, 0.40) 0%, rgba(47, 107, 255, 0) 64%),
+    radial-gradient(55% 38% at 100% 100%, rgba(30, 80, 230, 0.24) 0%, rgba(30, 80, 230, 0) 70%),
+    var(--tf-page);
+}
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .tf-panel,
+:root[data-theme="dark"] .tf-stat-mini {
+  background: linear-gradient(180deg, rgba(160, 190, 255, 0.06), rgba(160, 190, 255, 0.015)), var(--tf-panel);
+  border-color: rgba(120, 160, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(160, 190, 255, 0.10), 0 18px 40px -26px rgba(0, 10, 70, 0.9);
+}
+:root[data-theme="dark"] .btn-primary {
+  box-shadow: 0 10px 26px -10px rgba(139, 117, 255, 0.6);
+}

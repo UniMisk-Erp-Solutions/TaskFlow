@@ -311,7 +311,7 @@ export default function MeetingForm({
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(86,69,212,0.10)', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(37, 99, 235,0.10)', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <CalendarIcon size={16} />
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -333,7 +333,7 @@ export default function MeetingForm({
                 borderRadius: 12, background: 'var(--tf-pearl)', cursor: 'pointer',
               }}
             >
-              <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(86,69,212,0.10)', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(37, 99, 235,0.10)', color: 'var(--color-primary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <CalendarIcon size={16} />
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>

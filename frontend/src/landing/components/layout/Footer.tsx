@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { Layout, Github, Twitter, Linkedin } from "lucide-react";
-import { tone, display, BRAND } from "../../lib/ui";
+import { Github, Twitter, Linkedin } from "lucide-react";
+import { tone, display } from "../../lib/ui";
+import { HOME_DARK_VARS } from "../../lib/homeDark";
 
 const columns = [
   {
@@ -27,7 +28,6 @@ const columns = [
     links: [
       { to: "/about", label: "About" },
       { to: "/contact", label: "Contact" },
-      { to: "/about", label: "Careers" },
       { to: "/contact", label: "Press" },
     ],
   },
@@ -53,6 +53,7 @@ export const Footer = () => {
   return (
     <footer
       style={{
+        ...HOME_DARK_VARS,
         borderTop: `1px solid ${tone.border}`,
         background: tone.card,
       }}
@@ -76,21 +77,7 @@ export const Footer = () => {
           {/* Brand block */}
           <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 280 }}>
             <Link to="/" style={{ display: "inline-flex", alignItems: "center", gap: 10, textDecoration: "none", color: tone.fg }}>
-              <div
-                style={{
-                  width: 32,
-                  height: 32,
-                  background: BRAND,
-                  borderRadius: 8,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  boxShadow: `0 4px 12px -4px ${BRAND}80`,
-                }}
-              >
-                <Layout size={17} strokeWidth={2.2} />
-              </div>
+              <img src="/logo-mark.png" alt="" width={34} height={34} style={{ width: 34, height: 34, borderRadius: 9, display: "block" }} />
               <span style={{ ...display, fontSize: 15, fontWeight: 600, color: tone.fg }}>Taskflow</span>
             </Link>
             <p style={{ fontSize: 14, color: tone.muted, lineHeight: 1.6, margin: 0 }}>

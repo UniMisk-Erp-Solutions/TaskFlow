@@ -45,7 +45,7 @@ export default function SubscriptionGate() {
     <div className="overlay" style={{ zIndex: 2000 }} role="presentation">
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="sub-gate-title" aria-describedby="sub-gate-desc"
         style={{ maxWidth: 440, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(139,92,246,0.14)', color: '#8B5CF6', display: 'grid', placeItems: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(37, 99, 235,0.14)', color: '#3b82f6', display: 'grid', placeItems: 'center' }}>
           <Lock size={22} />
         </div>
         <h2 id="sub-gate-title" style={{ margin: 0, fontSize: 20 }}>Your free trial has ended</h2>

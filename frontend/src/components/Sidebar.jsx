@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Zap, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, Video, ClipboardCheck, ClipboardList } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, LayoutDashboard, CheckSquare, Mail, LogOut, Users, CalendarDays, FolderKanban, Bell, Columns, Timer, UserRound, MessageCircle, FolderOpen, PenLine, Menu, ChevronLeft, CalendarOff, UsersRound, UserPlus, Video, ClipboardCheck, ClipboardList } from 'lucide-react';
 import { useAuth } from '../AuthContext';
+import { useChatUnread } from '../useChatUnread';
 
 const ADMIN_NAV = [
   { id: 'overview', icon: LayoutDashboard, label: 'Overview' },
@@ -46,6 +47,7 @@ const MANAGER_NAV = [
 
 export default function Sidebar({ active, onNav, role = 'admin' }) {
   const { profile, signOut } = useAuth();
+  const chatUnread = useChatUnread(!!profile);
   const isEmployee = role === 'employee' || role === 'manager';
   const navItems = role === 'manager' ? MANAGER_NAV : isEmployee ? EMPLOYEE_NAV : ADMIN_NAV;
   const activeButtonRef = useRef(null);
@@ -138,7 +140,7 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
           gap: 8,
         }}
       >
-        <Zap className="taskflow-sidebar-logo" size={16} color="var(--color-primary)" strokeWidth={2} />
+        <img className="taskflow-sidebar-logo" src="/logo-mark.png" alt="" width={24} height={24} style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0 }} />
         <span className="taskflow-sidebar-brand" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
           TaskFlow
         </span>
@@ -207,7 +209,20 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
                 paddingLeft: isActive ? 9 : 12,
               }}
             >
-              <Icon size={17} strokeWidth={isActive ? 2 : 1.5} />
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <Icon size={17} strokeWidth={isActive ? 2 : 1.5} />
+                {id === 'chat' && chatUnread > 0 && (
+                  <span
+                    aria-label={`${chatUnread} unread chat messages`}
+                    style={{
+                      position: 'absolute', top: -7, right: -9, minWidth: 16, height: 16, padding: '0 4px', boxSizing: 'border-box',
+                      borderRadius: 8, background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, lineHeight: '16px', textAlign: 'center',
+                    }}
+                  >
+                    {chatUnread > 99 ? '99+' : chatUnread}
+                  </span>
+                )}
+              </span>
               <span className="taskflow-sidebar-label">{label}</span>
             </button>
           );

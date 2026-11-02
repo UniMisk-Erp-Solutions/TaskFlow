@@ -158,7 +158,6 @@ export default function Features() {
               size="lg"
               to="/pricing"
               variant="outline"
-              style={{ color: "#fff", borderColor: "rgba(255,255,255,0.35)" }}
             >
               View pricing
             </Button>

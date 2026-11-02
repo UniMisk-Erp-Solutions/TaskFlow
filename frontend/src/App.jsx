@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import { BillingProvider } from './BillingContext';
 import SubscriptionGate from './components/SubscriptionGate';
@@ -23,6 +23,9 @@ import PushPrompt from './components/PushPrompt';
 import { Navbar as MarketingNavbar } from './landing/components/layout/Navbar';
 import { Footer as MarketingFooter } from './landing/components/layout/Footer';
 import ScrollToTop from './landing/components/layout/ScrollToTop';
+import SceneBackdrop from './landing/components/SceneBackdrop';
+import { SceneContext } from './landing/lib/sceneContext';
+import { HOME_DARK_VARS } from './landing/lib/homeDark';
 import Home from './landing/pages/Home';
 const Features = lazy(() => import('./landing/pages/Features'));
 const Pricing = lazy(() => import('./landing/pages/Pricing'));
@@ -38,15 +41,28 @@ const BlogIndex = lazy(() => import('./landing/pages/Blog').then((m) => ({ defau
 const BlogPost = lazy(() => import('./landing/pages/Blog'));
 const NotFound = lazy(() => import('./landing/pages/NotFound'));
 
+/**
+ * Every public page shares this dark shell: a 3D scene that flies forward as the page scrolls (glowing rings on the home
+ * page only), glass-style boxes (see `.tf-site` in index.css) and the floating navbar.
+ */
 function MarketingLayout({ children, seo }) {
+  const { pathname } = useLocation();
+  const [sceneReady, setSceneReady] = useState(false);
+  const sceneState = React.useMemo(() => ({ ready: sceneReady, setReady: setSceneReady }), [sceneReady]);
   return (
-    <div className="flex flex-col min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      {seo && <Seo path={seo} />}
-      <ScrollToTop />
-      <MarketingNavbar />
-      <main className="flex-grow">{children}</main>
-      <MarketingFooter />
-    </div>
+    <SceneContext.Provider value={sceneState}>
+      <div className="tf-site flex flex-col min-h-screen bg-[var(--background)] text-[var(--foreground)]" style={HOME_DARK_VARS}>
+        {seo && <Seo path={seo} />}
+        <ScrollToTop />
+        <MarketingNavbar />
+        {/* The scene is sticky inside this box, so it stops where the footer starts. */}
+        <div className="flex-grow" style={{ position: 'relative', minHeight: '100vh' }}>
+          <SceneBackdrop rings={pathname === '/'} />
+          <main style={{ position: 'relative', zIndex: 1, marginTop: '-100vh' }}>{children}</main>
+        </div>
+        <MarketingFooter />
+      </div>
+    </SceneContext.Provider>
   );
 }
 

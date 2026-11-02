@@ -1,6 +1,5 @@
 import { motion } from "motion/react";
-import { Target, Heart, Eye, Rocket, Zap, Shield, Globe2, Sparkles } from "lucide-react";
-import { Button } from "../components/ui/Button";
+import { Target, Heart, Eye, Rocket, Zap, Shield } from "lucide-react";
 import {
   PageShell, Container, Section, PageHeader, SectionHead,
   Card, IconBadge, Grid, BRAND, BRAND_ACCENT, tone, display,
@@ -199,7 +198,6 @@ export default function About() {
             ))}
           </ol>
         </Section>
-
         {/* Values */}
         <Section pad="tight" style={{ paddingLeft: 0, paddingRight: 0, paddingTop: 0 }}>
           <SectionHead eyebrow="Values" title="What we believe in." />
@@ -215,90 +213,6 @@ export default function About() {
             ))}
           </Grid>
         </Section>
-
-        {/* Careers CTA */}
-        <div
-          style={{
-            position: "relative",
-            overflow: "hidden",
-            background: "#020617",
-            border: "1px solid rgba(255,255,255,0.10)",
-            borderRadius: 24,
-            padding: "64px 32px",
-            textAlign: "center",
-            boxShadow: "0 40px 80px -40px rgba(15,23,42,0.4)",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              top: -96,
-              right: -96,
-              width: 320,
-              height: 320,
-              background: `${BRAND}26`,
-              borderRadius: 999,
-              filter: "blur(80px)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              bottom: -96,
-              left: -96,
-              width: 320,
-              height: 320,
-              background: `${BRAND_ACCENT}26`,
-              borderRadius: 999,
-              filter: "blur(80px)",
-            }}
-          />
-          <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 20, alignItems: "center" }}>
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                color: BRAND,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={22} />
-            </div>
-            <h2 style={{ ...display, fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 600, lineHeight: 1.1, margin: 0, color: "white" }}>
-              Join the journey.
-            </h2>
-            <p style={{ fontSize: 17, color: "#94a3b8", maxWidth: 560, lineHeight: 1.6, margin: 0 }}>
-              Remote-first, async by default. We're hiring across engineering, design, and customer success.
-            </p>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 12,
-                justifyContent: "center",
-                alignItems: "center",
-                fontSize: 13,
-                color: "#94a3b8",
-              }}
-            >
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Globe2 size={14} /> 12 countries
-              </span>
-              <span>·</span>
-              <span>4-day workweek</span>
-              <span>·</span>
-              <span>$5k learning budget</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-              <Button size="lg" to="/contact">Explore careers</Button>
-            </div>
-          </div>
-        </div>
       </Container>
     </PageShell>
   );

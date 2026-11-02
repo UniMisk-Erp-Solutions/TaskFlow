@@ -232,7 +232,7 @@ export default function ClockTimePicker({ value = '', onChange, disabled = false
                     padding: '2px 6px',
                     borderRadius: 4,
                     border: '1px solid ' + (period === p ? 'var(--color-primary)' : 'var(--tf-border)'),
-                    background: period === p ? 'rgba(86,69,212,0.10)' : 'transparent',
+                    background: period === p ? 'rgba(37, 99, 235,0.10)' : 'transparent',
                     color: period === p ? 'var(--color-primary)' : 'var(--tf-muted)',
                     cursor: 'pointer',
                     letterSpacing: '0.04em',

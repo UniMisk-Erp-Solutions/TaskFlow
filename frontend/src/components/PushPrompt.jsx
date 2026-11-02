@@ -84,7 +84,7 @@ export default function PushPrompt() {
         background: 'var(--tf-panel)', border: '1px solid var(--tf-border)', boxShadow: '0 12px 32px rgba(0,0,0,0.3)',
       }}
     >
-      <span style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 12, background: 'var(--color-primary)', color: 'var(--color-on-primary, #fff)', flexShrink: 0 }}>
+      <span style={{ display: 'grid', placeItems: 'center', width: 36, height: 36, borderRadius: 12, background: 'var(--color-action)', color: 'var(--color-on-primary, #fff)', flexShrink: 0 }}>
         <Bell size={18} />
       </span>
       <div style={{ minWidth: 0, flex: 1 }}>

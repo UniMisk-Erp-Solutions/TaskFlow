@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import supabase from '../supabaseClient';
 import api from '../api';
-import { saveBlob } from '../lib/fileAccess';
+import { chatFileUrl, downloadChatFile } from '../chatFiles';
 import { useAuth } from '../AuthContext';
 import { useLiveRefresh } from '../useRealtime';
 
@@ -65,6 +65,14 @@ function attachmentLabel(m) {
   return `📄 ${m.attachment_name || 'File'}`;
 }
 
+/** The list with the message's conversation moved to the top; null when that conversation is not in the list yet. */
+function withBumpedConversation(list, msg) {
+  if (!list.some((c) => c.id === msg.conversation_id)) return null;
+  return list
+    .map((c) => (c.id === msg.conversation_id ? { ...c, last_message_at: msg.created_at } : c))
+    .sort((x, y) => new Date(y.last_message_at) - new Date(x.last_message_at));
+}
+
 function Avatar({ name, size = 34, group = false, team = false }) {
   return (
     <span
@@ -79,56 +87,6 @@ function Avatar({ name, size = 34, group = false, team = false }) {
       {group ? <Hash size={size * 0.5} /> : team ? <Users size={size * 0.5} /> : initials(name)}
     </span>
   );
-}
-
-// Signed links for chat attachments are cached (and shared between messages asking at the same time). A long chat otherwise
-// requests one link per image on every open or refresh, which piles up behind the auth lock and slows everything down.
-const chatUrlCache = new Map(); // path -> { promise, at }
-const CHAT_URL_TTL_MS = 50 * 60 * 1000; // links are signed for an hour
-function chatFileUrl(path) {
-  const hit = chatUrlCache.get(path);
-  if (hit && Date.now() - hit.at < CHAT_URL_TTL_MS) return hit.promise;
-  const promise = (async () => {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const { data } = await supabase.storage.from('chat-files').createSignedUrl(path, 3600);
-        if (data?.signedUrl) return data.signedUrl;
-      } catch { /* try once more, then give up quietly */ }
-      await new Promise((r) => { window.setTimeout(r, 400); });
-    }
-    chatUrlCache.delete(path); // do not remember a failure
-    return null;
-  })();
-  chatUrlCache.set(path, { promise, at: Date.now() });
-  return promise;
-}
-
-// The files are served from another address than the app, so the browser ignores <a download> and just opens them in a new tab.
-// Fetching the file and saving the bytes makes the Download button really download.
-async function downloadChatFile(url, name, path) {
-  // Best way: ask the storage server for a link that always arrives as a download (Content-Disposition: attachment). It works for
-  // every file type (HTML, text, Office files...) and on every device, with no cross-site fetch needed.
-  if (path) {
-    try {
-      const { data } = await supabase.storage.from('chat-files').createSignedUrl(path, 300, { download: name || true });
-      if (data?.signedUrl) {
-        const link = document.createElement('a');
-        link.href = data.signedUrl;
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        return;
-      }
-    } catch { /* fall back to fetching the file below */ }
-  }
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('download failed');
-    saveBlob(await res.blob(), name);
-  } catch {
-    window.open(url, '_blank', 'noopener'); // last resort: let the browser handle the link
-  }
 }
 
 /** Full-screen viewer for an image or a PDF: opens in the same tab and closes with the X, Esc, or a click outside it. */
@@ -301,10 +259,11 @@ export function swipeReplyAvailable() {
   return installedApp || touchFirst;
 }
 
-export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo }) {
+export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo, seenBy = null, direct = false }) {
   const bubbleRef = useRef(null);
   const drag = useRef(null);
   const swallowClick = useRef(false); // a swipe that began on an image/file must not also open it
+  const [seenOpen, setSeenOpen] = useState(false); // "Seen by" list expanded to show everyone
 
   function onPointerDown(e) {
     // Swipe-to-reply is for phones and the installed app only. On a desktop (mouse, pen, a touchscreen laptop, a window
@@ -352,7 +311,7 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
         alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', display: 'flex', flexDirection: 'column',
         alignItems: mine ? 'flex-end' : 'flex-start', touchAction: 'pan-y',
         borderRadius: 12, transition: 'background 300ms ease',
-        background: highlighted ? 'rgba(86,69,212,0.18)' : 'transparent',
+        background: highlighted ? 'rgba(37, 99, 235,0.18)' : 'transparent',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -380,7 +339,7 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
                 display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, padding: '5px 8px',
                 borderRadius: 8, border: 'none', borderLeft: '3px solid', cursor: quoted ? 'pointer' : 'default',
                 borderLeftColor: mine ? 'rgba(255,255,255,0.8)' : 'var(--color-primary)',
-                background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(86,69,212,0.08)',
+                background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(37, 99, 235,0.08)',
                 color: 'inherit', font: 'inherit', fontSize: 12.5,
               }}
             >
@@ -397,6 +356,28 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
         <MessageMenu msg={msg} mine={mine} onReply={onReply} onEdit={onEdit} onDelete={onDelete} iconBtn={iconBtn} />
       </div>
       <span style={{ fontSize: 11, color: 'var(--tf-muted)', margin: '2px 4px 0' }}>{timeLabel(msg.created_at)}</span>
+      {mine && seenBy && seenBy.length > 0 && (
+        <span data-testid="seen-by" style={{ fontSize: 11, color: 'var(--color-primary)', margin: '0 4px', maxWidth: 260, textAlign: 'right', overflowWrap: 'anywhere' }}>
+          {direct ? 'Seen' : (() => {
+            const extra = seenBy.length > 4 ? seenBy.length - 3 : 0;
+            const shown = extra && !seenOpen ? seenBy.slice(0, 3) : seenBy;
+            const link = { background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' };
+            return (
+              <>
+                Seen by {shown.join(', ')}
+                {extra > 0 && (
+                  <>
+                    {' '}
+                    <button type="button" style={link} aria-expanded={seenOpen} onClick={() => setSeenOpen((o) => !o)}>
+                      {seenOpen ? 'Show less' : `+${extra} more`}
+                    </button>
+                  </>
+                )}
+              </>
+            );
+          })()}
+        </span>
+      )}
     </div>
   );
 }
@@ -721,7 +702,7 @@ export default function ChatPage() {
     const [{ data: convs, error: convErr }, { data: counts }] = await Promise.all([
       supabase
         .from('chat_conversations')
-        .select('id, type, name, last_message_at, chat_participants(user_id, role, history_from)')
+        .select('id, type, name, last_message_at, chat_participants(user_id, role, history_from, last_read_at)')
         .order('last_message_at', { ascending: false }),
       supabase.rpc('chat_unread_counts'),
     ]);
@@ -757,6 +738,7 @@ export default function ChatPage() {
     if (!id) return;
     setUnread((u) => (u[id] ? { ...u, [id]: 0 } : u));
     await supabase.rpc('chat_mark_read', { conv: id });
+    window.dispatchEvent(new Event('taskflow:chat-read'));
   }, []);
 
   const clearPending = useCallback(() => {
@@ -793,30 +775,32 @@ export default function ChatPage() {
     markRead(activeId);
   }, [activeId, loadMessages, markRead, clearPending]);
 
+  const bumpConversation = useCallback((msg) => {
+    setConversations((list) => {
+      const next = withBumpedConversation(list, msg);
+      if (!next) loadConversations().catch(() => {});
+      return next || list;
+    });
+  }, [loadConversations]);
+
+  const onMessageInserted = useCallback((msg) => {
+    const own = msg.sender_id === meId;
+    if (msg.conversation_id === activeRef.current) {
+      setMessages((list) => (list.some((m) => m.id === msg.id) ? list : [...list, msg]));
+      if (!own) markRead(msg.conversation_id);
+    } else if (!own && msg.kind !== 'system') {
+      setUnread((u) => ({ ...u, [msg.conversation_id]: (u[msg.conversation_id] || 0) + 1 }));
+    }
+    if (msg.kind === 'system') loadConversations().catch(() => {});
+    bumpConversation(msg);
+  }, [meId, markRead, loadConversations, bumpConversation]);
+
   // Realtime (RLS limits events to what the user may see).
   useEffect(() => {
     if (!meId || import.meta.env.VITE_DISABLE_REALTIME === 'true') return undefined;
     const channel = supabase
       .channel(`taskflow:chat:${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => {
-        const own = msg.sender_id === meId;
-        if (msg.conversation_id === activeRef.current) {
-          setMessages((list) => (list.some((m) => m.id === msg.id) ? list : [...list, msg]));
-          if (!own) markRead(msg.conversation_id);
-        } else if (!own && msg.kind !== 'system') {
-          setUnread((u) => ({ ...u, [msg.conversation_id]: (u[msg.conversation_id] || 0) + 1 }));
-        }
-        if (msg.kind === 'system') loadConversations().catch(() => {});
-        setConversations((list) => {
-          if (!list.some((c) => c.id === msg.conversation_id)) {
-            loadConversations().catch(() => {});
-            return list;
-          }
-          return list
-            .map((c) => (c.id === msg.conversation_id ? { ...c, last_message_at: msg.created_at } : c))
-            .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at));
-        });
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => onMessageInserted(msg))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, ({ new: msg }) => {
         setMessages((list) => list.map((m) => (m.id === msg.id ? { ...m, ...msg } : m)));
       })
@@ -828,7 +812,7 @@ export default function ChatPage() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [meId, markRead, loadConversations]);
+  }, [meId, onMessageInserted, loadConversations]);
 
   useLiveRefresh(useCallback(() => {
     loadMessages(activeRef.current);
@@ -868,6 +852,17 @@ export default function ChatPage() {
   }, []);
 
   const active = conversations.find((c) => c.id === activeId);
+
+  // Read receipts: names of the people who have opened the conversation since your latest message, shown under it.
+  const seenByMessage = useMemo(() => {
+    if (!active || !meId) return {};
+    const lastMine = [...messages].reverse().find((m) => m.sender_id === meId && m.kind !== 'system');
+    if (!lastMine) return {};
+    const readers = (active.chat_participants || [])
+      .filter((p) => p.user_id !== meId && p.last_read_at && new Date(p.last_read_at) >= new Date(lastMine.created_at))
+      .map((p) => nameOf(p.user_id));
+    return readers.length ? { [lastMine.id]: readers } : {};
+  }, [active, messages, meId, nameOf]);
   const peerIdOf = useCallback((conv) => conv?.chat_participants?.find((p) => p.user_id !== meId)?.user_id, [meId]);
   const titleOf = useCallback((conv) => {
     if (!conv) return '';
@@ -1308,7 +1303,7 @@ export default function ChatPage() {
         }}
       >
         {dropActive && (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', background: 'rgba(86,69,212,0.12)', border: '2px dashed var(--color-primary)', borderRadius: 14, color: 'var(--color-primary)', fontWeight: 600, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', background: 'rgba(37, 99, 235,0.12)', border: '2px dashed var(--color-primary)', borderRadius: 14, color: 'var(--color-primary)', fontWeight: 600, pointerEvents: 'none' }}>
             Drop files to preview &amp; send
           </div>
         )}
@@ -1373,6 +1368,8 @@ export default function ChatPage() {
                 onEdit={startEdit}
                 onDelete={removeMessage}
                 onJumpTo={jumpTo}
+                seenBy={seenByMessage[m.id] || null}
+                direct={active?.type === 'direct'}
               />
             );
           })}

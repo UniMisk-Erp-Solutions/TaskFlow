@@ -1,12 +1,18 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
-import { Menu, X, Sun, Moon, Layout, ArrowRight, ChevronDown } from "lucide-react";
-import { useTheme } from "@/src/lib/ThemeContext";
+import { motion } from "motion/react";
+import { Menu, X, ArrowRight, ChevronDown } from "lucide-react";
 import { Button } from "../ui/Button";
 import { tone, display, BRAND } from "../../lib/ui";
+import { HOME_DARK_VARS } from "../../lib/homeDark";
 
 const NAV_HEIGHT = 64;
+
+// Where the pointer was when a Resources link was clicked. The page then changes under a motionless pointer and the
+// browser sends a synthetic "mouse entered" event with the same coordinates, which would pop the menu back open. Events
+// at exactly that spot are ignored; the menu opens again as soon as the pointer really moves.
+let menuClosedAt: { x: number; y: number } | null = null;
 
 const primaryLinks = [
   { name: "Product", href: "/" },
@@ -42,8 +48,8 @@ const otherLinks = [
 export const Navbar = () => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = React.useState(false);
+  const closeMenu = (e: React.MouseEvent) => { menuClosedAt = { x: e.clientX, y: e.clientY }; setIsResourcesOpen(false); };
   const [scrolled, setScrolled] = React.useState(false);
-  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
 
   // Close the Resources menu as soon as a page is chosen (and whenever the page changes).
@@ -70,17 +76,24 @@ export const Navbar = () => {
   return (
     <nav
       style={{
+        ...HOME_DARK_VARS,
         position: "fixed",
-        top: 0,
+        top: 14,
         left: 0,
         right: 0,
         zIndex: 50,
         height: NAV_HEIGHT,
-        background: scrolled ? `color-mix(in srgb, ${tone.bg} 88%, transparent)` : `color-mix(in srgb, ${tone.bg} 70%, transparent)`,
-        backdropFilter: "saturate(180%) blur(12px)",
-        WebkitBackdropFilter: "saturate(180%) blur(12px)",
-        borderBottom: scrolled ? `1px solid ${tone.border}` : "1px solid transparent",
-        transition: "background 200ms, border-color 200ms",
+        // The bar floats as a rounded glass pill over the page instead of spanning the full width.
+        width: "calc(100% - 32px)",
+        maxWidth: 1120,
+        margin: "0 auto",
+        borderRadius: 999,
+        background: scrolled ? "var(--nav-bg-solid)" : "var(--nav-bg)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        border: "1px solid var(--glass-edge)",
+        transition: "background 200ms",
+        boxShadow: "0 12px 40px -16px rgba(0, 0, 0, 0.6)",
       }}
     >
       <div
@@ -109,22 +122,13 @@ export const Navbar = () => {
             zIndex: 2,
           }}
         >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              background: BRAND,
-              borderRadius: 8,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              boxShadow: `0 4px 12px -4px ${BRAND}80`,
-              transition: "transform 200ms",
-            }}
-          >
-            <Layout size={17} strokeWidth={2.2} />
-          </div>
+          <img
+            src="/logo-mark.png"
+            alt=""
+            width={34}
+            height={34}
+            style={{ width: 34, height: 34, borderRadius: 9, display: "block", boxShadow: "0 4px 14px -6px rgba(255, 255, 255, 0.35)" }}
+          />
           <span
             style={{
               ...display,
@@ -165,7 +169,11 @@ export const Navbar = () => {
           {/* Resources dropdown */}
           <div
             style={{ position: "relative" }}
-            onMouseEnter={() => setIsResourcesOpen(true)}
+            onMouseEnter={(e) => {
+              if (menuClosedAt && e.clientX === menuClosedAt.x && e.clientY === menuClosedAt.y) return;
+              menuClosedAt = null;
+              setIsResourcesOpen(true);
+            }}
             onMouseLeave={() => setIsResourcesOpen(false)}
           >
             <button
@@ -191,12 +199,10 @@ export const Navbar = () => {
               />
             </button>
 
-            <AnimatePresence>
               {isResourcesOpen && (
                 <motion.div
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 6 }}
                   transition={{ duration: 0.15 }}
                   style={{
                     position: "absolute",
@@ -209,11 +215,11 @@ export const Navbar = () => {
                 >
                   <div
                     style={{
-                      background: tone.card,
-                      border: `1px solid ${tone.border}`,
+                      background: "rgba(4, 6, 16, 0.96)",
+                      border: "1px solid rgba(255, 255, 255, 0.10)",
                       borderRadius: 12,
                       padding: 6,
-                      boxShadow: "0 24px 48px -24px rgba(15,23,42,0.18)",
+                      boxShadow: "0 24px 60px -20px rgba(0, 0, 0, 0.85)",
                     }}
                   >
                     {resourceLinks.map((link) => {
@@ -222,7 +228,7 @@ export const Navbar = () => {
                         <Link
                           key={link.name}
                           to={link.href}
-                          onClick={() => setIsResourcesOpen(false)}
+                          onClick={closeMenu}
                           style={{
                             display: "block",
                             padding: "8px 12px",
@@ -241,7 +247,6 @@ export const Navbar = () => {
                   </div>
                 </motion.div>
               )}
-            </AnimatePresence>
           </div>
 
           {otherLinks.map((link) => (
@@ -265,36 +270,7 @@ export const Navbar = () => {
             zIndex: 2,
           }}
         >
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              border: "none",
-              background: "transparent",
-              color: tone.muted,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              transition: "background 120ms, color 120ms",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = tone.accent;
-              e.currentTarget.style.color = tone.fg;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = tone.muted;
-            }}
-          >
-            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-          </button>
-
-          {/* Sign in / Sign up, always beside the theme button */}
+          {/* Sign in / Sign up */}
           <div
             className="tf-marketing-nav-auth"
             style={{
@@ -345,27 +321,33 @@ export const Navbar = () => {
         </div>
       </div>
 
-      {/* Mobile sheet */}
-      <AnimatePresence>
-        {isOpen && (
+      {/* Mobile menu. It is drawn into <body> because this bar uses backdrop-filter, which would otherwise make a
+          fixed child size itself against the 64px bar instead of the screen. */}
+      {isOpen && createPortal(
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.18 }}
             style={{
+              ...HOME_DARK_VARS,
               position: "fixed",
-              top: NAV_HEIGHT,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 40,
-              background: tone.bg,
+              top: 14 + NAV_HEIGHT + 10,
+              left: 16,
+              right: 16,
+              bottom: 16,
+              zIndex: 49,
+              background: "rgba(4, 6, 16, 0.95)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 24,
+              boxShadow: "0 30px 80px -20px rgba(0, 0, 0, 0.8)",
+              color: "var(--foreground)",
               overflowY: "auto",
-              padding: "32px 32px 48px",
+              padding: "28px 28px 32px",
               display: "flex",
               flexDirection: "column",
-              gap: 24,
+              gap: 20,
             }}
           >
             {[...primaryLinks, ...resourceLinks, ...otherLinks].map((link) => {
@@ -377,7 +359,7 @@ export const Navbar = () => {
                   onClick={() => setIsOpen(false)}
                   style={{
                     ...display,
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: 600,
                     color: active ? BRAND : tone.fg,
                     textDecoration: "none",
@@ -415,9 +397,9 @@ export const Navbar = () => {
                 Sign up <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
               </Button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </motion.div>,
+        document.body,
+      )}
 
       {/* Tiny inline media-query so center nav + auth cluster appear above 1024px
          without dragging in another stylesheet. The classes flip display:flex. */}

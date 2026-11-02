@@ -391,8 +391,8 @@ export default function Pricing() {
         {/* Enterprise CTA */}
         <div
           style={{
-            background: "#020617",
-            border: "1px solid rgba(255,255,255,0.10)",
+            background: "var(--card)",
+            border: "1px solid var(--glass-edge)",
             borderRadius: 24,
             padding: "48px 40px",
             display: "flex",
@@ -400,7 +400,7 @@ export default function Pricing() {
             gap: 32,
             alignItems: "center",
             textAlign: "center",
-            boxShadow: "0 40px 80px -40px rgba(15,23,42,0.4)",
+            boxShadow: "inset 0 1px 0 var(--glass-shine), 0 40px 80px -40px var(--glass-shadow)",
           }}
         >
           <motion.div
@@ -409,10 +409,10 @@ export default function Pricing() {
             viewport={{ once: true }}
             style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 600 }}
           >
-            <h2 style={{ ...display, fontSize: "clamp(26px, 3vw, 36px)", fontWeight: 600, lineHeight: 1.1, margin: 0, color: "white" }}>
+            <h2 style={{ ...display, fontSize: "clamp(26px, 3vw, 36px)", fontWeight: 600, lineHeight: 1.1, margin: 0, color: tone.fg }}>
               Need a plan built around your team?
             </h2>
-            <p style={{ fontSize: 16, color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
+            <p style={{ fontSize: 16, color: tone.muted, lineHeight: 1.6, margin: 0 }}>
               Tell us your team size and what you need, and we will put together a plan that fits.
             </p>
           </motion.div>

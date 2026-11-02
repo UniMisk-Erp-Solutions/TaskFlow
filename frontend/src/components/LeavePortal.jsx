@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, CalendarOff, Check, ChevronLeft, ChevronRight, List, Pencil, Plus, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, CalendarDays, CalendarOff, Check, ChevronLeft, ChevronRight, List, Pencil, Plus, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import api from '../api';
 import SelectMenu from './SelectMenu';
+import { localYmd } from '../lib/localDate';
 
 const TYPE_OPTIONS = [
   { value: 'sick', label: 'Sick' },
@@ -128,7 +129,7 @@ function LeaveForm({ name, initial, onCancel, onSaved }) {
               disabled={value === 'multi' && SINGLE_DAY_TYPES.includes(form.leave_type)}
               title={value === 'multi' && SINGLE_DAY_TYPES.includes(form.leave_type) ? 'Half day and late coming are for a single day' : undefined}
               onClick={() => set('duration', value)}
-              style={{ border: 0, padding: '9px 16px', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: form.duration === value ? 'var(--color-primary)' : 'var(--tf-page)', color: form.duration === value ? 'var(--color-on-primary)' : 'var(--tf-text)' }}
+              style={{ border: 0, padding: '9px 16px', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: form.duration === value ? 'var(--color-action)' : 'var(--tf-page)', color: form.duration === value ? 'var(--color-on-primary)' : 'var(--tf-text)' }}
             >
               {text}
             </button>
@@ -161,7 +162,7 @@ function LeaveForm({ name, initial, onCancel, onSaved }) {
 
       <div className="tf-leave-form-actions" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-ghost" onClick={onCancel} style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid var(--tf-border)', background: 'transparent', color: 'var(--tf-text)', cursor: 'pointer', font: 'inherit', fontSize: 14 }}>Cancel</button>
-        <button type="submit" disabled={saving} style={{ padding: '9px 18px', borderRadius: 10, border: 0, background: 'var(--color-primary)', color: 'var(--color-on-primary)', cursor: saving ? 'default' : 'pointer', font: 'inherit', fontSize: 14, fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
+        <button type="submit" disabled={saving} style={{ padding: '9px 18px', borderRadius: 10, border: 0, background: 'var(--color-action)', color: 'var(--color-on-primary)', cursor: saving ? 'default' : 'pointer', font: 'inherit', fontSize: 14, fontWeight: 600, opacity: saving ? 0.7 : 1 }}>
           {saving ? 'Saving…' : initial.id ? 'Save changes' : 'Submit request'}
         </button>
       </div>
@@ -376,6 +377,94 @@ function LeaveSummary({ rows }) {
   );
 }
 
+// "When" filter on the leave list: earlier leave, leave on today, leave still to come.
+const WHEN_OPTIONS = [
+  { value: 'all', label: 'All dates' },
+  { value: 'earlier', label: 'Earlier' },
+  { value: 'today', label: 'On today' },
+  { value: 'coming', label: 'Coming up' },
+];
+const matchesWhen = (r, when, today) => {
+  if (when === 'earlier') return r.end_date < today;
+  if (when === 'today') return r.start_date <= today && today <= r.end_date;
+  if (when === 'coming') return r.start_date > today;
+  return true;
+};
+
+/**
+ * One "Filter" button that opens a small panel with both filters: the request status and when the leave happens.
+ * The button shows how many filters are active.
+ */
+function LeaveFilter({ statuses, status, onStatus, when, onWhen }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const active = (status !== 'all' ? 1 : 0) + (when !== 'all' ? 1 : 0);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const chip = (selected) => ({
+    padding: '6px 12px', borderRadius: 999, border: '1px solid var(--tf-border)', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    background: selected ? 'var(--color-action)' : 'transparent', color: selected ? 'var(--color-on-primary)' : 'var(--tf-text)',
+  });
+  const heading = { fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--tf-muted)', margin: '0 0 8px' };
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 999, border: '1px solid var(--tf-border)', background: 'var(--tf-panel)', color: 'var(--tf-text)', font: 'inherit', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+      >
+        <SlidersHorizontal size={15} /> Filter
+        {active > 0 && <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: 'var(--color-action)', color: 'var(--color-on-primary)', fontSize: 11, lineHeight: '18px', textAlign: 'center' }}>{active}</span>}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Filter leave requests"
+          style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 8px)', left: 0, width: 'min(320px, calc(100vw - 32px))', padding: 16, borderRadius: 14, border: '1px solid var(--tf-border)', background: 'var(--tf-panel)', boxShadow: '0 24px 60px -20px rgba(0, 0, 0, 0.6)', display: 'grid', gap: 16 }}
+        >
+          <div>
+            <p style={heading}>Status</p>
+            <div role="radiogroup" aria-label="Status" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {statuses.map(([value, text, n]) => (
+                <button key={value} type="button" role="radio" aria-checked={status === value} onClick={() => onStatus(value)} style={chip(status === value)}>
+                  {text} <span style={{ opacity: 0.75 }}>{n}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p style={heading}>When</p>
+            <div role="radiogroup" aria-label="When" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {WHEN_OPTIONS.map((o) => (
+                <button key={o.value} type="button" role="radio" aria-checked={when === o.value} onClick={() => onWhen(o.value)} style={chip(when === o.value)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button type="button" disabled={active === 0} onClick={() => { onStatus('all'); onWhen('all'); }} style={{ border: 0, background: 'none', color: active ? 'var(--color-primary)' : 'var(--tf-muted)', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: active ? 'pointer' : 'default', padding: 0 }}>
+              Reset
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="btn btn-primary btn-sm">Done</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeavePortal({ isAdmin = false, canSummary = false }) {
   const showSummary = isAdmin || canSummary;
   const { profile } = useAuth();
@@ -383,6 +472,7 @@ export default function LeavePortal({ isAdmin = false, canSummary = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
+  const [when, setWhen] = useState('all');
   const [form, setForm] = useState(null); // null = closed, otherwise the initial form values
   const [busyId, setBusyId] = useState(null);
   const [notice, setNotice] = useState('');
@@ -404,7 +494,8 @@ export default function LeavePortal({ isAdmin = false, canSummary = false }) {
   useEffect(() => { load(); }, [load]);
 
   const counts = useMemo(() => rows.reduce((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {}), [rows]);
-  const visible = filter === 'all' ? rows : rows.filter((r) => r.status === filter);
+  const today = localYmd();
+  const visible = rows.filter((r) => (filter === 'all' || r.status === filter) && matchesWhen(r, when, today));
   const myName = profile?.full_name || profile?.email || '';
 
   const act = async (id, run, done) => {
@@ -475,7 +566,7 @@ export default function LeavePortal({ isAdmin = false, canSummary = false }) {
           {isAdmin ? 'Review your team’s leave requests, or request leave yourself.' : 'Request time off and track whether it has been approved.'}
         </p>
         {!form && (
-          <button type="button" onClick={() => setForm(emptyForm())} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: 0, background: 'var(--color-primary)', color: 'var(--color-on-primary)', cursor: 'pointer', font: 'inherit', fontSize: 14, fontWeight: 600 }}>
+          <button type="button" onClick={() => setForm(emptyForm())} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 10, border: 0, background: 'var(--color-action)', color: 'var(--color-on-primary)', cursor: 'pointer', font: 'inherit', fontSize: 14, fontWeight: 600 }}>
             <Plus size={16} /> Request leave
           </button>
         )}
@@ -486,20 +577,7 @@ export default function LeavePortal({ isAdmin = false, canSummary = false }) {
       {notice && <div role="status" style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--tf-pearl)', color: 'var(--tf-text)', fontSize: 13 }}>{notice}</div>}
 
       <div className="tf-leave-toolbar">
-      <div role="tablist" aria-label="Filter by status" className="tf-leave-tabs" style={{ display: view === 'summary' ? 'none' : 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {filters.map(([value, text, n]) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            aria-selected={filter === value}
-            onClick={() => setFilter(value)}
-            style={{ padding: '6px 14px', borderRadius: 999, border: '1px solid var(--tf-border)', font: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: filter === value ? 'var(--color-primary)' : 'var(--tf-panel)', color: filter === value ? 'var(--color-on-primary)' : 'var(--tf-text)' }}
-          >
-            {text} <span style={{ opacity: 0.75 }}>{n}</span>
-          </button>
-        ))}
-      </div>
+      {view !== 'summary' ? <LeaveFilter statuses={filters} status={filter} onStatus={setFilter} when={when} onWhen={setWhen} /> : <span />}
       <div className="tf-leave-views" role="group" aria-label="View">
         <button type="button" aria-pressed={view === 'list'} className={view === 'list' ? 'is-active' : ''} onClick={() => setView('list')}><List size={14} /> List</button>
         <button type="button" aria-pressed={view === 'calendar'} className={view === 'calendar' ? 'is-active' : ''} onClick={() => setView('calendar')}><CalendarDays size={14} /> Calendar</button>
@@ -529,7 +607,7 @@ export default function LeavePortal({ isAdmin = false, canSummary = false }) {
       ) : visible.length === 0 ? (
         <div style={{ display: 'grid', placeItems: 'center', gap: 8, padding: '40px 16px', border: '1px dashed var(--tf-border)', borderRadius: 14, color: 'var(--tf-muted)', textAlign: 'center' }}>
           <CalendarOff size={28} />
-          <div style={{ fontSize: 14 }}>{rows.length ? 'No requests with this status.' : isAdmin ? 'No leave requests yet.' : 'You have not requested any leave yet.'}</div>
+          <div style={{ fontSize: 14 }}>{rows.length ? 'No requests match these filters.' : isAdmin ? 'No leave requests yet.' : 'You have not requested any leave yet.'}</div>
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>

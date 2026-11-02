@@ -3,6 +3,9 @@
 // Keywords were chosen to be realistic for a new site: specific phrases people type when they are choosing a tool,
 // not one-word head terms such as "productivity tools".
 
+import { CORE_BLOG_POSTS } from './blogPostsCore.js';
+import { TEAMWORK_BLOG_POSTS } from './blogPostsTeamwork.js';
+
 export const LANDING_PAGES = [
   {
     path: '/task-management-app',
@@ -297,211 +300,15 @@ export const LANDING_PAGES = [
   },
 ];
 
-export const BLOG_POSTS = [
-  {
-    slug: 'how-to-prioritize-tasks',
-    title: 'How to Prioritize Tasks: 5 Simple Methods That Work',
-    seoTitle: 'How to Prioritize Tasks: 5 Simple Methods | TaskFlow',
-    description:
-      'Five practical ways to decide what to do first, from the Eisenhower matrix to value versus effort, with a simple way to choose between them.',
-    date: '2026-10-27',
-    readMinutes: 5,
-    intro:
-      'Having too many tasks is rarely the real problem. The problem is not knowing which of them matters most today. These five methods give you a quick way to decide, and you can use them with any task list.',
-    sections: [
-      {
-        h2: '1. The Eisenhower matrix: urgent versus important',
-        paragraphs: [
-          'Sort each task by two questions: is it urgent, and is it important? Urgent and important tasks are done now. Important but not urgent tasks are scheduled. Urgent but not important tasks are delegated if possible. Neither urgent nor important tasks are dropped.',
-          'The value of this method is that it separates the loud from the valuable. Many things feel urgent only because someone is waiting for a reply.',
-        ],
-      },
-      {
-        h2: '2. High, medium, low',
-        paragraphs: [
-          'The simplest system is three levels. Give every task a priority when you create it, and keep high priority for a short list. If everything is high, nothing is. A good rule is to allow no more than three high-priority tasks per person per day.',
-        ],
-      },
-      {
-        h2: '3. Value versus effort',
-        paragraphs: [
-          'List your tasks and judge two things for each: how much value it creates and how much effort it takes. Do the high-value, low-effort tasks first. Plan the high-value, high-effort ones as projects. Question anything that is low value and high effort.',
-        ],
-      },
-      {
-        h2: '4. MoSCoW: must, should, could, won’t',
-        paragraphs: [
-          'Used a lot in project planning, MoSCoW sorts work into must have, should have, could have and will not have this time. It is useful when you have a fixed deadline and have to agree with other people what is in and what is out.',
-        ],
-      },
-      {
-        h2: '5. Do the hardest thing first',
-        paragraphs: [
-          'Pick the one task you are most likely to avoid and do it first, when your energy is highest. It is not a scoring system, just a way to stop important work being pushed to the end of the day.',
-        ],
-      },
-      {
-        h2: 'Which method should you choose?',
-        bullets: [
-          'Working alone with a long list: start with high, medium, low.',
-          'Dealing with constant interruptions: use the Eisenhower matrix.',
-          'Choosing between projects: use value versus effort.',
-          'Negotiating scope with others: use MoSCoW.',
-        ],
-        paragraphs: ['Whatever you choose, write the priority on the task itself so that everyone who works on it can see it.'],
-      },
-    ],
-    related: ['/online-task-planner', '/blog/weekly-planning-template', '/task-management-app'],
-  },
-  {
-    slug: 'kanban-vs-to-do-list',
-    title: 'Kanban vs To-Do List: Which Is Better for Your Team?',
-    seoTitle: 'Kanban vs To-Do List: Which Should Your Team Use? | TaskFlow',
-    description:
-      'A to-do list shows what has to be done. A Kanban board shows where each piece of work is. Here is how to choose, and when to use both.',
-    date: '2026-10-27',
-    readMinutes: 5,
-    intro:
-      'Both a to-do list and a Kanban board help you manage tasks, but they answer different questions. A list tells you what is left. A board tells you where everything stands. Knowing the difference makes it easier to pick the right one.',
-    sections: [
-      {
-        h2: 'What a to-do list is good at',
-        paragraphs: [
-          'A list is quick. You can add an item in seconds, reorder it and tick it off. It works well for personal work, short projects and anything where each task is simply either done or not done.',
-          'Its weakness is that a long list hides the state of the work. A task can be started, blocked or waiting for review, and a plain checkbox cannot say so.',
-        ],
-      },
-      {
-        h2: 'What a Kanban board is good at',
-        paragraphs: [
-          'A board splits work into lanes such as Backlog, To Do, In Progress and Done. Because each card sits in a lane, you see at a glance how much is waiting, how much is under way and where work is piling up.',
-          'Boards also make teamwork visible. When several people share work, everyone sees the same picture without asking for a status update.',
-        ],
-      },
-      {
-        h2: 'How to choose',
-        bullets: [
-          'One person, simple tasks: a to-do list is enough.',
-          'Several people, work that moves through stages: use a board.',
-          'Work that needs review before it is finished: use a board with a review step.',
-          'Both: keep a list for planning and a board for tracking progress.',
-        ],
-      },
-      {
-        h2: 'A tip for using a board well',
-        paragraphs: [
-          'Limit how much is In Progress at the same time. If a lane keeps growing, finish something before you start something new. A board shows the bottleneck, but only you can clear it.',
-        ],
-      },
-    ],
-    related: ['/kanban-board-software', '/free-task-manager', '/task-management-app'],
-  },
-  {
-    slug: 'task-approval-workflow',
-    title: 'How to Set Up a Task Approval Workflow That Does Not Slow Your Team',
-    seoTitle: 'Task Approval Workflow: How to Set One Up | TaskFlow',
-    description:
-      'A practical guide to approval workflows for tasks: who should review, what to include in a submission and how to keep reviews quick.',
-    date: '2026-10-27',
-    readMinutes: 6,
-    intro:
-      'An approval step protects quality, but a badly designed one just creates a queue. The goal is simple: finished work gets a second look quickly, and people always know what happens next.',
-    sections: [
-      {
-        h2: 'Decide who reviews what',
-        paragraphs: [
-          'Start by choosing the reviewer for each kind of work. In a small team that may be one person. In a larger one, a two-step flow often works well: a team manager checks the work first because they know the details, and a final approver confirms it before it counts as done.',
-          'Write the rule down so nobody has to guess who is waiting on whom.',
-        ],
-      },
-      {
-        h2: 'Make submissions easy to review',
-        bullets: [
-          'Add a short note saying what was done and anything the reviewer should check.',
-          'Attach the files or links that prove it.',
-          'Submit one task at a time rather than a batch of unrelated work.',
-        ],
-      },
-      {
-        h2: 'Give feedback that can be acted on',
-        paragraphs: [
-          'When work is sent back, the note should say what to change, not just that it was rejected. A task that returns to “in progress” with a clear reason is fixed faster than one that comes back with silence.',
-        ],
-      },
-      {
-        h2: 'Keep reviews from piling up',
-        bullets: [
-          'Agree on a target response time, such as one working day.',
-          'Give reviewers a single queue of what is waiting, instead of asking them to hunt through messages.',
-          'Send a notification when something needs review, so it is not forgotten.',
-        ],
-      },
-      {
-        h2: 'Keep a record',
-        paragraphs: [
-          'Log who approved or rejected each task and when. A history makes it easy to answer questions later and to spot steps where work usually gets stuck.',
-        ],
-      },
-    ],
-    related: ['/task-approval-workflow-software', '/employee-task-tracking', '/kanban-board-software', '/task-management-app'],
-  },
-  {
-    slug: 'weekly-planning-template',
-    title: 'Weekly Planning Template: Plan Your Week in 20 Minutes',
-    seoTitle: 'Weekly Planning Template: 20-Minute Routine | TaskFlow',
-    description:
-      'A simple weekly planning routine you can repeat every Friday or Monday: review, list, prioritize, schedule and leave room for surprises.',
-    date: '2026-10-27',
-    readMinutes: 4,
-    intro:
-      'A weekly plan does not need to be long. Twenty minutes at the start or end of the week is enough to see what matters, spot clashes and avoid starting Monday with a blank page.',
-    sections: [
-      {
-        h2: 'Step 1: Review last week (3 minutes)',
-        paragraphs: [
-          'Look at what was finished and what was not. Anything unfinished is either still important, in which case it carries over, or it is not, in which case you drop it.',
-        ],
-      },
-      {
-        h2: 'Step 2: List everything for this week (5 minutes)',
-        paragraphs: [
-          'Write down every task, meeting and deadline you already know about. Put each task in your task manager with a due date so it is not only in your head.',
-        ],
-      },
-      {
-        h2: 'Step 3: Pick your priorities (4 minutes)',
-        paragraphs: [
-          'Choose the three outcomes that would make the week a success. Mark the tasks that lead to them as high priority and leave the rest at medium or low.',
-        ],
-      },
-      {
-        h2: 'Step 4: Put it on the calendar (5 minutes)',
-        paragraphs: [
-          'Look at the calendar next to your task list. Block time for the high-priority tasks and notice which days are already full of meetings. Move tasks to days that have room.',
-        ],
-      },
-      {
-        h2: 'Step 5: Leave space (3 minutes)',
-        paragraphs: [
-          'Do not plan every hour. Keep some space for requests and problems you could not predict. If the week looks full, move something to the next one now rather than on Thursday.',
-        ],
-      },
-      {
-        h2: 'Make it a habit',
-        bullets: ['Do it at the same time every week.', 'Use the same list each time.', 'Share the plan with your team so they know what to expect.'],
-      },
-    ],
-    related: ['/online-task-planner', '/blog/how-to-prioritize-tasks', '/task-management-app'],
-  },
-];
+export const BLOG_POSTS = [...CORE_BLOG_POSTS, ...TEAMWORK_BLOG_POSTS];
 
 export const BLOG_INDEX = {
   path: '/blog',
   title: 'TaskFlow Blog: Task Management and Planning Guides',
-  description: 'Practical guides on prioritizing tasks, planning your week, choosing between a list and a Kanban board, and running approvals.',
+  description: 'Practical guides on prioritizing and assigning tasks, writing clear task descriptions, running approvals, time tracking and Kanban boards.',
   changefreq: 'weekly',
   priority: 0.7,
-  lastmod: '2026-10-27',
+  lastmod: '2026-11-02',
   h1: 'Task management and planning guides',
   intro: 'Practical, plain-language guides for people who plan, assign and review work.',
 };

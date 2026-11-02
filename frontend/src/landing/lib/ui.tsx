@@ -37,7 +37,7 @@ export function PageShell({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
-        background: tone.bg,
+        background: "transparent",
         color: tone.fg,
         paddingTop: 112,
         paddingBottom: 96,
@@ -87,7 +87,7 @@ export function Section({
   return (
     <section
       style={{
-        background: tone.bg,
+        background: "transparent",
         paddingTop: v,
         paddingBottom: v,
         ...style,
@@ -317,12 +317,12 @@ export function CtaPanel({
       style={{
         position: "relative",
         overflow: "hidden",
-        background: "#020617",
-        border: "1px solid rgba(255,255,255,0.10)",
+        background: "var(--card)",
+        border: "1px solid var(--glass-edge)",
         borderRadius: 24,
         padding: "64px 32px",
         textAlign: "center",
-        boxShadow: "0 40px 80px -40px rgba(15,23,42,0.4)",
+        boxShadow: "inset 0 1px 0 var(--glass-shine), 0 40px 80px -40px var(--glass-shadow)",
       }}
     >
       <div
@@ -367,7 +367,7 @@ export function CtaPanel({
             fontWeight: 600,
             lineHeight: 1.1,
             margin: 0,
-            color: "white",
+            color: tone.fg,
           }}
         >
           {title}
@@ -377,7 +377,7 @@ export function CtaPanel({
             style={{
               fontSize: 17,
               lineHeight: 1.6,
-              color: "#94a3b8",
+              color: tone.muted,
               maxWidth: 560,
               margin: 0,
             }}
