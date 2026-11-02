@@ -25,7 +25,7 @@ pipeline {
       steps {
         script {
           def ref = env.CI_TOOLKIT_REF ?: 'main'
-          dir('.ci-toolkit') { git url: 'https://github.com/' + env.CI_REPO + '.git', branch: ref, changelog: false, poll: false }
+          dir('.ci-toolkit') { git url: 'https://github.com/' + env.CI_REPO + '.git', credentialsId: 'ops-central-github-read', branch: ref, changelog: false, poll: false }
         }
         sh 'node .ci-toolkit/ci/pipeline/overlay.mjs --toolkit .ci-toolkit --workspace .'
         sh 'rm -rf .ci-toolkit'
