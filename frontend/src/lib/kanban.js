@@ -26,7 +26,7 @@ export function compareKanbanTasks(a, b) {
 }
 
 export function priorityColor(priority) {
-  if (priority === 'high') return '#db2777';
-  if (priority === 'low') return '#2563eb';
-  return '#16a34a';
+  if (priority === 'high') return '#dd6e96';
+  if (priority === 'low') return '#7fa3e6';
+  return '#55b878';
 }

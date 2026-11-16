@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { PageShell, Container, PageHeader, BRAND, tone, display } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 const sections = [
   { title: "1. Acceptance of terms", body: `By creating an account, accessing a workspace, or using any part of the service, you agree to follow these terms. If you are using the platform on behalf of an organization, you confirm that you are authorized to bind that organization.` },
@@ -22,7 +23,7 @@ export default function Terms() {
       <Container width={960}>
         <PageHeader
           eyebrow="Legal"
-          title="Terms & Conditions"
+          title="Terms of Service"
           blurb={
             <>
               These Terms and Conditions govern your access to and use of {companyName},
@@ -75,6 +76,7 @@ export default function Terms() {
             </p>
           </div>
         </motion.article>
+        <PageLinks path="/terms" />
       </Container>
     </PageShell>
   );

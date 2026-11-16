@@ -404,13 +404,13 @@ export default function AdminDashboard() {
             </button>
             )}
             {page !== 'meetings' && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
-              <Plus size={13} /> New Task
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchTaskForm()}>
+              <Plus size={13} strokeWidth={3} /> New Task
             </button>
             )}
             {page !== 'tasks' && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
-              <Plus size={13} /> New Meeting
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchMeetingForm()}>
+              <Plus size={13} strokeWidth={3} /> New Meeting
             </button>
             )}
           </div>
@@ -500,8 +500,8 @@ export default function AdminDashboard() {
               {overdue.length > 0 && (
                 <div
                   style={{
-                    background: 'rgba(248,113,113,0.04)',
-                    border: '1px solid rgba(248,113,113,0.15)',
+                    background: 'rgb(73 40 41 / 29%)',
+                    border: '1px solid rgb(185 22 27)',
                     borderRadius: 6,
                     padding: '11px 16px',
                     display: 'flex',
@@ -509,7 +509,7 @@ export default function AdminDashboard() {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <span style={{ fontSize: 13, color: 'var(--status-danger)' }}>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: 'rgb(175 43 48)' }}>
                     {overdue.length} task{overdue.length !== 1 ? 's' : ''} past due date
                   </span>
                   <button className="btn btn-ghost btn-sm" type="button" onClick={() => navigateToPage('tasks')}>

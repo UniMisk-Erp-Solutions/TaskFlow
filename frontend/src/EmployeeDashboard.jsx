@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import api from './api';
 import { preloadGoogleScript } from './lib/googleCalendar';
 import { localYmd } from './lib/localDate';
@@ -52,12 +52,16 @@ function Stat({ label, value, color }) {
   );
 }
 
+// Pages whose header shows the "N overdue" count.
+const OVERDUE_PAGES = ['tasks', 'kanban', 'calender'];
+
 function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskDetail }) {
-  const [open, setOpen] = useState(true);
+  // Closed to begin with: the person opens the group they want to see.
+  const [open, setOpen] = useState(false);
   if (!tasks.length) return null;
   const sectionKey = label.toLowerCase().replace(/\s+/g, '-');
   return (
-    <div className={`employee-task-group employee-task-group-${sectionKey}`}>
+    <div className={`employee-task-group employee-task-group-${sectionKey}`} style={{ borderBottom: '1px solid var(--tf-border)' }}>
       <button
         type="button"
         className="employee-task-group-toggle"
@@ -70,14 +74,14 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          padding: '0 0 14px',
+          padding: '14px 0',
         }}
       >
         <span style={{ display: 'block', width: 3, height: 14, background: accent, borderRadius: 2, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tf-muted)' }}>{label}</span>
+        <span style={{ fontSize: 16, fontWeight: 600, color: 'var(--tf-muted)' }}>{label}</span>
         <span
           style={{
-            fontSize: 11,
+            fontSize: 13,
             color: 'var(--tf-subhead)',
             background: 'var(--tf-pearl)',
             border: '1px solid var(--tf-border)',
@@ -87,10 +91,10 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
         >
           {tasks.length}
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--tf-muted)' }}>{open ? '▾' : '▸'}</span>
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', color: 'var(--tf-muted)' }} aria-hidden="true">{open ? <ChevronDown size={22} /> : <ChevronRight size={22} />}</span>
       </button>
       {open && (
-        <div className="employee-task-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, marginBottom: 24 }}>
+        <div className="employee-task-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10, paddingBottom: 18 }}>
           {tasks.map((t) => (
             <TaskCard
               key={t.id}
@@ -98,6 +102,7 @@ function Group({ label, tasks, onUpdateStatus, onSubmitTask, accent, onOpenTaskD
               onUpdateStatus={onUpdateStatus}
               onSubmit={onSubmitTask}
               onOpenDetail={onOpenTaskDetail ? () => onOpenTaskDetail(t) : undefined}
+              showOverdueLabel={label !== 'Overdue'}
             />
           ))}
         </div>
@@ -234,7 +239,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
             </h1>
             <div style={{ fontSize: 15, color: 'var(--tf-muted)', marginTop: 4 }}>
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-              {stats.overdue > 0 && <span style={{ color: 'var(--status-danger)', marginLeft: 10 }}>{stats.overdue} overdue</span>}
+              {/* The overdue count is only useful where tasks are worked on: Tasks, Kanban Board and Calendar. */}
+              {OVERDUE_PAGES.includes(page) && stats.overdue > 0 && <span style={{ color: 'var(--status-danger)', marginLeft: 10 }}>{stats.overdue} overdue</span>}
             </div>
           </div>
           <div className="employee-header-actions">
@@ -250,13 +256,13 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         {page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'kanban' && page !== 'leave' && !isManagerPage && <div className="tf-dashboard-actions" style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
           <span style={{ display: page === 'notifications' ? 'none' : 'flex', gap: 8 }}>
             {page !== 'meetings' && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}>
-              <Plus size={14} /> Task
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchTaskForm()}>
+              <Plus size={14} strokeWidth={3} /> Task
             </button>
             )}
             {page !== 'tasks' && (
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}>
-              <Plus size={14} /> Meeting
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchMeetingForm()}>
+              <Plus size={14} strokeWidth={3} /> Meeting
             </button>
             )}
           </span>
@@ -282,8 +288,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         )}
 
         {page !== 'notifications' && page !== 'timer' && page !== 'profile' && page !== 'chat' && page !== 'files' && page !== 'whiteboard' && page !== 'leave' && !isManagerPage && page !== 'meetings' && stats.overdue > 0 && (
-          <div style={{ background: 'rgba(248,113,113,0.04)', border: '1px solid rgba(248,113,113,0.15)', borderRadius: 5, padding: '10px 14px', marginBottom: 22 }}>
-            <span style={{ fontSize: 14, color: 'var(--status-danger)', lineHeight: 1.5 }}>
+          <div className="employee-overdue-banner" style={{ background: 'rgb(73 40 41 / 29%)', border: '1px solid rgb(185 22 27)', borderRadius: 5, padding: '12px 16px', marginBottom: 22 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: 'rgb(175 43 48)', lineHeight: 1.5 }}>
               {stats.overdue} task{stats.overdue !== 1 ? 's are' : ' is'} overdue.
             </span>
           </div>
@@ -305,8 +311,8 @@ export default function EmployeeDashboard({ role = 'employee' }) {
         {page === 'kanban' && (
           <KanbanBoard
             actions={<div className="kanban-task-actions">
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchTaskForm()}><Plus size={14} /> Task</button>
-              <button className="btn btn-primary btn-sm" type="button" onClick={() => launchMeetingForm()}><Plus size={14} /> Meeting</button>
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchTaskForm()}><Plus size={14} strokeWidth={3} /> Task</button>
+              <button className="btn btn-primary btn-sm" type="button" style={{ fontWeight: 700 }} onClick={() => launchMeetingForm()}><Plus size={14} strokeWidth={3} /> Meeting</button>
             </div>}
             tasks={tasks}
             projects={projects}

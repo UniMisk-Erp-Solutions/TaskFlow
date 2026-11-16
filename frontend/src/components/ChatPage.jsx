@@ -311,7 +311,7 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
         alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%', display: 'flex', flexDirection: 'column',
         alignItems: mine ? 'flex-end' : 'flex-start', touchAction: 'pan-y',
         borderRadius: 12, transition: 'background 300ms ease',
-        background: highlighted ? 'rgba(37, 99, 235,0.18)' : 'transparent',
+        background: highlighted ? 'rgba(86, 69, 212,0.18)' : 'transparent',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -339,7 +339,7 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
                 display: 'block', width: '100%', textAlign: 'left', marginBottom: 6, padding: '5px 8px',
                 borderRadius: 8, border: 'none', borderLeft: '3px solid', cursor: quoted ? 'pointer' : 'default',
                 borderLeftColor: mine ? 'rgba(255,255,255,0.8)' : 'var(--color-primary)',
-                background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(37, 99, 235,0.08)',
+                background: mine ? 'rgba(255,255,255,0.18)' : 'rgba(86, 69, 212,0.08)',
                 color: 'inherit', font: 'inherit', fontSize: 12.5,
               }}
             >
@@ -1303,7 +1303,7 @@ export default function ChatPage() {
         }}
       >
         {dropActive && (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', background: 'rgba(37, 99, 235,0.12)', border: '2px dashed var(--color-primary)', borderRadius: 14, color: 'var(--color-primary)', fontWeight: 600, pointerEvents: 'none' }}>
+          <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'grid', placeItems: 'center', background: 'rgba(86, 69, 212,0.12)', border: '2px dashed var(--color-primary)', borderRadius: 14, color: 'var(--color-primary)', fontWeight: 600, pointerEvents: 'none' }}>
             Drop files to preview &amp; send
           </div>
         )}

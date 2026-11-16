@@ -58,11 +58,7 @@ export default function Features() {
         <PageHeader
           eyebrow="Features"
           title={
-            <>
-              Built for execution.
-              <br />
-              <span style={{ color: tone.muted }}>Beyond management.</span>
-            </>
+            <>Task management features</>
           }
           blurb="A focused suite of modules built to bring clarity to complex projects and alignment to fast-moving teams."
         />

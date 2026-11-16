@@ -2,7 +2,7 @@
 // page already says. Plan prices are not repeated here so they cannot drift out of date; the answers point to the Pricing page.
 // The answers together run to well over 1,500 words (checked by a test), so the page is a real reference, not a list of one-liners.
 
-export const FAQ_GROUPS = [
+const RAW_GROUPS = [
   {
     title: 'Getting started',
     items: [
@@ -137,7 +137,7 @@ export const FAQ_GROUPS = [
       },
       {
         q: 'Is there a dark mode?',
-        a: 'Yes. You can switch between a light and a dark theme at any time with the theme button, and TaskFlow remembers your choice on that device. Both themes cover the whole app and the public pages, so you can pick whichever is easier on your eyes for the time of day and the screen you are using.',
+        a: 'Yes. TaskFlow is dark throughout: the public pages, the sign-in screen and the whole app use a deep blue dark look that is easy on the eyes on long days. There is no light theme to switch to.',
       },
       {
         q: 'How do I contact the TaskFlow team?',
@@ -146,6 +146,15 @@ export const FAQ_GROUPS = [
     ],
   },
 ];
+
+// Every question has its own page at /faq/<slug>. The slug is the question in lower case with dashes.
+export const faqSlug = (q) => q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+export const faqPath = (item) => `/faq/${item.slug}`;
+
+export const FAQ_GROUPS = RAW_GROUPS.map((group) => ({
+  ...group,
+  items: group.items.map((item) => ({ ...item, slug: faqSlug(item.q), group: group.title })),
+}));
 
 export const ALL_FAQS = FAQ_GROUPS.flatMap((group) => group.items);
 

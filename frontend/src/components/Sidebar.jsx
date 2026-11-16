@@ -141,20 +141,22 @@ export default function Sidebar({ active, onNav, role = 'admin' }) {
         }}
       >
         <img className="taskflow-sidebar-logo" src="/logo-mark.png" alt="" width={24} height={24} style={{ width: 24, height: 24, borderRadius: 7, flexShrink: 0 }} />
-        <span className="taskflow-sidebar-brand" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
-          TaskFlow
-        </span>
-        <span className="taskflow-sidebar-role"
-          style={{
-            marginLeft: 'auto',
-            fontSize: 10,
-            fontWeight: 600,
-            color: 'var(--tf-muted)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {role === 'manager' ? 'Manager' : isEmployee ? 'Employee' : 'Admin'}
+        <span className="taskflow-sidebar-titles" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, lineHeight: 1.15 }}>
+          <span className="taskflow-sidebar-brand" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, color: 'var(--tf-text)', letterSpacing: '-0.02em' }}>
+            TaskFlow
+          </span>
+          <span className="taskflow-sidebar-role"
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: 'var(--tf-muted)',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              marginTop: 2,
+            }}
+          >
+            {role === 'manager' ? 'Manager' : isEmployee ? 'Employee' : 'Admin'}
+          </span>
         </span>
         <button
           type="button"

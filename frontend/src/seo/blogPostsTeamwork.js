@@ -116,7 +116,7 @@ export const TEAMWORK_BLOG_POSTS = [
         ],
       },
     ],
-    related: ['/blog/how-to-assign-tasks-across-a-team', '/blog/task-approval-workflow', '/task-management-app', '/employee-task-tracking'],
+    related: ['/blog/how-to-assign-tasks-across-a-team', '/blog/task-approval-workflow', '/blog/how-to-keep-task-history-clear', '/task-management-app', '/employee-task-tracking'],
   },
   {
     slug: 'how-to-assign-tasks-across-a-team',
@@ -225,7 +225,7 @@ export const TEAMWORK_BLOG_POSTS = [
         ],
       },
     ],
-    related: ['/blog/how-to-write-clear-task-descriptions', '/blog/how-to-prioritize-tasks', '/employee-task-tracking', '/task-management-app'],
+    related: ['/blog/how-to-write-clear-task-descriptions', '/blog/how-to-prioritize-tasks', '/blog/how-to-turn-meeting-action-items-into-tasks', '/employee-task-tracking', '/task-management-app'],
   },
   {
     slug: 'how-to-turn-meeting-action-items-into-tasks',

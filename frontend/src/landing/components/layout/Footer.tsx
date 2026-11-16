@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Github, Twitter, Linkedin } from "lucide-react";
 import { tone, display } from "../../lib/ui";
 import { HOME_DARK_VARS } from "../../lib/homeDark";
+import { GUIDE_LINKS } from "../../lib/pageLinks.js";
 
 const columns = [
   {
@@ -9,8 +10,8 @@ const columns = [
     links: [
       { to: "/features", label: "Features" },
       { to: "/pricing", label: "Pricing" },
-      { to: "/security", label: "Security" },
-      { to: "/docs", label: "Changelog" },
+      { to: "/security", label: "Security at TaskFlow" },
+      { to: "/docs", label: "Documentation and guides" },
     ],
   },
   {
@@ -21,23 +22,25 @@ const columns = [
       { to: "/online-task-planner", label: "Online task planner" },
       { to: "/kanban-board-software", label: "Kanban board" },
       { to: "/employee-task-tracking", label: "Employee task tracking" },
+      { to: "/task-approval-workflow-software", label: "Task approval workflow software" },
     ],
   },
   {
     title: "Company",
     links: [
-      { to: "/about", label: "About" },
-      { to: "/contact", label: "Contact" },
-      { to: "/contact", label: "Press" },
+      { to: "/about", label: "About TaskFlow" },
+      { to: "/contact", label: "Contact sales or support" },
+      { to: "/contact", label: "Press and media enquiries" },
     ],
   },
   {
     title: "Resources",
     links: [
-      { to: "/docs", label: "Documentation" },
-      { to: "/blog", label: "Blog" },
-      { to: "/privacy", label: "Privacy" },
-      { to: "/terms", label: "Terms" },
+      { to: "/docs", label: "Documentation and guides" },
+      { to: "/faq", label: "FAQ: plans, features and setup" },
+      { to: "/blog", label: "Blog: task management guides" },
+      { to: "/privacy", label: "Privacy Policy" },
+      { to: "/terms", label: "Terms of Service" },
     ],
   },
 ];
@@ -138,6 +141,20 @@ export const Footer = () => {
             </div>
           ))}
         </div>
+
+        {/* Guides: every guide, with its own title as the link text */}
+        <nav aria-labelledby="footer-guides" style={{ marginBottom: 48 }}>
+          <h4 id="footer-guides" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: tone.fg, margin: "0 0 20px" }}>
+            Popular guides
+          </h4>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "12px 32px", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+            {GUIDE_LINKS.map((g: { to: string; label: string }) => (
+              <li key={g.to}>
+                <Link to={g.to} style={{ fontSize: 14, color: tone.muted, textDecoration: "none", lineHeight: 1.4 }}>{g.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
         {/* Bottom strip */}
         <div

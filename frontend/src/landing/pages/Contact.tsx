@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { Send, MapPin, Mail, Clock } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { PageShell, Container, Eyebrow, BRAND, tone, display } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 const contacts = [
   { icon: <Mail size={18} />, label: "Email us", value: "info@unimisk.com", tint: BRAND },
@@ -63,7 +64,7 @@ export default function Contact() {
                   color: tone.fg,
                 }}
               >
-                Let's talk.
+                Contact TaskFlow
               </motion.h1>
               <p style={{ fontSize: 17, lineHeight: 1.6, color: tone.muted, margin: 0 }}>
                 Whether you have a question about features, pricing, or a professional
@@ -217,6 +218,7 @@ export default function Contact() {
             </div>
           </motion.div>
         </div>
+        <PageLinks path="/contact" />
       </Container>
     </PageShell>
   );

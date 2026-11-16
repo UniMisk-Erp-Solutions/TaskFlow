@@ -8,6 +8,7 @@ import {
   PageShell, Container, Section, PageHeader, SectionHead,
   Card, Grid, CtaPanel, BRAND, tone, display,
 } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 const quickStart = [
   { title: "Workspace setup", icon: <Settings size={18} />, description: "Configure your team's main workspace in under five minutes." },
@@ -33,7 +34,7 @@ export default function Docs() {
       <Container>
         <PageHeader
           eyebrow="Documentation"
-          title="Taskflow Docs"
+          title="TaskFlow documentation and guides"
           blurb="Set up your workspace, manage projects, automate workflows, and collaborate with your team."
         />
 
@@ -162,6 +163,7 @@ export default function Docs() {
             or email {supportEmail}
           </a>
         </CtaPanel>
+        <PageLinks path="/docs" />
       </Container>
     </PageShell>
   );

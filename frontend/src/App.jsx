@@ -6,6 +6,7 @@ import SubscriptionGate from './components/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import Seo, { NoIndex } from './seo/Seo';
 import { LANDING_PAGES, BLOG_POSTS } from './seo/seoPages.js';
+import { ALL_FAQS } from './seo/faqContent.js';
 
 // The app screens are big (dashboards, charts, whiteboard). They load only when someone opens them, so the public pages stay light.
 const Login = lazy(() => import('./Login'));
@@ -36,6 +37,7 @@ const Privacy = lazy(() => import('./landing/pages/Privacy'));
 const Terms = lazy(() => import('./landing/pages/Terms'));
 const Docs = lazy(() => import('./landing/pages/Docs'));
 const Faq = lazy(() => import('./landing/pages/Faq'));
+const FaqQuestion = lazy(() => import('./landing/pages/FaqQuestion'));
 const SeoLanding = lazy(() => import('./landing/pages/SeoLanding'));
 const BlogIndex = lazy(() => import('./landing/pages/Blog').then((m) => ({ default: m.BlogIndex })));
 const BlogPost = lazy(() => import('./landing/pages/Blog'));
@@ -64,6 +66,11 @@ function MarketingLayout({ children, seo }) {
       </div>
     </SceneContext.Provider>
   );
+}
+
+function FaqQuestionRoute() {
+  const { slug } = useParams();
+  return ALL_FAQS.some((f) => f.slug === slug) ? <FaqQuestion slug={slug} /> : <NotFound />;
 }
 
 function BlogPostRoute() {
@@ -218,6 +225,7 @@ export default function App() {
             <Route path="/terms"     element={<MarketingLayout seo="/terms"><Terms /></MarketingLayout>} />
             <Route path="/docs"      element={<MarketingLayout seo="/docs"><Docs /></MarketingLayout>} />
             <Route path="/faq"       element={<MarketingLayout seo="/faq"><Faq /></MarketingLayout>} />
+            <Route path="/faq/:slug" element={<MarketingLayout><FaqQuestionRoute /></MarketingLayout>} />
             {LANDING_PAGES.map((page) => (
               <Route key={page.path} path={page.path} element={<MarketingLayout><SeoLanding path={page.path} /></MarketingLayout>} />
             ))}

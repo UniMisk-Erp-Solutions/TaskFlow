@@ -9,6 +9,7 @@ import {
 import { Button } from "../components/ui/Button";
 import { HOME_FAQS } from "../../seo/homeFaqs.js";
 import { SceneContext } from "../lib/sceneContext";
+import { GUIDE_LINKS, PAGE } from "../lib/pageLinks.js";
 
 /**
  * Marketing Home page.
@@ -170,10 +171,10 @@ function IconBadge({ children, tint }: { children: ReactNode; tint?: string }) {
 const RING_CSS = `
 .tf-ring{position:absolute;left:50%;top:50%;width:min(88vw,780px);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none}
 .tf-ring-glow,.tf-ring-line{position:absolute;inset:0;border-radius:50%;
-  background:conic-gradient(from 0deg,rgba(91,108,255,0) 0deg,#5b6cff 60deg,#9ad8ff 120deg,rgba(91,108,255,0) 190deg,rgba(139,92,246,0) 250deg,#8B5CF6 310deg,rgba(91,108,255,0) 360deg)}
+  background:conic-gradient(from 0deg,rgba(139,92,246,0) 0deg,#8b5cf6 60deg,#ece8ff 120deg,rgba(139,92,246,0) 190deg,rgba(139,92,246,0) 250deg,#8B5CF6 310deg,rgba(139,92,246,0) 360deg)}
 .tf-ring-line{-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}
 .tf-ring-glow{filter:blur(26px);opacity:.75;-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 26px),#000 calc(100% - 4px));mask:radial-gradient(farthest-side,transparent calc(100% - 26px),#000 calc(100% - 4px))}
-.tf-ring-fill{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(38,56,190,.30) 0%,rgba(20,28,90,.18) 45%,transparent 68%)}
+.tf-ring-fill{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(110,70,220,.22) 0%,rgba(40,30,90,.14) 45%,transparent 68%)}
 @keyframes tf-ring-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.tf-ring-glow,.tf-ring-line{animation:none}}
 @media (max-width:640px){.tf-hero{padding:100px 20px 44px !important;min-height:100svh !important}}
@@ -488,6 +489,26 @@ function GuidesSection() {
             </Link>
           ))}
         </div>
+
+        <nav aria-label="More guides and pages" style={{ marginTop: 40, display: "grid", gap: 28, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+          <div>
+            <h3 style={{ ...display, fontSize: 16, fontWeight: 600, margin: "0 0 12px", color: c.fg }}>More guides</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
+              {GUIDE_LINKS.filter((g: { to: string }) => !guides.some((x) => x.to === g.to)).map((g: { to: string; label: string }) => (
+                <li key={g.to}><Link to={g.to} style={{ color: c.muted, fontSize: 14, textDecoration: "none", lineHeight: 1.45 }}>{g.label}</Link></li>
+              ))}
+              <li><Link to={PAGE.blog.to} style={{ color: PRIMARY, fontSize: 14, fontWeight: 600, textDecoration: "none" }}>{PAGE.blog.label}</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3 style={{ ...display, fontSize: 16, fontWeight: 600, margin: "0 0 12px", color: c.fg }}>Learn more about TaskFlow</h3>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 10 }}>
+              {[PAGE.approval, PAGE.about, PAGE.security, PAGE.docs, PAGE.faq, PAGE.contact].map((l) => (
+                <li key={l.to}><Link to={l.to} style={{ color: c.muted, fontSize: 14, textDecoration: "none", lineHeight: 1.45 }}>{l.label}</Link></li>
+              ))}
+            </ul>
+          </div>
+        </nav>
       </Section>
   );
 }

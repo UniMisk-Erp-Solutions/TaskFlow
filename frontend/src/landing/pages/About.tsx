@@ -4,6 +4,7 @@ import {
   PageShell, Container, Section, PageHeader, SectionHead,
   Card, IconBadge, Grid, BRAND, BRAND_ACCENT, tone, display,
 } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 const timeline = [
   { year: "2024", title: "Founded", body: "Three engineers tired of toggling between five different apps just to finish a sprint." },
@@ -33,11 +34,7 @@ export default function About() {
         <PageHeader
           eyebrow="About"
           title={
-            <>
-              On a mission to kill
-              <br />
-              <span style={{ color: BRAND }}>workflow clutter.</span>
-            </>
+            <>About TaskFlow</>
           }
           blurb="Teams do their best work when responsibilities are clear, deadlines are visible, and progress is easy to understand."
         />
@@ -213,6 +210,7 @@ export default function About() {
             ))}
           </Grid>
         </Section>
+        <PageLinks path="/about" />
       </Container>
     </PageShell>
   );

@@ -5,6 +5,7 @@ import {
   PageShell, Container, Section, PageHeader, SectionHead,
   Card, Grid, CtaPanel, BRAND, tone, display,
 } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 // The accent colour of this page: a mid, darkish blue on the light theme and a light ice blue on the dark theme (set in <style> below).
 const ACCENT = "var(--sec-accent)";
@@ -41,11 +42,7 @@ export default function Security() {
         <PageHeader
           eyebrow="Security"
           title={
-            <>
-              Trust is our
-              <br />
-              <span style={{ color: ACCENT }}>foundation.</span>
-            </>
+            <>Security at TaskFlow</>
           }
           blurb="Enterprise task management involves sensitive data. Taskflow is built with a security-first architecture from day one."
           align="left"
@@ -177,6 +174,7 @@ export default function Security() {
         >
           <Button size="lg" to="/contact">Contact security team</Button>
         </CtaPanel>
+        <PageLinks path="/security" />
       </Container>
     </PageShell>
   );

@@ -16,21 +16,21 @@ import React from 'react';
  */
 
 const TASK_STATUS = {
-  pending:           { label: 'Pending',           color: '#475569', bg: 'rgba(71,85,105,0.10)' },
-  in_progress:       { label: 'In Progress',       color: '#2563eb', bg: 'rgba(37, 99, 235,0.10)' },
-  submitted:         { label: 'Under review',      color: '#dd5b00', bg: 'rgba(221,91,0,0.10)' },
-  completed:         { label: 'Completed',         color: '#1aae39', bg: 'rgba(26,174,57,0.12)' },
-  rejected:          { label: 'Rejected',          color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
-  changes_requested: { label: 'Changes requested', color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
-  blocked:           { label: 'Blocked',           color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
+  pending:           { label: 'Pending',           color: 'var(--st-neutral)', bg: 'var(--st-neutral-bg)' },
+  in_progress:       { label: 'In Progress',       color: 'var(--st-purple)', bg: 'var(--st-purple-bg)' },
+  submitted:         { label: 'Under review',      color: 'var(--st-orange)', bg: 'var(--st-orange-bg)' },
+  completed:         { label: 'Completed',         color: 'var(--st-green)', bg: 'var(--st-green-bg)' },
+  rejected:          { label: 'Rejected',          color: 'var(--st-red)', bg: 'var(--st-red-bg)' },
+  changes_requested: { label: 'Changes requested', color: 'var(--st-red)', bg: 'var(--st-red-bg)' },
+  blocked:           { label: 'Blocked',           color: 'var(--st-red)', bg: 'var(--st-red-bg)' },
 };
 
 const MEETING_STATUS = {
-  scheduled:         { label: 'Scheduled',         color: '#2563eb', bg: 'rgba(37, 99, 235,0.10)' },
-  submitted:         { label: 'Submitted',         color: '#dd5b00', bg: 'rgba(221,91,0,0.10)' },
-  completed:         { label: 'Completed',         color: '#1aae39', bg: 'rgba(26,174,57,0.12)' },
-  changes_requested: { label: 'Changes requested', color: '#e03131', bg: 'rgba(224,49,49,0.10)' },
-  cancelled:         { label: 'Cancelled',         color: '#475569', bg: 'rgba(71,85,105,0.10)' },
+  scheduled:         { label: 'Scheduled',         color: 'var(--st-purple)', bg: 'var(--st-purple-bg)' },
+  submitted:         { label: 'Submitted',         color: 'var(--st-orange)', bg: 'var(--st-orange-bg)' },
+  completed:         { label: 'Completed',         color: 'var(--st-green)', bg: 'var(--st-green-bg)' },
+  changes_requested: { label: 'Changes requested', color: 'var(--st-red)', bg: 'var(--st-red-bg)' },
+  cancelled:         { label: 'Cancelled',         color: 'var(--st-neutral)', bg: 'var(--st-neutral-bg)' },
 };
 
 const MAPS = { task: TASK_STATUS, meeting: MEETING_STATUS };
@@ -59,7 +59,7 @@ export default function StatusSelect({
         padding: '5px 10px 5px 9px',
         borderRadius: 999,
         background: meta.bg,
-        border: `1px solid ${meta.color}33`,
+        border: `1px solid color-mix(in srgb, ${meta.color} 28%, transparent)`,
         color: meta.color,
         fontSize: 12,
         fontWeight: 600,
@@ -79,7 +79,7 @@ export default function StatusSelect({
           height: 7,
           borderRadius: 999,
           background: meta.color,
-          boxShadow: `0 0 0 2px ${meta.color}33`,
+          boxShadow: `0 0 0 2px color-mix(in srgb, ${meta.color} 28%, transparent)`,
         }}
       />
       <span
@@ -93,13 +93,13 @@ export default function StatusSelect({
         {meta.label}
       </span>
       <svg
-        width="10"
-        height="10"
+        width="16"
+        height="16"
         viewBox="0 0 12 12"
         aria-hidden
-        style={{ flexShrink: 0, opacity: 0.65 }}
+        style={{ flexShrink: 0, opacity: 0.9 }}
       >
-        <path d="M2 4l4 4 4-4" stroke={meta.color} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 4l4 4 4-4" style={{ stroke: meta.color }} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       <select
         value={value || ''}

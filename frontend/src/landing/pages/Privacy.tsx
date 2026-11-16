@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import { PageShell, Container, PageHeader, BRAND, tone, display } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 const sections = [
   {
@@ -117,6 +118,7 @@ export default function Privacy() {
             </div>
           </motion.article>
         </div>
+        <PageLinks path="/privacy" />
       </Container>
     </PageShell>
   );

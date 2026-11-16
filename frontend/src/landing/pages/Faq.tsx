@@ -1,21 +1,23 @@
-import { ChevronDown } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { PageShell, Container, PageHeader, tone, display } from "../lib/ui";
-import { FAQ_GROUPS } from "../../seo/faqContent.js";
+import { FAQ_GROUPS, faqPath } from "../../seo/faqContent.js";
+import PageLinks from "../components/PageLinks";
 
 /**
- * Full FAQ page. Native <details> accordions: keyboard and screen-reader friendly, and every answer is in the page HTML.
- * (No FAQ structured data: Google only shows FAQ rich results for government and health sites.)
+ * Full FAQ list. Every question is a link to its own page (see FaqQuestion.tsx), where the answer is shown in full.
+ * The home page keeps its own short list of accordions.
  */
 export default function Faq() {
   return (
     <PageShell>
-      <style>{".tf-faq summary::-webkit-details-marker{display:none}.tf-faq summary svg{transition:transform .2s}.tf-faq[open] summary svg{transform:rotate(180deg)}.tf-faq summary:focus-visible{outline:2px solid #8B5CF6;outline-offset:4px;border-radius:4px}"}</style>
+      <style>{".tf-faq-row{transition:background .15s}.tf-faq-row:hover{background:var(--accent)}.tf-faq-row:hover svg{transform:translateX(3px)}.tf-faq-row svg{transition:transform .15s}.tf-faq-row:focus-visible{outline:2px solid #8B5CF6;outline-offset:-2px;border-radius:6px}"}</style>
       <Container width={820}>
         <PageHeader
           eyebrow="FAQ"
-          title="Frequently asked questions"
-          blurb="Straight answers about what TaskFlow does, how plans work and how to get started."
+          title="TaskFlow FAQ"
+          blurb="Straight answers about what TaskFlow does, how plans work and how to get started. Pick a question to read its answer."
         />
 
         {FAQ_GROUPS.map((group, g) => (
@@ -23,21 +25,20 @@ export default function Faq() {
             <h2 id={`faq-group-${g}`} style={{ ...display, fontSize: 22, fontWeight: 600, color: tone.fg, margin: "0 0 12px" }}>
               {group.title}
             </h2>
-            <div style={{ borderTop: `1px solid ${tone.border}`, borderBottom: `1px solid ${tone.border}` }}>
-              {group.items.map((f, i) => (
-                <details
-                  key={f.q}
-                  className="tf-faq"
-                  style={{ padding: "20px 0", borderBottom: i !== group.items.length - 1 ? `1px solid ${tone.border}` : "none" }}
-                >
-                  <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16 }}>
-                    <h3 style={{ ...display, fontSize: 17, fontWeight: 600, margin: 0, color: tone.fg }}>{f.q}</h3>
-                    <ChevronDown size={18} color="var(--muted)" aria-hidden="true" style={{ flexShrink: 0 }} />
-                  </summary>
-                  <p style={{ fontSize: 15, lineHeight: 1.65, color: tone.muted, margin: "12px 0 0" }}>{f.a}</p>
-                </details>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, borderTop: `1px solid ${tone.border}` }}>
+              {group.items.map((f) => (
+                <li key={f.slug} style={{ borderBottom: `1px solid ${tone.border}` }}>
+                  <Link
+                    to={faqPath(f)}
+                    className="tf-faq-row"
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, padding: "18px 8px", textDecoration: "none", color: tone.fg }}
+                  >
+                    <span style={{ ...display, fontSize: 17, fontWeight: 600 }}>{f.q}</span>
+                    <ChevronRight size={18} color="var(--muted)" aria-hidden="true" style={{ flexShrink: 0 }} />
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         ))}
 
@@ -52,6 +53,7 @@ export default function Faq() {
             <Button variant="outline" to="/pricing" style={{ paddingLeft: 32, paddingRight: 32 }}>See pricing</Button>
           </div>
         </section>
+        <PageLinks path="/faq" />
       </Container>
     </PageShell>
   );

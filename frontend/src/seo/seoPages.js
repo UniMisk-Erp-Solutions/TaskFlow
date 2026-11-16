@@ -54,7 +54,7 @@ export const LANDING_PAGES = [
       { q: 'Does TaskFlow work on a phone?', a: 'Yes. It runs in the browser and can be added to your home screen as an installable app, with optional notifications.' },
       { q: 'Is there an approval step for finished work?', a: 'Yes. Work is submitted for review, checked by a manager and then approved by an admin, and either reviewer can send it back with a note.' },
     ],
-    related: ['/kanban-board-software', '/online-task-planner', '/employee-task-tracking', '/blog/how-to-prioritize-tasks'],
+    related: ['/kanban-board-software', '/online-task-planner', '/employee-task-tracking', '/task-approval-workflow-software', '/blog/how-to-prioritize-tasks'],
   },
   {
     path: '/free-task-manager',
@@ -156,7 +156,7 @@ export const LANDING_PAGES = [
       { q: 'Can I add meetings to Google Calendar?', a: 'Yes. When you create a meeting there is an option to add it to your own Google Calendar after you connect your Google account.' },
       { q: 'Will I get reminders on my phone?', a: 'You can turn on notifications on a phone that has TaskFlow added to the home screen, and you will be alerted when work is assigned to you.' },
     ],
-    related: ['/task-management-app', '/blog/weekly-planning-template', '/blog/how-to-prioritize-tasks'],
+    related: ['/task-management-app', '/blog/weekly-planning-template', '/blog/how-to-prioritize-tasks', '/blog/how-to-turn-meeting-action-items-into-tasks'],
   },
   {
     path: '/kanban-board-software',
@@ -201,7 +201,7 @@ export const LANDING_PAGES = [
       { q: 'Can I see only my own tasks?', a: 'Yes. Employees see their own tasks on their board, and filters narrow the view further.' },
       { q: 'What happens when I move a card to Done?', a: 'The task is submitted for review. A manager checks it and an admin gives the final approval.' },
     ],
-    related: ['/task-management-app', '/employee-task-tracking', '/blog/kanban-vs-to-do-list'],
+    related: ['/task-management-app', '/employee-task-tracking', '/task-approval-workflow-software', '/blog/kanban-vs-to-do-list'],
   },
   {
     path: '/employee-task-tracking',
@@ -245,7 +245,7 @@ export const LANDING_PAGES = [
       { q: 'Can managers see their team’s tasks?', a: 'Yes. Managers see and can edit the tasks of the people in their teams, and can assign new work to them.' },
       { q: 'Can employees request leave?', a: 'Yes. The leave portal supports sick leave, exams, emergencies, trips, half days, late coming and custom types, with approval by an admin.' },
     ],
-    related: ['/task-management-app', '/kanban-board-software', '/blog/task-approval-workflow'],
+    related: ['/task-management-app', '/kanban-board-software', '/blog/task-approval-workflow', '/blog/team-time-tracking-without-micromanaging', '/blog/how-to-assign-tasks-across-a-team', '/blog/how-to-keep-task-history-clear'],
   },
   {
     path: '/task-approval-workflow-software',
@@ -296,7 +296,7 @@ export const LANDING_PAGES = [
       { q: 'Is the approval workflow on the Free plan?', a: 'No. The approval workflow is part of the Pro and Business plans. The Free plan covers tasks, list and board views, team chat and file sharing.' },
       { q: 'Does a GitHub push approve a task?', a: 'No. A push or pull request that references a task can move it from In Progress to Done, but an admin still has to approve it.' },
     ],
-    related: ['/employee-task-tracking', '/kanban-board-software', '/blog/task-approval-workflow', '/pricing'],
+    related: ['/employee-task-tracking', '/kanban-board-software', '/blog/task-approval-workflow', '/blog/how-to-keep-task-history-clear', '/pricing'],
   },
 ];
 

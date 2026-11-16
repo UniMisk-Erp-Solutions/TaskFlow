@@ -61,7 +61,7 @@ export default function SelectMenu({ id, value, onChange, options, disabled = fa
         onKeyDown={onKeyDown}
       >
         <span className="tf-selectmenu-label">{selected?.label ?? ''}</span>
-        <ChevronDown size={16} aria-hidden="true" style={{ flexShrink: 0, color: 'var(--tf-muted)', transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none' }} />
+        <ChevronDown size={20} aria-hidden="true" style={{ flexShrink: 0, color: 'var(--tf-muted)', transition: 'transform 150ms', transform: open ? 'rotate(180deg)' : 'none' }} />
       </button>
       {open && (
         <ul ref={listRef} id={listId} role="listbox" className="tf-selectmenu-list" aria-label={ariaLabel}>

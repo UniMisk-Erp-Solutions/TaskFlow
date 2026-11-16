@@ -3,6 +3,7 @@
 
 import { CORE_PAGES, SITE_URL, SITE_NAME, DEFAULT_OG_IMAGE, absoluteUrl } from './siteConfig.js';
 import { LANDING_PAGES, BLOG_POSTS, BLOG_INDEX, blogPath } from './seoPages.js';
+import { ALL_FAQS, faqPath } from './faqContent.js';
 
 const organization = {
   '@type': 'Organization',
@@ -40,6 +41,14 @@ const faqPage = (faqs) => ({
   '@type': 'FAQPage',
   mainEntity: faqs.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
 });
+
+// The first sentence or two of an answer, cut at a word, for the page description (search results show about 155 characters).
+const shortDescription = (text) => {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= 155) return clean;
+  const cut = clean.slice(0, 152);
+  return `${cut.slice(0, cut.lastIndexOf(' ')).replace(/[,;:.\s]+$/, '')}…`;
+};
 
 const withContext = (nodes) => nodes.map((node) => ({ '@context': 'https://schema.org', ...node }));
 
@@ -106,6 +115,22 @@ export function getSeoRoutes() {
         },
         breadcrumb([{ name: 'Home', path: '/' }, { name: 'Blog', path: '/blog' }, { name: post.title, path }]),
       ]),
+    });
+  });
+
+  ALL_FAQS.forEach((faq) => {
+    const path = faqPath(faq);
+    routes.push({
+      path,
+      title: `${faq.q} | TaskFlow`,
+      description: shortDescription(faq.a),
+      changefreq: 'monthly',
+      priority: 0.5,
+      lastmod: '2026-11-02',
+      summary: faq.a,
+      h1: faq.q,
+      type: 'website',
+      schema: withContext([breadcrumb([{ name: 'Home', path: '/' }, { name: 'FAQ', path: '/faq' }, { name: faq.q, path }])]),
     });
   });
 

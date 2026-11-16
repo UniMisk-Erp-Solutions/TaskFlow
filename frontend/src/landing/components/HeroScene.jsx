@@ -53,9 +53,9 @@ function glowTexture() {
   c.width = c.height = 256;
   const g = c.getContext('2d');
   const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-  grad.addColorStop(0, 'rgba(70,90,255,0.55)');
-  grad.addColorStop(0.45, 'rgba(60,70,220,0.18)');
-  grad.addColorStop(1, 'rgba(40,50,200,0)');
+  grad.addColorStop(0, 'rgba(139,92,246,0.42)');
+  grad.addColorStop(0.45, 'rgba(110,70,220,0.14)');
+  grad.addColorStop(1, 'rgba(80,50,180,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 256, 256);
   const tex = new THREE.CanvasTexture(c);
@@ -113,9 +113,9 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
     root.add(glow);
 
     // Hero ring (faces the viewer) with a halo, plus a thin tilted ring that crosses it.
-    const mainMat = track(ringMaterial(0x5b6cff, 0xa6e3ff, 0.18));
+    const mainMat = track(ringMaterial(0xcfc8ff, 0xffffff, 0.2));
     const mainRing = new THREE.Mesh(track(new THREE.TorusGeometry(2.7, 0.028, 24, 220)), mainMat);
-    const haloMat = track(ringMaterial(0x1c2370, 0x4a35a8, 0.0));
+    const haloMat = track(ringMaterial(0x2a2a30, 0x4a3a86, 0.0));
     const mainHalo = new THREE.Mesh(track(new THREE.TorusGeometry(2.7, 0.2, 24, 220)), haloMat);
     const rings = new THREE.Group();
     root.add(rings);
@@ -133,7 +133,7 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
 
     // Gates down the corridor: scrolling flies the camera through each one.
     const gates = [-6, -12, -18].map((z, i) => {
-      const m = track(ringMaterial(i % 2 ? 0x8b5cf6 : 0x5b6cff, i % 2 ? 0xd2b8ff : 0x9ad8ff, 0.2));
+      const m = track(ringMaterial(i % 2 ? 0x8b5cf6 : 0xd8d4e6, i % 2 ? 0xd2b8ff : 0xffffff, 0.2));
       const mesh = new THREE.Mesh(track(new THREE.TorusGeometry(3.3 + i * 0.25, 0.022, 16, 200)), m);
       mesh.position.z = z;
       mesh.rotation.z = i * 1.1;
@@ -151,7 +151,7 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
     const col = new Float32Array(COUNT * 3);
     const size = new Float32Array(COUNT);
     const phase = new Float32Array(COUNT);
-    const palette = [new THREE.Color(0x8aa4ff), new THREE.Color(0xb48cff), new THREE.Color(0xffffff), new THREE.Color(0x6ad4ff)];
+    const palette = [new THREE.Color(0xc4b5fd), new THREE.Color(0xa78bfa), new THREE.Color(0xffffff), new THREE.Color(0xd4d4d8)];
     for (let i = 0; i < COUNT; i += 1) {
       pos[i * 3] = (Math.random() - 0.5) * 30;
       pos[i * 3 + 1] = (Math.random() - 0.5) * 17;
@@ -179,15 +179,19 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
 
     // Sizing: keep the hero ring fully visible on narrow phones too.
     let z0 = 8.2;
+    // On a portrait phone the rings would sweep across the screen edges as the camera flies past them, so there they stay
+    // on the first screen only and fade away as the page scrolls; the tunnel rings are hidden. Desktop keeps them all.
+    let narrow = false;
     const resize = () => {
       const w = mount.clientWidth || 1;
       const h = mount.clientHeight || 1;
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       const halfH = Math.tan((camera.fov * Math.PI) / 360);
-      // On a portrait phone let the ring spill past the screen edges so it fills the screen instead of floating small.
-      const needW = camera.aspect < 0.8 ? 4.2 : 7.2;
-      z0 = Math.max(camera.aspect < 0.8 ? 5.4 : 8.2, needW / (2 * halfH * camera.aspect));
+      // Keep the whole ring (and the thin tilted ring around it) inside the screen on every device, phones included.
+      z0 = Math.max(8.2, 7.8 / (2 * halfH * camera.aspect));
+      narrow = camera.aspect < 0.8;
+      gates.forEach((gt) => { gt.mesh.visible = !narrow; });
       camera.updateProjectionMatrix();
     };
     resize();
@@ -220,7 +224,7 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
     let t = 0;
     let ringVis = ringsWanted.current ? 1 : 0;
     const tint = new THREE.Color();
-    const blue = new THREE.Color(0x4a5cff);
+    const blue = new THREE.Color(0x9a86ff);
     const violet = new THREE.Color(0x8b4cf6);
 
     const frame = (dt) => {
@@ -245,8 +249,9 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
       tiltRing.rotation.z = t * 0.07;
       ringGroup.rotation.z = t * 0.03;
       ringVis += ((ringsWanted.current ? 1 : 0) - ringVis) * Math.min(1, dt * 3);
-      rings.visible = ringVis > 0.01;
-      ringMats.forEach((m) => { m.uniforms.uFade.value = ringVis; });
+      const ringFade = ringVis * (narrow ? Math.max(0, 1 - prog / 0.08) : 1);
+      rings.visible = ringFade > 0.01;
+      ringMats.forEach((m) => { m.uniforms.uFade.value = ringFade; });
       renderer.render(scene, camera);
     };
 

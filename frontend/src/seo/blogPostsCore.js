@@ -112,7 +112,7 @@ export const CORE_BLOG_POSTS = [
         ],
       },
     ],
-    related: ['/online-task-planner', '/blog/weekly-planning-template', '/blog/how-to-assign-tasks-across-a-team', '/task-management-app'],
+    related: ['/online-task-planner', '/blog/weekly-planning-template', '/blog/how-to-assign-tasks-across-a-team', '/blog/team-time-tracking-without-micromanaging', '/task-management-app'],
   },
   {
     slug: 'kanban-vs-to-do-list',

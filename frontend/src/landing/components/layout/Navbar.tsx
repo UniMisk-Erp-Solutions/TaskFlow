@@ -22,10 +22,10 @@ const primaryLinks = [
 
 const resourceLinks = [
   { name: "Security", href: "/security" },
-  { name: "Docs", href: "/docs" },
-  { name: "Blog", href: "/blog" },
-  { name: "Privacy", href: "/privacy" },
-  { name: "Terms", href: "/terms" },
+  { name: "Documentation", href: "/docs" },
+  { name: "Blog and guides", href: "/blog" },
+  { name: "Privacy Policy", href: "/privacy" },
+  { name: "Terms of Service", href: "/terms" },
 ];
 
 const otherLinks = [
@@ -215,7 +215,7 @@ export const Navbar = () => {
                 >
                   <div
                     style={{
-                      background: "rgba(4, 6, 16, 0.96)",
+                      background: "rgba(6, 6, 6, 0.96)",
                       border: "1px solid rgba(255, 255, 255, 0.10)",
                       borderRadius: 12,
                       padding: 6,
@@ -336,7 +336,7 @@ export const Navbar = () => {
               right: 16,
               bottom: 16,
               zIndex: 49,
-              background: "rgba(4, 6, 16, 0.95)",
+              background: "rgba(6, 6, 6, 0.95)",
               backdropFilter: "blur(14px)",
               WebkitBackdropFilter: "blur(14px)",
               border: "1px solid rgba(255, 255, 255, 0.12)",

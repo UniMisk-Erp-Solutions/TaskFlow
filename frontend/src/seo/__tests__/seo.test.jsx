@@ -7,6 +7,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 
 import { SITE_URL, CORE_PAGES } from '../siteConfig.js';
 import { LANDING_PAGES, BLOG_POSTS } from '../seoPages.js';
+import { ALL_FAQS } from '../faqContent.js';
 import { getSeoRoutes, getRoute, buildSitemapXml } from '../schema.js';
 import { applySeoToHtml, buildHeadTags, SEO_START, SEO_END, NOSCRIPT_MARKER } from '../headHtml.js';
 import { applySeo } from '../Seo.jsx';
@@ -31,7 +32,8 @@ describe('page metadata', () => {
   });
 
   it('covers the existing pages, the landing pages and the blog', () => {
-    expect(routes).toHaveLength(CORE_PAGES.length + LANDING_PAGES.length + 1 + BLOG_POSTS.length);
+    expect(routes).toHaveLength(CORE_PAGES.length + LANDING_PAGES.length + 1 + BLOG_POSTS.length + ALL_FAQS.length);
+    ALL_FAQS.forEach((f) => expect(getRoute(`/faq/${f.slug}`), f.q).toBeTruthy());
     ['/', '/features', '/pricing', '/free-task-manager', '/task-management-app', '/online-task-planner', '/blog', '/blog/how-to-prioritize-tasks'].forEach((p) => {
       expect(getRoute(p), p).toBeTruthy();
     });

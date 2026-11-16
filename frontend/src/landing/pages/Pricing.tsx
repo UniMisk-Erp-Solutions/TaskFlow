@@ -9,6 +9,7 @@ import {
   PageShell, Container, Section, PageHeader, SectionHead,
   BRAND, tone, display,
 } from "../lib/ui";
+import PageLinks from "../components/PageLinks";
 
 type Cycle = "monthly" | "yearly";
 
@@ -146,7 +147,7 @@ export default function Pricing() {
       <Container>
         <PageHeader
           eyebrow="Pricing"
-          title={<>Simple pricing.<br />Built for every stage.</>}
+          title="Pricing"
           blurb="Free forever for small teams. Switch plans anytime, cancel anytime."
         />
 
@@ -420,6 +421,7 @@ export default function Pricing() {
             Contact Team Unimisk <ArrowRight style={{ marginLeft: 8, width: 16, height: 16 }} />
           </Button>
         </div>
+        <PageLinks path="/pricing" />
       </Container>
     </PageShell>
   );

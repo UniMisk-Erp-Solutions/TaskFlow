@@ -42,7 +42,8 @@ function fmt(d) {
   return formatDate(d);
 }
 
-export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail }) {
+// `showOverdueLabel` is turned off inside the "Overdue" group, where the group name already says it.
+export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail, showOverdueLabel = true }) {
   const [updating, setUpdating] = useState(false);
   const overdue = isOverdue(task.due_date, task.status);
 
@@ -82,7 +83,7 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
       }}
       style={{
         background: 'var(--tf-panel)',
-        border: `1px solid ${overdue ? 'rgba(196,30,58,0.35)' : 'var(--tf-border)'}`,
+        border: '1px solid var(--tf-border)',
         borderRadius: 18,
         padding: 18,
         display: 'flex',
@@ -120,7 +121,7 @@ export default function TaskCard({ task, onUpdateStatus, onSubmit, onOpenDetail 
             }}
           >
             <Calendar size={14} strokeWidth={2} />
-            {overdue && <span style={{ fontWeight: 600 }}>Overdue · </span>}
+            {overdue && showOverdueLabel && <span style={{ fontWeight: 600 }}>Overdue · </span>}
             {fmt(task.due_date)}
           </div>
         )}

@@ -37,13 +37,22 @@
   color-scheme: light;
 
   /* Primary brand colour (blue). */
-  --color-primary: #2563eb;
-  --color-primary-focus: #1d4ed8;
-  --color-primary-deep: #1e40af;
+  /* Status and priority colours: all in the middle range, bright enough to read from a distance on black but not neon. */
+  --st-neutral: #bcc0cc;  --st-neutral-bg: rgba(188, 192, 204, 0.14);
+  --st-purple: #b3a4ff;   --st-purple-bg: rgba(139, 117, 255, 0.24);
+  --st-orange: #d9945a;   --st-orange-bg: rgba(217, 148, 90, 0.18);
+  --st-green: #55b878;    --st-green-bg: rgba(85, 184, 120, 0.17);
+  --st-red: #d46a70;      --st-red-bg: rgba(212, 106, 112, 0.17);
+  --st-blue: #7fa3e6;     --st-blue-bg: rgba(127, 163, 230, 0.16);
+  --st-pink: #dd6e96;     --st-pink-bg: rgba(221, 110, 150, 0.17);
+
+  --color-primary: #5645d4;
+  --color-primary-focus: #4534b3;
+  --color-primary-deep: #3a2a99;
   /* Buttons and filled controls keep the original purple; links, focus and highlights are blue. */
   --color-action: #5645d4;
   --color-action-focus: #4534b3;
-  --color-primary-on-dark: #9db9ff;
+  --color-primary-on-dark: #b3a5ff;
   --color-on-primary: #ffffff;
 
   /* Brand navy (used by the top global nav band). */
@@ -76,7 +85,7 @@
   --status-danger: #e03131;
   --status-danger-bg: rgba(224, 49, 49, 0.10);
   --status-info: var(--color-primary);
-  --status-info-bg: rgba(37, 99, 235, 0.10);
+  --status-info-bg: rgba(86, 69, 212, 0.10);
 
   /* Semantic theme shortcuts. */
   --tf-page: var(--color-canvas-parchment);
@@ -94,7 +103,7 @@
   --tf-glass-border: rgba(10, 21, 48, 0.06);
 
   /* Focus halo derived from primary so it adapts in dark mode. */
-  --tf-focus-ring: rgba(37, 99, 235, 0.20);
+  --tf-focus-ring: rgba(86, 69, 212, 0.20);
 
   /* Card tints (echo Notion's database property palette). Reserved for
      future "feature card" surfaces — none of the existing components use
@@ -163,64 +172,64 @@
   color-scheme: dark;
 
   /* Marketing palette — dark variant. */
-  --background: #060c20;
+  --background: #050505;
   --foreground: #f8fafc;
-  --card: #0d1630;
+  --card: #0f0f0f;
   --card-foreground: #f8fafc;
-  --border: #1c2a58;
+  --border: #262626;
   --muted: #94a3b8;
-  --accent: #10204f;
-  --primary-soft: #10204f;
+  --accent: #1a1530;
+  --primary-soft: #1a1530;
 
-  --color-primary: #5b8cff;
-  --color-primary-focus: #7aa2ff;
-  --color-primary-deep: #3b6fe6;
+  --color-primary: #8b75ff;
+  --color-primary-focus: #a89aff;
+  --color-primary-deep: #6856e6;
   --color-action: #8b75ff;
   --color-action-focus: #a89aff;
-  --color-primary-on-dark: #9db9ff;
+  --color-primary-on-dark: #b3a5ff;
   --color-on-primary: #ffffff;
 
-  --color-nav-black: #050a1c;
+  --color-nav-black: #000000;
 
-  --color-ink: #eaf0ff;
-  --color-ink-muted-80: #c5d1f0;
-  --color-ink-muted-48: #8d9cc4;
+  --color-ink: #f1f0ec;
+  --color-ink-muted-80: #d4d3cf;
+  --color-ink-muted-48: #9b9a93;
   --color-body-on-dark: #ffffff;
   --color-body-muted-dark: rgba(255, 255, 255, 0.65);
 
-  --color-canvas: #0d1630;
-  --color-canvas-parchment: #060c20;
-  --color-surface-pearl: #14214a;
-  --color-surface-tile-1: #0a1228;
-  --color-surface-tile-2: #101b3a;
-  --color-surface-chip: rgba(120, 160, 255, 0.14);
+  --color-canvas: #0f0f0f;
+  --color-canvas-parchment: #050505;
+  --color-surface-pearl: #1a1a1a;
+  --color-surface-tile-1: #0b0b0b;
+  --color-surface-tile-2: #141414;
+  --color-surface-chip: rgba(255, 255, 255, 0.10);
 
-  --color-hairline: #1c2a58;
-  --color-divider-soft: #162349;
+  --color-hairline: #262626;
+  --color-divider-soft: #1c1c1c;
 
-  --status-success: #2cc54a;
-  --status-success-bg: rgba(44, 197, 74, 0.16);
-  --status-warning: #ff8c3d;
-  --status-warning-bg: rgba(255, 140, 61, 0.16);
-  --status-danger: #ff5a5a;
-  --status-danger-bg: rgba(255, 90, 90, 0.16);
+  --status-success: #55b878;
+  --status-success-bg: rgba(85, 184, 120, 0.17);
+  --status-warning: #d9945a;
+  --status-warning-bg: rgba(217, 148, 90, 0.18);
+  --status-danger: #a5292d;
+  --status-danger-bg: rgba(165, 41, 45, 0.18);
   --status-info: var(--color-primary);
-  --status-info-bg: rgba(91, 140, 255, 0.16);
+  --status-info-bg: rgba(139, 117, 255, 0.16);
 
   --tf-page: var(--color-canvas-parchment);
   --tf-panel: var(--color-canvas);
   --tf-border: var(--color-hairline);
-  --tf-border-soft: rgba(120, 160, 255, 0.16);
+  --tf-border-soft: rgba(255, 255, 255, 0.10);
   --tf-text: var(--color-ink);
   --tf-muted: var(--color-ink-muted-48);
   --tf-subhead: var(--color-ink-muted-80);
   --tf-pearl: var(--color-surface-pearl);
   --tf-nav: var(--color-nav-black);
 
-  --tf-glass-bg: rgba(10, 18, 44, 0.72);
-  --tf-glass-border: rgba(130, 170, 255, 0.16);
+  --tf-glass-bg: rgba(14, 14, 14, 0.78);
+  --tf-glass-border: rgba(255, 255, 255, 0.08);
 
-  --tf-focus-ring: rgba(91, 140, 255, 0.32);
+  --tf-focus-ring: rgba(139, 117, 255, 0.32);
 }
 
 *,
@@ -479,39 +488,39 @@ textarea.input {
 }
 
 .badge-green {
-  background: var(--green-bg);
-  color: var(--green);
-  border: 1px solid transparent;
+  background: var(--st-green-bg);
+  color: var(--st-green);
+  border: 1px solid var(--st-green-bg);
 }
 .badge-yellow {
-  background: var(--yellow-bg);
-  color: var(--yellow);
-  border: 1px solid transparent;
+  background: var(--st-orange-bg);
+  color: var(--st-orange);
+  border: 1px solid var(--st-orange-bg);
 }
 .badge-red {
-  background: var(--red-bg);
-  color: var(--red);
-  border: 1px solid transparent;
+  background: var(--st-red-bg);
+  color: var(--st-red);
+  border: 1px solid var(--st-red-bg);
 }
 .badge-indigo {
-  background: var(--indigo-bg);
-  color: var(--indigo);
-  border: 1px solid transparent;
+  background: var(--st-purple-bg);
+  color: var(--st-purple);
+  border: 1px solid var(--st-purple-bg);
 }
 .badge-blue {
-  background: rgba(37, 99, 235, 0.11);
-  color: #2563eb;
-  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: var(--st-blue-bg);
+  color: var(--st-blue);
+  border: 1px solid var(--st-blue-bg);
 }
 .badge-pink {
-  background: rgba(219, 39, 119, 0.11);
-  color: #db2777;
-  border: 1px solid rgba(219, 39, 119, 0.2);
+  background: var(--st-pink-bg);
+  color: var(--st-pink);
+  border: 1px solid var(--st-pink-bg);
 }
 .badge-muted {
-  background: var(--tf-pearl);
-  color: var(--tf-muted);
-  border: 1px solid var(--tf-border);
+  background: var(--st-neutral-bg);
+  color: var(--st-neutral);
+  border: 1px solid var(--st-neutral-bg);
 }
 
 /* ── Modal ──────────────────────────────────────────── */
@@ -669,7 +678,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
   align-items: center;
   justify-content: center;
   transition: transform var(--t), background var(--t);
-  box-shadow: 0 6px 18px -8px rgba(37, 99, 235, 0.55);
+  box-shadow: 0 6px 18px -8px rgba(86, 69, 212, 0.55);
 }
 .tf-fab:hover {
   background: var(--color-primary-focus);
@@ -733,7 +742,7 @@ input.input-time::-webkit-calendar-picker-indicator:hover {
 .kanban-result-count { margin-left: auto; color: var(--tf-muted); font-size: 12px; white-space: nowrap; }
 .kanban-error {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: 0 0 14px; padding: 11px 14px; border: 1px solid var(--status-danger);
+  margin: 0 0 14px; padding: 11px 14px; border: 1px solid rgba(165, 41, 45, 0.45);
   border-radius: 10px; color: var(--status-danger); background: var(--status-danger-bg); font-size: 13px;
 }
 .kanban-error button { border: 0; color: inherit; background: transparent; font: inherit; font-weight: 600; cursor: pointer; }
@@ -846,7 +855,7 @@ body.is-kanban-dragging, body.is-kanban-dragging * { -webkit-user-select: none !
 @media (max-width: 760px) {
   .taskflow-sidebar { width: 68px !important; }
   .taskflow-sidebar > div:first-child { justify-content: center !important; padding: 17px 8px !important; }
-  .taskflow-sidebar-brand, .taskflow-sidebar-role, .taskflow-sidebar-label, .taskflow-sidebar-user-copy { display: none !important; }
+  .taskflow-sidebar-titles, .taskflow-sidebar-brand, .taskflow-sidebar-role, .taskflow-sidebar-label, .taskflow-sidebar-user-copy { display: none !important; }
   .taskflow-sidebar nav { padding: 10px 6px !important; }
   .taskflow-sidebar nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
   .taskflow-sidebar > div:last-child { padding: 8px 5px !important; }
@@ -1091,7 +1100,7 @@ main { padding-bottom: 0; }
 .timer-panel-actions { display: flex; gap: 6px; }
 
 /* Collapsible sidebar */
-.taskflow-sidebar-toggle { margin-left: 4px; display: inline-grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border: 0; border-radius: 8px; background: transparent; color: var(--tf-muted); cursor: pointer; transition: background 120ms ease, color 120ms ease; }
+.taskflow-sidebar-toggle { margin-left: 4px; display: inline-grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border: 1px solid var(--tf-border); border-radius: 9px; background: var(--tf-pearl); color: var(--tf-text); cursor: pointer; transition: background 120ms ease, color 120ms ease; }
 .taskflow-sidebar-toggle:hover { background: var(--tf-pearl); color: var(--color-primary); }
 .taskflow-sidebar-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 .taskflow-sidebar-label, .taskflow-sidebar-brand, .taskflow-sidebar-role { white-space: nowrap; }
@@ -1103,6 +1112,7 @@ main { padding-bottom: 0; }
 .taskflow-sidebar.is-collapsed .taskflow-sidebar-label,
 .taskflow-sidebar.is-collapsed .taskflow-sidebar-user-copy { display: none !important; }
 .taskflow-sidebar.is-collapsed .taskflow-sidebar-toggle { margin-left: 0; }
+.taskflow-sidebar.is-collapsed .taskflow-sidebar-titles { display: none !important; }
 .taskflow-sidebar.is-collapsed nav { padding: 10px 6px !important; }
 .taskflow-sidebar.is-collapsed nav button { justify-content: center !important; padding: 11px 7px !important; border-left: 0 !important; }
 .taskflow-sidebar.is-collapsed > div:last-child { padding: 8px 5px !important; }
@@ -1144,7 +1154,7 @@ main { padding-bottom: 0; }
 @media (max-width: 960px) { .timer-segments li { grid-template-columns: 22px minmax(0, 1fr); } }
 
 .tf-fab { cursor: grab; user-select: none; -webkit-user-select: none; transition: transform var(--t), background var(--t), box-shadow var(--t); }
-.tf-fab.is-dragging { cursor: grabbing; transform: scale(1.08); box-shadow: 0 12px 28px -8px rgba(37, 99, 235, 0.65); transition: none; }
+.tf-fab.is-dragging { cursor: grabbing; transform: scale(1.08); box-shadow: 0 12px 28px -8px rgba(86, 69, 212, 0.65); transition: none; }
 
 .timer-task-time { display: grid; justify-items: end; line-height: 1.35; }
 .timer-task-time strong { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -1737,6 +1747,7 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .taskflow-sidebar .tf-theme-toggle { display: none !important; }
   .taskflow-sidebar.is-employee .taskflow-sidebar-user-copy > div:last-child { display: none !important; }
   .taskflow-sidebar-brand, .taskflow-sidebar-role, .taskflow-sidebar-label, .taskflow-sidebar-user-copy { display: block !important; }
+  .taskflow-sidebar-titles { display: flex !important; }
   .taskflow-sidebar-logo { display: block !important; }
   .taskflow-sidebar.is-collapsed .taskflow-sidebar-brand,
   .taskflow-sidebar.is-collapsed .taskflow-sidebar-role,
@@ -1973,9 +1984,8 @@ button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
   .employee-dashboard-content .employee-page-heading { margin-bottom: 8px !important; }
   .employee-greeting-lines { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.12; }
   .employee-dashboard-content .tf-dashboard-actions { margin-top: 0 !important; margin-bottom: 8px !important; }
-  .employee-task-group-pending,
-  .employee-task-group-in-progress { margin-top: 10px !important; }
-  .employee-task-group-toggle { padding-bottom: 7px !important; }
+  /* Every group (Overdue, In Progress, Pending, Completed) is spaced the same, open or closed. */
+  .employee-task-group-toggle { padding: 12px 0 !important; }
   .employee-task-grid {
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 307px), 307px)) !important;
     justify-content: start; gap: 9px !important; margin-bottom: 14px !important;
@@ -2386,17 +2396,38 @@ select.input option, select.select option { font-size: 15px; padding: 6px 10px; 
 .tf-app-shell { background: var(--tf-page); }
 :root[data-theme="dark"] .tf-app-shell {
   background:
-    radial-gradient(90% 46% at 50% -14%, rgba(47, 107, 255, 0.40) 0%, rgba(47, 107, 255, 0) 64%),
-    radial-gradient(55% 38% at 100% 100%, rgba(30, 80, 230, 0.24) 0%, rgba(30, 80, 230, 0) 70%),
+    radial-gradient(90% 46% at 50% -14%, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 64%),
+    radial-gradient(55% 38% at 100% 100%, rgba(139, 117, 255, 0.10) 0%, rgba(139, 117, 255, 0) 70%),
     var(--tf-page);
 }
 :root[data-theme="dark"] .card,
 :root[data-theme="dark"] .tf-panel,
 :root[data-theme="dark"] .tf-stat-mini {
-  background: linear-gradient(180deg, rgba(160, 190, 255, 0.06), rgba(160, 190, 255, 0.015)), var(--tf-panel);
-  border-color: rgba(120, 160, 255, 0.18);
-  box-shadow: inset 0 1px 0 rgba(160, 190, 255, 0.10), 0 18px 40px -26px rgba(0, 10, 70, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012)), var(--tf-panel);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 18px 40px -26px rgba(0, 0, 0, 0.9);
 }
 :root[data-theme="dark"] .btn-primary {
   box-shadow: 0 10px 26px -10px rgba(139, 117, 255, 0.6);
+}
+
+/* Dashboard header buttons (AI, refresh): sit close together on phones instead of 20-28px apart. */
+@media (max-width: 700px) {
+  .tf-subnav-actions, .employee-header-actions { gap: 8px !important; }
+}
+
+/* Phones: a little more room above the "N tasks are overdue" box, so it does not sit tight against the stats row. */
+@media (max-width: 760px) {
+  .employee-overdue-banner { margin-top: 22px !important; }
+}
+
+/* "+ Task" / "+ Meeting" (and the admin "+ New Task" / "+ New Meeting"): 15px text in a button that is big enough for it. */
+.employee-dashboard-content .tf-dashboard-actions .btn-sm,
+.tf-admin-actions .btn-sm {
+  box-sizing: border-box;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 10px 20px !important;
+  font-size: 15px !important;
+  line-height: 22px !important;
 }
