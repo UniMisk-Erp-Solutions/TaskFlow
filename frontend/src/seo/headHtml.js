@@ -41,13 +41,13 @@ export function buildHeadTags(route) {
 
 /** Plain content for visitors and crawlers that do not run JavaScript. Replaced as soon as the app loads. */
 export function buildNoscript(route, navRoutes = []) {
-  const links = navRoutes.map((r) => `<li><a href="${absoluteUrl(r.path)}">${escapeHtml(r.title.split(/[:|]/)[0].trim())}</a></li>`).join('');
+  const links = navRoutes.map((r) => `<li><a href="${absoluteUrl(r.path)}">${escapeHtml(r.title.replace(/s*|s*TaskFlow$/, '').trim())}</a></li>`).join('');
   return [
     '<noscript>',
     '<main style="max-width:720px;margin:40px auto;padding:0 16px;font-family:system-ui,sans-serif;line-height:1.5">',
     `<h1>${escapeHtml(route.h1 || route.title)}</h1>`,
     `<p>${escapeHtml(route.summary || route.description)}</p>`,
-    `<p>${SITE_NAME} needs JavaScript to run the app. Browse the main pages:</p>`,
+    `<p>${SITE_NAME} needs JavaScript to run the app. Browse every page:</p>`,
     `<ul>${links}</ul>`,
     '</main>',
     '</noscript>',
@@ -61,5 +61,11 @@ export function applySeoToHtml(template, route, navRoutes = []) {
   if (start < 0 || end < start) throw new Error('index.html is missing the <!--seo:start--> / <!--seo:end--> markers');
   let html = `${template.slice(0, start + SEO_START.length)}\n    ${buildHeadTags(route)}\n    ${template.slice(end)}`;
   html = html.replace(NOSCRIPT_MARKER, buildNoscript(route, navRoutes));
+  // Main heading in the page body itself (not only inside <noscript>), so crawlers that read the raw HTML see it. It is visually hidden
+  // and the app replaces it, with the same heading shown on screen, as soon as it loads.
+  if (route.h1 && !route.noindex) {
+    const sr = 'position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+    html = html.replace('<div id="root">', `<div id="root"><h1 style="${sr}">${escapeHtml(route.h1)}</h1>`);
+  }
   return html;
 }

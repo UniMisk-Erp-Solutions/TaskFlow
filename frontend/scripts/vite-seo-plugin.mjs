@@ -22,7 +22,8 @@ export function seoBuildPlugin() {
       if (!fs.existsSync(indexPath)) return;
       const template = fs.readFileSync(indexPath, 'utf8');
       const routes = getSeoRoutes();
-      const nav = routes.filter((r) => ['/', '/features', '/pricing', '/task-management-app', '/free-task-manager', '/online-task-planner', '/kanban-board-software', '/employee-task-tracking', '/blog'].includes(r.path));
+      // Every public page is linked from the plain-HTML fallback, so crawlers that do not run JavaScript can still reach all of them.
+      const nav = routes.filter((r) => !r.noindex);
 
       const home = routes.find((r) => r.path === '/');
       fs.writeFileSync(indexPath, applySeoToHtml(template, home, nav));

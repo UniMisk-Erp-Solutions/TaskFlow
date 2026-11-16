@@ -41,3 +41,31 @@ describe('internal links', () => {
     for (const l of [...Object.values(PAGE), ...GUIDE_LINKS]) expect(getRoute(l.to), l.to).toBeTruthy();
   });
 });
+
+describe('plain-HTML fallback (what crawlers without JavaScript see)', () => {
+  it('links every public page with descriptive anchor text', async () => {
+    const { getSeoRoutes } = await import('../schema.js');
+    const { buildNoscript } = await import('../headHtml.js');
+    const routes = getSeoRoutes().filter((r) => !r.noindex);
+    const html = buildNoscript(routes[0], routes);
+    for (const to of TARGETS) {
+      const m = html.match(new RegExp(`<a href="[^"]*${to}">([^<]+)</a>`));
+      expect(m, `static link to ${to}`).toBeTruthy();
+      expect(m[1].trim().split(/\s+/).length, `anchor for ${to}`).toBeGreaterThanOrEqual(2);
+    }
+  });
+});
+
+describe('main heading in the raw HTML', () => {
+  it('every indexable page has one h1 in the page body, outside <noscript>', async () => {
+    const { getSeoRoutes } = await import('../schema.js');
+    const { applySeoToHtml } = await import('../headHtml.js');
+    const fs = await import('node:fs');
+    const template = fs.readFileSync('index.html', 'utf8');
+    for (const route of getSeoRoutes().filter((r) => !r.noindex)) {
+      const html = applySeoToHtml(template, route, []);
+      const body = html.replace(/<noscript>[\s\S]*?<\/noscript>/g, '');
+      expect((body.match(/<h1[ >]/g) || []).length, route.path).toBe(1);
+    }
+  });
+});
