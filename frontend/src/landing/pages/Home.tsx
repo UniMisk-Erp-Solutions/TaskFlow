@@ -157,7 +157,7 @@ function Card({ children, style }: { children: ReactNode; style?: CSSProperties 
 
 function IconBadge({ children, tint }: { children: ReactNode; tint?: string }) {
   return (
-    <div style={{
+    <div className="tf-icon-badge" style={{
       width: 44, height: 44, borderRadius: 12,
       background: `${tint || PRIMARY}1A`,
       color: tint || PRIMARY,

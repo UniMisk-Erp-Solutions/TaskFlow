@@ -143,9 +143,8 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
     });
 
     // Particles fill the whole corridor.
-    const mobile = window.innerWidth < 700;
-    // Fewer particles on phones and on machines that report few cores or little memory.
-    const weak = mobile || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
+    // Phones get the same scene as desktop; only machines that report few cores or little memory get fewer particles.
+    const weak = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
     const COUNT = weak ? 420 : 900;
     const pos = new Float32Array(COUNT * 3);
     const col = new Float32Array(COUNT * 3);
@@ -191,7 +190,6 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
       // Keep the whole ring (and the thin tilted ring around it) inside the screen on every device, phones included.
       z0 = Math.max(8.2, 7.8 / (2 * halfH * camera.aspect));
       narrow = camera.aspect < 0.8;
-      gates.forEach((gt) => { gt.mesh.visible = !narrow; });
       camera.updateProjectionMatrix();
     };
     resize();
@@ -241,15 +239,18 @@ export default function HeroScene({ onReady, onFail, rings: showRings = true }) 
       cur.y += (target.y - cur.y) * Math.min(1, dt * 2.2);
 
       // The camera flies down the corridor as the page scrolls, with a little sway, roll and pointer parallax.
-      camera.position.set(Math.sin(prog * 7) * 0.7 + cur.x * 0.55, Math.cos(prog * 5) * 0.4 - cur.y * 0.35, z0 - prog * travel);
-      camera.rotation.set(-cur.y * 0.05, -cur.x * 0.06, prog * 0.5 + Math.sin(t * 0.15) * 0.015);
+      // Same flight as on desktop, but on a phone there is no sideways sway, parallax or roll: only the up and down movement stays.
+      const side = narrow ? 0 : 1;
+      camera.position.set(side * (Math.sin(prog * 7) * 0.7 + cur.x * 0.55), Math.cos(prog * 5) * 0.4 - cur.y * 0.35, z0 - prog * travel);
+      camera.rotation.set(-cur.y * 0.05, side * -cur.x * 0.06, side * (prog * 0.5 + Math.sin(t * 0.15) * 0.015));
       glow.position.set(camera.position.x, camera.position.y, camera.position.z - 11);
       glowMat.color.copy(tint.copy(blue).lerp(violet, Math.min(1, prog * 1.6)));
 
       tiltRing.rotation.z = t * 0.07;
       ringGroup.rotation.z = t * 0.03;
       ringVis += ((ringsWanted.current ? 1 : 0) - ringVis) * Math.min(1, dt * 3);
-      const ringFade = ringVis * (narrow ? Math.max(0, 1 - prog / 0.08) : 1);
+      // Softer rings: 70% on desktop, 40% on a phone, where they sit behind the glass boxes and text.
+      const ringFade = ringVis * (narrow ? 0.4 : 0.7);
       rings.visible = ringFade > 0.01;
       ringMats.forEach((m) => { m.uniforms.uFade.value = ringFade; });
       renderer.render(scene, camera);

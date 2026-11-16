@@ -259,6 +259,7 @@ export function IconBadge({
   const color = tint || BRAND;
   return (
     <div
+      className="tf-icon-badge"
       style={{
         width: 44,
         height: 44,
