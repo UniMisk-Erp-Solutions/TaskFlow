@@ -246,9 +246,9 @@ function Hero({ showFallbackRing }: { showFallbackRing: boolean }) {
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
           style={{ fontSize: 16, lineHeight: 1.65, color: c.muted, maxWidth: 520, margin: "0 auto 32px" }}
         >
-          Task management software for small teams: assign tasks, track time, plan on a
+          Task management software for teams: assign tasks, track time, plan on a
           calendar and approve finished work, all in one shared workspace. Start with a
-          free task manager for small teams.
+          free task manager for teams.
         </motion.p>
 
         <motion.div

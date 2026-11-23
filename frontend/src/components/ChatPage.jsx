@@ -250,6 +250,76 @@ export function Linkified({ text, linkColor, mine }) {
   return <>{parts.length ? parts : value}</>;
 }
 
+// ── Formatting: ```code blocks``` and `inline code` keep their spacing in a monospace font; everything else keeps its line breaks. ──
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+
+/** Splits a message into plain-text parts and fenced code blocks. An unclosed fence runs to the end of the message. */
+export function splitCodeBlocks(text) {
+  const value = String(text ?? '');
+  const parts = [];
+  const fence = /```([\w+#.-]*)[ \t]*\n?([\s\S]*?)(?:```|$)/g;
+  let last = 0;
+  for (const m of value.matchAll(fence)) {
+    if (m.index > last) parts.push({ type: 'text', text: value.slice(last, m.index) });
+    parts.push({ type: 'code', lang: m[1] || '', code: m[2].replace(/\n$/, '') });
+    last = m.index + m[0].length;
+  }
+  if (last < value.length) parts.push({ type: 'text', text: value.slice(last) });
+  return parts;
+}
+
+/** Pasted code without a fence: several lines that look like source code are wrapped in one so the indentation survives. */
+export function autoFenceCode(body) {
+  const text = String(body ?? '');
+  if (text.includes('```')) return text;
+  const lines = text.split('\n').filter((l) => l.trim());
+  if (lines.length < 3) return text;
+  const codeLike = /^(\s{2,}|\t)|[{};]\s*$|^\s*(const|let|var|function|import|export|def|class|return|if|else|for|while|public|private|static|#include|<\/?[a-z][\w-]*)\b/i;
+  const hits = lines.filter((l) => codeLike.test(l)).length;
+  return hits / lines.length >= 0.6 ? `\`\`\`\n${text}\n\`\`\`` : text;
+}
+
+function CodeBlock({ code, lang, mine }) {
+  const [copied, setCopied] = useState(false);
+  async function copy(e) {
+    e.stopPropagation();
+    try { await navigator.clipboard.writeText(code); setCopied(true); window.setTimeout(() => setCopied(false), 1400); } catch { /* clipboard blocked: nothing to do */ }
+  }
+  return (
+    <div style={{ margin: '4px 0', borderRadius: 8, overflow: 'hidden', background: mine ? 'rgba(0,0,0,0.28)' : 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.12)', textAlign: 'left' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 8px', fontSize: 11, opacity: 0.85, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <span>{lang || 'code'}</span>
+        <button type="button" onClick={copy} style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', padding: 0 }}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+      <pre style={{ margin: 0, padding: '8px 10px', overflowX: 'auto', whiteSpace: 'pre', overflowWrap: 'normal', wordBreak: 'normal', tabSize: 2, fontFamily: MONO, fontSize: 12.5, lineHeight: 1.5, color: 'inherit' }}>
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+/** A message body: code blocks, `inline code` and clickable links, with line breaks kept. */
+export function MessageText({ text, mine }) {
+  const parts = splitCodeBlocks(text);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (part.type === 'code') return <CodeBlock key={i} code={part.code} lang={part.lang} mine={mine} />;
+        // The line break right next to a code block is part of the block, not an empty line.
+        let t = part.text;
+        if (i > 0) t = t.replace(/^\n/, '');
+        if (i < parts.length - 1) t = t.replace(/\n$/, '');
+        if (!t) return null;
+        return t.split(/(`[^`\n]+`)/g).map((seg, j) => (
+          /^`[^`\n]+`$/.test(seg)
+            ? <code key={`${i}-${j}`} style={{ fontFamily: MONO, fontSize: '0.92em', padding: '1px 5px', borderRadius: 5, background: 'rgba(0,0,0,0.3)' }}>{seg.slice(1, -1)}</code>
+            : <Linkified key={`${i}-${j}`} text={seg} mine={mine} />
+        ));
+      })}
+    </>
+  );
+}
+
 /** One chat bubble with swipe-right / double-click to reply and hover actions. */
 /** True on devices where touch is the main way of pointing (phones, tablets) and inside the installed app. */
 export function swipeReplyAvailable() {
@@ -259,11 +329,32 @@ export function swipeReplyAvailable() {
   return installedApp || touchFirst;
 }
 
+// Long messages fold like in WhatsApp: the first part with "Show more", and "Show less" once opened.
+const FOLD_CHARS = 600;
+const FOLD_LINES = 12;
+export function foldMessage(body) {
+  const text = String(body ?? '');
+  const lines = text.split('\n');
+  if (text.length <= FOLD_CHARS && lines.length <= FOLD_LINES) return { long: false, preview: text };
+  let preview = lines.slice(0, FOLD_LINES).join('\n');
+  if (preview.length > FOLD_CHARS) {
+    preview = preview.slice(0, FOLD_CHARS);
+    const cut = preview.search(/\s\S*$/); // end on a whole word
+    if (cut > FOLD_CHARS * 0.6) preview = preview.slice(0, cut);
+  }
+  preview = preview.trimEnd();
+  // Cutting inside a code block must not leave it open, or the rest of the bubble would render as code.
+  if ((preview.match(/```/g) || []).length % 2 === 1) preview += '\n```';
+  return { long: true, preview: `${preview}${preview.endsWith('```') ? '' : '…'}` };
+}
+
 export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName, highlighted, onReply, onEdit, onDelete, onJumpTo, seenBy = null, direct = false }) {
   const bubbleRef = useRef(null);
   const drag = useRef(null);
   const swallowClick = useRef(false); // a swipe that began on an image/file must not also open it
   const [seenOpen, setSeenOpen] = useState(false); // "Seen by" list expanded to show everyone
+  const [expanded, setExpanded] = useState(false); // long message opened with "Show more"
+  const fold = useMemo(() => foldMessage(msg.body), [msg.body]);
 
   function onPointerDown(e) {
     // Swipe-to-reply is for phones and the installed app only. On a desktop (mouse, pen, a touchscreen laptop, a window
@@ -325,7 +416,7 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
         <div
           style={{
             padding: '8px 12px', borderRadius: 14, fontSize: 14, lineHeight: 1.45,
-            whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text',
+            whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', userSelect: 'text', minWidth: 0, maxWidth: '100%',
             background: mine ? 'var(--color-primary)' : 'var(--tf-pearl)',
             color: mine ? '#fff' : 'var(--tf-text)',
             border: mine ? 'none' : '1px solid var(--tf-border)',
@@ -350,7 +441,17 @@ export function MessageRow({ msg, mine, showName, senderName, quoted, quotedName
             </button>
           )}
           {msg.attachment_path && <div style={{ marginBottom: msg.body ? 6 : 0 }}><Attachment msg={msg} /></div>}
-          <Linkified text={msg.body} mine={mine} />
+          <MessageText text={fold.long && !expanded ? fold.preview : msg.body} mine={mine} />
+          {fold.long && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+              aria-expanded={expanded}
+              style={{ display: 'block', marginTop: 4, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 13, fontWeight: 600, color: mine ? '#fff' : 'var(--color-primary)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
           {msg.edited_at && <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 6 }}>(edited)</span>}
         </div>
         <MessageMenu msg={msg} mine={mine} onReply={onReply} onEdit={onEdit} onDelete={onDelete} iconBtn={iconBtn} />
@@ -662,6 +763,13 @@ export default function ChatPage() {
   const listRef = useRef(null);
   const stickRef = useRef(true); // true while the reader is at (or near) the bottom of the message list
   const inputRef = useRef(null);
+  // The message box grows with what is typed (up to about 8 lines) and shrinks back after sending.
+  useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
   const activeRef = useRef(null);
   const pendingRef = useRef([]);
   const recorderRef = useRef(null);
@@ -933,7 +1041,8 @@ export default function ChatPage() {
   async function send(event) {
     event?.preventDefault();
     if (sending || !activeId) return;
-    const body = text.trim();
+    // Keep the first line's indentation (code), drop only blank lines and spaces around the message.
+    const body = autoFenceCode(text.replace(/^(\s*\n)+/, '').trimEnd());
     stickRef.current = true; // sending always brings you to the newest message
     setError('');
 
@@ -1459,21 +1568,28 @@ export default function ChatPage() {
               <button type="button" className="btn btn-ghost btn-sm btn-icon tf-chat-icon-btn" aria-label="Record voice message" title="Record voice message" disabled={composerDisabled || sending || !!editingId} onClick={startRecording}>
                 <Mic size={16} />
               </button>
-              <input
+              <textarea
                 ref={inputRef}
+                rows={1}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     if (editingId) cancelEdit();
                     else if (replyTo) setReplyTo(null);
+                    return;
+                  }
+                  // Enter sends and Shift+Enter starts a new line, like WhatsApp Web. On a phone Enter is a new line (the Send button sends).
+                  const touchKeyboard = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !touchKeyboard) {
+                    e.preventDefault();
+                    e.currentTarget.form?.requestSubmit();
                   }
                 }}
                 placeholder={pending.length ? 'Add a caption…' : active?.type === 'direct' ? `Message ${titleOf(active)}` : 'Message — or type /name for a private chat'}
                 aria-label="Message"
-                maxLength={4000}
                 disabled={composerDisabled}
-                style={{ ...fieldStyle, flex: 1, width: 'auto', minWidth: 0, padding: '10px 14px', borderRadius: 12 }}
+                style={{ ...fieldStyle, flex: 1, width: 'auto', minWidth: 0, padding: '10px 14px', borderRadius: 12, resize: 'none', lineHeight: 1.4, maxHeight: 160, overflowY: 'auto', tabSize: 2 }}
               />
               <button
                 type="submit"

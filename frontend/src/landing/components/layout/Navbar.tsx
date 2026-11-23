@@ -26,6 +26,11 @@ const resourceLinks = [
   { name: "Blog and guides", href: "/blog" },
   { name: "Privacy Policy", href: "/privacy" },
   { name: "Terms of Service", href: "/terms" },
+  { name: "Refund Policy", href: "/refunds" },
+  { name: "Cookie Policy", href: "/cookies" },
+  { name: "Acceptable Use Policy", href: "/acceptable-use" },
+  { name: "Grievance Redressal", href: "/grievances" },
+  { name: "Disclaimer", href: "/disclaimer" },
 ];
 
 const otherLinks = [

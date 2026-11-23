@@ -21,6 +21,8 @@ import Terms from '../../landing/pages/Terms';
 import Docs from '../../landing/pages/Docs';
 import Faq from '../../landing/pages/Faq';
 import SeoLanding from '../../landing/pages/SeoLanding';
+import LegalPage from '../../landing/pages/LegalPage';
+import { LEGAL_PAGES } from '../../landing/lib/legalPages.js';
 import BlogPost, { BlogIndex } from '../../landing/pages/Blog';
 
 // Every public page: exactly one main heading (h1), and it names the same topic as the page title (in its own words).
@@ -42,6 +44,7 @@ const pages = [
   ['/privacy', () => <Privacy />],
   ['/terms', () => <Terms />],
   ['/task-approval-workflow-software', () => <SeoLanding path="/task-approval-workflow-software" />],
+  ...LEGAL_PAGES.map((p) => [p.path, () => <LegalPage path={p.path} />]),
   ...BLOG_POSTS.map((p) => [`/blog/${p.slug}`, () => <BlogPost slug={p.slug} />]),
 ];
 
@@ -49,8 +52,8 @@ const STOP = new Set(['a', 'an', 'and', 'the', 'to', 'of', 'for', 'in', 'on', 'w
 const words = (text) => text.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/[\s-]+/).filter((w) => w && !STOP.has(w)).map((w) => w.replace(/s$/, ''));
 
 describe('page headings', () => {
-  it('covers 27 public pages', () => {
-    expect(pages).toHaveLength(27);
+  it('covers every public page', () => {
+    expect(pages).toHaveLength(17 + LEGAL_PAGES.length + BLOG_POSTS.length);
   });
 
   it.each(pages)('%s has one main heading that matches its title', (path, make) => {

@@ -6,6 +6,7 @@ import SubscriptionGate from './components/SubscriptionGate';
 import { ThemeProvider } from './ThemeContext';
 import Seo, { NoIndex } from './seo/Seo';
 import { LANDING_PAGES, BLOG_POSTS } from './seo/seoPages.js';
+import { LEGAL_PAGES } from './landing/lib/legalPages.js';
 import { ALL_FAQS } from './seo/faqContent.js';
 
 // The app screens are big (dashboards, charts, whiteboard). They load only when someone opens them, so the public pages stay light.
@@ -34,6 +35,7 @@ const About = lazy(() => import('./landing/pages/About'));
 const Contact = lazy(() => import('./landing/pages/Contact'));
 const Security = lazy(() => import('./landing/pages/Security'));
 const Privacy = lazy(() => import('./landing/pages/Privacy'));
+const LegalPage = lazy(() => import('./landing/pages/LegalPage'));
 const Terms = lazy(() => import('./landing/pages/Terms'));
 const Docs = lazy(() => import('./landing/pages/Docs'));
 const Faq = lazy(() => import('./landing/pages/Faq'));
@@ -223,6 +225,9 @@ export default function App() {
             <Route path="/security"  element={<MarketingLayout seo="/security"><Security /></MarketingLayout>} />
             <Route path="/privacy"   element={<MarketingLayout seo="/privacy"><Privacy /></MarketingLayout>} />
             <Route path="/terms"     element={<MarketingLayout seo="/terms"><Terms /></MarketingLayout>} />
+            {LEGAL_PAGES.map((page) => (
+              <Route key={page.path} path={page.path} element={<MarketingLayout seo={page.path}><LegalPage path={page.path} /></MarketingLayout>} />
+            ))}
             <Route path="/docs"      element={<MarketingLayout seo="/docs"><Docs /></MarketingLayout>} />
             <Route path="/faq"       element={<MarketingLayout seo="/faq"><Faq /></MarketingLayout>} />
             <Route path="/faq/:slug" element={<MarketingLayout><FaqQuestionRoute /></MarketingLayout>} />

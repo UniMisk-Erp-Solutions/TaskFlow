@@ -61,6 +61,36 @@
     <priority>0.3</priority>
   </url>
   <url>
+    <loc>https://taskflow.unimisk.com/refunds</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://taskflow.unimisk.com/cookies</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://taskflow.unimisk.com/acceptable-use</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://taskflow.unimisk.com/grievances</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://taskflow.unimisk.com/disclaimer</loc>
+    <lastmod>2026-11-17</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
     <loc>https://taskflow.unimisk.com/task-management-app</loc>
     <lastmod>2026-10-27</lastmod>
     <changefreq>monthly</changefreq>

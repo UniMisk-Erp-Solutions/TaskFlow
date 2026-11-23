@@ -1,3 +1,4 @@
+import { LEGAL_PAGES } from '../landing/lib/legalPages.js';
 // Single source of truth for the public (indexable) pages: the browser (<Seo>), the build (static page heads + sitemap)
 // and the tests all read from here. Plain JS, no JSX, so Node can import it too.
 
@@ -113,6 +114,17 @@ export const CORE_PAGES = [
     lastmod: '2026-10-27',
     summary: 'The terms for using TaskFlow.',
   },
+  // Policy pages in the Resources menu (content in landing/lib/legalPages.js).
+  ...LEGAL_PAGES.map((p) => ({
+    path: p.path,
+    title: p.title,
+    h1: p.h1,
+    description: p.description,
+    changefreq: 'yearly',
+    priority: 0.3,
+    lastmod: '2026-11-17',
+    summary: p.summary,
+  })),
 ];
 
 /** App screens that must never appear in search results. */

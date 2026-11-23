@@ -33,16 +33,19 @@ const columns = [
       { to: "/contact", label: "Press and media enquiries" },
     ],
   },
-  {
-    title: "Resources",
-    links: [
-      { to: "/docs", label: "Documentation and guides" },
-      { to: "/faq", label: "FAQ: plans, features and setup" },
-      { to: "/blog", label: "Blog: task management guides" },
-      { to: "/privacy", label: "Privacy Policy" },
-      { to: "/terms", label: "Terms of Service" },
-    ],
-  },
+];
+
+const resourceLinks = [
+  { to: "/docs", label: "Documentation and guides" },
+  { to: "/faq", label: "FAQ: plans, features and setup" },
+  { to: "/blog", label: "Blog: task management guides" },
+  { to: "/privacy", label: "Privacy Policy" },
+  { to: "/terms", label: "Terms of Service" },
+  { to: "/refunds", label: "Refund Policy" },
+  { to: "/cookies", label: "Cookie Policy" },
+  { to: "/acceptable-use", label: "Acceptable Use Policy" },
+  { to: "/grievances", label: "Grievance Redressal" },
+  { to: "/disclaimer", label: "Disclaimer" },
 ];
 
 const socials = [
@@ -141,6 +144,21 @@ export const Footer = () => {
             </div>
           ))}
         </div>
+
+        {/* Resources: shown across five columns */}
+        <nav aria-labelledby="footer-resources" style={{ marginBottom: 48 }}>
+          <h4 id="footer-resources" style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.12em", textTransform: "uppercase", color: tone.fg, margin: "0 0 20px" }}>
+            Resources
+          </h4>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gridAutoFlow: "column", gridTemplateRows: "repeat(2, auto)", gridAutoColumns: "minmax(0, 1fr)", gap: "12px 32px" }} className="tf-footer-resources">
+            {resourceLinks.map((l: { to: string; label: string }) => (
+              <li key={l.label}>
+                <Link to={l.to} style={{ fontSize: 14, color: tone.muted, textDecoration: "none", lineHeight: 1.4 }}>{l.label}</Link>
+              </li>
+            ))}
+          </ul>
+          <style>{"@media (max-width: 900px){.tf-footer-resources{grid-auto-flow:row !important;grid-template-rows:none !important;grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width: 520px){.tf-footer-resources{grid-template-columns:1fr !important}}"}</style>
+        </nav>
 
         {/* Guides: every guide, with its own title as the link text */}
         <nav aria-labelledby="footer-guides" style={{ marginBottom: 48 }}>
