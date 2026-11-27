@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { KeyRound, Mail, User } from 'lucide-react';
 import { useAuth } from './AuthContext';
-import { getRememberMe, getRememberedEmail, rememberEmail, setRememberMe } from './rememberMe';
+import { getRememberMe, getRememberedEmail, rememberEmail, setRememberMe, touchSession } from './rememberMe';
 
 // The sign-in and sign-up screens: a dark window on a blue gradient, an illustration on the left and the form on the right.
 const AUTH_VARS = {
@@ -77,10 +77,12 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'signin') {
-        // Decide where the session is kept before it is created.
-        setRememberMe(remember);
+        // Signing in keeps you signed in for a week (there is no tick box on this form). An old "don't remember me" choice
+        // from the sign-up form must not turn into signing in again every time the browser is closed.
+        setRememberMe(true);
         await signIn(email, password);
-        rememberEmail(email, remember);
+        touchSession();
+        rememberEmail(email, true);
       } else {
         if (!name.trim()) {
           setError('Full name is required');

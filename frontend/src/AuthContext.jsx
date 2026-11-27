@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import supabase from './supabaseClient';
+import { sessionIdleExpired, touchSession, clearSessionActivity } from './rememberMe';
 import api from './api';
 import { setApiAccessToken } from './sessionAccess';
 
@@ -68,7 +69,16 @@ export function AuthProvider({ children }) {
     console.log('AuthContext - Initializing session...');
     
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: stored } }) => {
+      // A week without opening the app ends the session; otherwise opening it renews the week.
+      let session = stored;
+      if (session && sessionIdleExpired()) {
+        await supabase.auth.signOut({ scope: 'local' });
+        clearSessionActivity();
+        session = null;
+      } else if (session) {
+        touchSession();
+      }
       console.log('AuthContext - Initial session:', { hasSession: !!session, hasUser: !!session?.user });
       setUser(session?.user ?? null);
       setApiAccessToken(session?.access_token ?? null);
@@ -273,6 +283,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    clearSessionActivity();
     hydratedUserIdRef.current = null;
     setApiAccessToken(null);
     window.cachedSession = null;
