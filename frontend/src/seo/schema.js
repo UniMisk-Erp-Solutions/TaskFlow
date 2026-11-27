@@ -18,6 +18,8 @@ const website = {
   '@id': `${SITE_URL}/#website`,
   url: SITE_URL,
   name: SITE_NAME,
+  // Google reads the site name shown above a search result from here (home page), so give it the exact brand and common spellings.
+  alternateName: ['Taskflow', 'TaskFlow task manager'],
   publisher: { '@id': `${SITE_URL}/#organization` },
 };
 

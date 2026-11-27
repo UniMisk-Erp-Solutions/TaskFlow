@@ -21,6 +21,7 @@ vi.mock('../../AuthContext', () => ({ useAuth: () => ({ profile: { id: 'u1', rol
 vi.mock('../../useRealtime', () => ({ useLiveRefresh: () => {} }));
 
 import api from '../../api';
+import { MemoryRouter } from 'react-router-dom';
 import FileExplorer from '../FileExplorer';
 
 const dt = () => ({ types: [], setData: vi.fn(), effectAllowed: '', dropEffect: '' });
@@ -29,7 +30,7 @@ describe('FileExplorer drag and drop', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('moves an owned file into a folder when dropped on it', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     const file = (await screen.findByText('mine.pdf')).closest('.fx-row');
     const folder = screen.getByText('Reports').closest('.fx-row');
     const data = dt();
@@ -40,13 +41,13 @@ describe('FileExplorer drag and drop', () => {
   });
 
   it('does not let you drag files you do not own', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     const theirs = (await screen.findByText('theirs.pdf')).closest('.fx-row');
     expect(theirs.getAttribute('draggable')).toBe('false');
   });
 
   it('does not treat a folder dropped on itself as a move', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     const folder = (await screen.findByText('Reports')).closest('.fx-row');
     const data = dt();
     fireEvent.dragStart(folder, { dataTransfer: data });

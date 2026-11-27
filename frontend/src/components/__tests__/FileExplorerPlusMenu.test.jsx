@@ -27,6 +27,7 @@ vi.mock('../../AuthContext', () => ({ useAuth: () => ({ profile: { id: 'u1', rol
 vi.mock('../../useRealtime', () => ({ useLiveRefresh: () => {} }));
 
 import api from '../../api';
+import { MemoryRouter } from 'react-router-dom';
 import FileExplorer, { entriesFromDrop, entriesFromPicker } from '../FileExplorer';
 
 function fileAt(path, name = path.split('/').pop()) {
@@ -44,7 +45,7 @@ describe('Files toolbar "+" menu', () => {
 
   it('replaces the separate buttons with one + that opens New folder, Upload files and Upload folder', async () => {
     const user = userEvent.setup();
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     const plus = await screen.findByRole('button', { name: 'Add' });
     expect(screen.queryByRole('menuitem', { name: /new folder/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^upload$/i })).toBeNull();
@@ -57,7 +58,7 @@ describe('Files toolbar "+" menu', () => {
 
   it('creates a folder from the menu', async () => {
     const user = userEvent.setup();
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await user.click(await screen.findByRole('button', { name: 'Add' }));
     await user.click(screen.getByRole('menuitem', { name: /new folder/i }));
     expect(screen.queryByRole('menu')).toBeNull();
@@ -68,7 +69,7 @@ describe('Files toolbar "+" menu', () => {
 
   it('closes on Escape and when clicking elsewhere', async () => {
     const user = userEvent.setup();
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     const plus = await screen.findByRole('button', { name: 'Add' });
     await user.click(plus);
     await user.keyboard('{Escape}');
@@ -86,7 +87,7 @@ describe('Files access filter', () => {
   it('narrows the list to public or private items from a dropdown under All / Mine / Shared', async () => {
     const file = (id, name, visibility) => ({ kind: 'file', id, name, visibility, is_owner: true, owner_name: 'Me', size_bytes: 10, content_type: 'text/plain', created_at: '2026-10-20T00:00:00Z' });
     api.get.mockImplementation(async () => ({ data: { breadcrumbs: [], folders: [], files: [file('1', 'open.txt', 'public'), file('2', 'secret.txt', 'private')] } }));
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     expect(await screen.findByText('open.txt')).toBeInTheDocument();
     expect(screen.getByText('secret.txt')).toBeInTheDocument();
 
@@ -117,7 +118,7 @@ describe('Folder size', () => {
       if (id === 'F2') return { data: { breadcrumbs: [], folders: [], files: [file('c', 'c.txt', 1 * MB)] } };
       return { data: { breadcrumbs: [], folders: [folder('F1', 'Project')], files: [] } };
     });
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByText('Project');
     expect(await screen.findByText('4.0 MB')).toBeInTheDocument();
     reset();
@@ -125,7 +126,7 @@ describe('Folder size', () => {
 
   it('uses the total from the server when it is provided', async () => {
     api.get.mockImplementation(async () => ({ data: { breadcrumbs: [], folders: [{ ...folder('F1', 'Project'), size_bytes: 5 * MB, file_count: 3 }, { ...folder('F2', 'Nothing'), size_bytes: 0, file_count: 0 }], files: [] } }));
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     expect(await screen.findByText('5.0 MB')).toBeInTheDocument();
     expect(screen.getByText('Empty')).toBeInTheDocument();
     expect(api.get.mock.calls.filter(([, c]) => c?.params?.folder_id)).toHaveLength(0); // no extra listing needed
@@ -150,7 +151,7 @@ describe('Folder download', () => {
     URL.createObjectURL = vi.fn((blob) => { made.push(blob); return 'blob:zip'; });
     URL.revokeObjectURL = vi.fn();
 
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByText('Project');
     fireEvent.click(screen.getByRole('button', { name: 'Download Project as ZIP' }));
     await waitFor(() => expect(made).toHaveLength(1), { timeout: 4000 });
@@ -167,7 +168,7 @@ describe('Uploading a whole folder', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it('recreates the folder tree and uploads every file into the right folder, skipping OS junk', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder([
       fileAt('Designs/a.png'),
@@ -188,7 +189,7 @@ describe('Uploading a whole folder', () => {
   });
 
   it('uploads a big folder with a handful of API requests, not three per file', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder(Array.from({ length: 120 }, (_, i) => fileAt(`Big/f${i}.txt`)));
     await waitFor(() => expect(batchCalls('/drive/files/complete-batch').flatMap(([, b]) => b.files)).toHaveLength(120));
@@ -203,7 +204,7 @@ describe('Uploading a whole folder', () => {
       if (url === '/drive/files/prepare') return { data: { bucket: 'b', path: `p/${body.name}`, token: 't', file_id: `file-${body.name}` } };
       return base(url, body);
     });
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder([fileAt('Old/a.txt'), fileAt('Old/b.txt')]);
     await waitFor(() => expect(api.post.mock.calls.filter(([u]) => u === '/drive/files/complete')).toHaveLength(2));
@@ -214,7 +215,7 @@ describe('Uploading a whole folder', () => {
   it('reuses a folder you already have with the same name instead of failing', async () => {
     api.post.mockImplementationOnce(async () => { const e = new Error('dup'); e.response = { status: 409, data: { error: 'You already have a folder with that name here.' } }; throw e; });
     api.get.mockImplementation(async () => ({ data: { breadcrumbs: [], folders: [{ kind: 'folder', id: 'existing-1', name: 'Designs', is_owner: true }], files: [] } }));
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder([fileAt('Designs/a.png')]);
     await waitFor(() => expect(prepareCalls()).toHaveLength(1));
@@ -225,7 +226,7 @@ describe('Uploading a whole folder', () => {
 
   it('reports a file that fails without stopping the rest', async () => {
     uploadToSignedUrl.mockImplementationOnce(async () => ({ error: { message: 'storage down' } }));
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder([fileAt('Docs/one.txt'), fileAt('Docs/two.txt')]);
     expect(await screen.findByText(/could not upload 1 file/i)).toBeInTheDocument();
@@ -234,7 +235,7 @@ describe('Uploading a whole folder', () => {
   });
 
   it('skips node_modules and .git when uploading a project folder and says so', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder([fileAt('App/index.js'), fileAt('App/node_modules/lib/a.js'), fileAt('App/node_modules/lib/b.js'), fileAt('App/.git/HEAD')]);
     expect(await screen.findByText(/Uploaded 1 files\. Skipped 3 files in node_modules, \.git\./)).toBeInTheDocument();
@@ -242,7 +243,7 @@ describe('Uploading a whole folder', () => {
   });
 
   it('refuses an enormous folder with a clear message', async () => {
-    render(<FileExplorer />);
+    render(<MemoryRouter><FileExplorer /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Add' });
     pickFolder(Array.from({ length: 10001 }, (_, i) => fileAt(`Big/f${i}.txt`)));
     expect(await screen.findByText(/upload at most 10000 files/i)).toBeInTheDocument();

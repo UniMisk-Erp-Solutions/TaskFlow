@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { zipSync } from 'fflate';
 import { downloadFromApi, fetchFileBlob, fileErrorMessage, previewKind, saveBlob } from '../lib/fileAccess';
 import FilePreviewModal from './FilePreviewModal';
@@ -201,7 +202,17 @@ export async function entriesFromDrop(dataTransfer) {
 
 export default function FileExplorer() {
   const { profile } = useAuth();
-  const [folderId, setFolderId] = useState(null);
+  // The open folder lives in the page address (?folder=...), so the browser's Back button steps out of a folder
+  // instead of leaving the Files page, and a refresh stays in the same folder.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const folderId = searchParams.get('folder') || null;
+  const setFolderId = useCallback((id, { replace = false } = {}) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (id) next.set('folder', id); else next.delete('folder');
+      return next;
+    }, { replace });
+  }, [setSearchParams]);
   const [data, setData] = useState({ breadcrumbs: [], folders: [], files: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -256,14 +267,14 @@ export default function FileExplorer() {
     } catch (err) {
       if (err.response?.status === 404 && folderId) {
         // The folder was removed or made private while we were inside it.
-        setFolderId(null);
+        setFolderId(null, { replace: true });
       } else if (!silent) {
         setError(err.response?.data?.error || err.message);
       }
     } finally {
       setLoading(false);
     }
-  }, [folderId]);
+  }, [folderId, setFolderId]);
 
   useEffect(() => { void load(); }, [load]);
   useLiveRefresh(useCallback(() => { if (!busy && !query) void load({ silent: true }); }, [load, busy, query]), 8000);
